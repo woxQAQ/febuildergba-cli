@@ -1,0 +1,8 @@
+*.gba
+r
+.DS_Store
+.vs/
+
+# cli/ - TypeScript ROM parser (see AGENTS.md section 5)
+cli/node_modules/
+cli/out/

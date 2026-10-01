@@ -1,0 +1,3 @@
+[submodule "FEBuilderGBA"]
+	path = FEBuilderGBA
+	url = https://github.com/FEBuilderGBA/FEBuilderGBA.git

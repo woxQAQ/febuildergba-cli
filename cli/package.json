@@ -1,0 +1,24 @@
+{
+  "name": "fe-rom-cli",
+  "version": "0.1.0",
+  "private": true,
+  "description": "GBA Fire Emblem ROM parser CLI. Extracts unit, class and support data for AI analysis.",
+  "type": "module",
+  "engines": {
+    "node": ">=22.6"
+  },
+  "bin": {
+    "fe-rom": "./src/index.ts"
+  },
+  "scripts": {
+    "info": "node src/index.ts info",
+    "dump": "node src/index.ts dump",
+    "validate": "node src/index.ts validate",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "@types/node": "^22.10.0"
+  }
+}
