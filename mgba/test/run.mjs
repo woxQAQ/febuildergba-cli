@@ -5,7 +5,8 @@
  *   node mgba/test/run.mjs
  *
  * 为什么用 fengari：本机没有独立的 lua 解释器，而 mGBA 也不支持命令行载入脚本。
- * fengari 装在托管 node 工作区里（见 system prompt 的 binary 规则），不污染系统。
+ * fengari 默认从本文件位置向上找 node_modules；装在别处时用 MGBA_TEST_WORKSPACE
+ * 指到那个工作区（含 node_modules/fengari 的目录）。
  */
 
 import fs from "node:fs";
@@ -15,16 +16,19 @@ import { createRequire } from "node:module";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(HERE, "..", "..");
-const WORKSPACE = "/Users/woxqaq/.workbuddy-ai/binaries/node/workspace";
+const WORKSPACE = process.env.MGBA_TEST_WORKSPACE;
 
-const require = createRequire(path.join(WORKSPACE, "package.json"));
+const require = WORKSPACE
+  ? createRequire(path.join(WORKSPACE, "package.json"))
+  : createRequire(import.meta.url);
 
 let fengari;
 try {
   fengari = require("fengari");
 } catch {
-  console.error(`找不到 fengari。先装：`);
-  console.error(`  cd ${WORKSPACE} && npm install fengari`);
+  console.error(`找不到 fengari。任选其一：`);
+  console.error(`  在仓库根 npm install fengari（run.mjs 会向上找到 node_modules）`);
+  console.error(`  或装在别处后设 MGBA_TEST_WORKSPACE=<那个目录>`);
   process.exit(2);
 }
 

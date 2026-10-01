@@ -254,11 +254,12 @@ node mgba/test/run.mjs --preview  # 附带把面板渲染结果打出来核对�
 ```
 
 本机没有独立 Lua 解释器、mGBA 也不支持命令行载入脚本，所以用
-**fengari**（Lua 5.3 的 JS 实现）跑。fengari 装在托管 node 工作区
-（`/Users/woxqaq/.workbuddy-ai/binaries/node/workspace`），需要时：
+**fengari**（Lua 5.3 的 JS 实现）跑。`run.mjs` 默认从自身位置向上找
+`node_modules`，装在别处时用 `MGBA_TEST_WORKSPACE` 指到那个工作区：
 
 ```bash
-cd /Users/woxqaq/.workbuddy-ai/binaries/node/workspace && npm install fengari
+mkdir -p ~/.local/share/fe-aodian && cd ~/.local/share/fe-aodian && npm install fengari
+MGBA_TEST_WORKSPACE=~/.local/share/fe-aodian node mgba/test/run.mjs
 ```
 
 自测里有 10 组：RNG 递推性质 / RollGrowth 边界 / 升级消耗分布（对 Python 黄金值）/
@@ -270,7 +271,7 @@ cd /Users/woxqaq/.workbuddy-ai/binaries/node/workspace && npm install fengari
 按同样的反汇编结论重写了一遍。改模型时两边都要改，只改一边自测就会红：
 
 ```bash
-<venv>/bin/python mgba/test/battle_golden.py   # 打印黄金数值，抄进 selftest.lua
+python3 mgba/test/battle_golden.py   # 打印黄金数值，抄进 selftest.lua（纯 stdlib）
 ```
 
 ### 换 ROM

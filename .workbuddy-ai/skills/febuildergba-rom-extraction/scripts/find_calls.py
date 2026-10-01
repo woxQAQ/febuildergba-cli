@@ -28,7 +28,7 @@ Output is one `fileoffset  gbaaddress` pair per line, sorted.
 
 Example - where does the game roll random numbers during a battle?
 
-    <venv>/bin/python find_calls.py /Users/woxqaq/FEBuilderGBA/fixtures/dream-of-five.gba 0x0802A52C
+    uv run --with capstone python find_calls.py fixtures/dream-of-five.gba 0x0802A52C
 """
 
 import struct

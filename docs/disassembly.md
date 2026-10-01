@@ -1,11 +1,7 @@
 # 反汇编 ROM 自己的代码（§3.10 / §3.13）
 
-> **本文件是 `AGENTS.md` 的拆分件。** 原 §3 数据字典有 110KB，把 `AGENTS.md` 撑到 167KB，
-> 而它作为「项目指南」每次会话都会被注入 —— **注入时会被截断**，所以按主题拆到 `docs/`。
-> **章节编号一律保持原样**（`§3.1`–`§3.20` 等），全仓（`MEMORY.md` / `SKILL.md` / 源码注释）
-> 的 `§x.y` 交叉引用仍然有效。
-> ⚠️ 被引用的 `§x.y` 可能落在 `docs/` 的**其他**文件里 —— 完整索引见 [`docs/README.md`](README.md)。
-> 入口仍是 [`AGENTS.md`](../AGENTS.md)。
+> 本文件是 [`AGENTS.md`](../AGENTS.md) 的拆分件，章节编号保持原样（`§x.y` 交叉引用仍有效，
+> 被引章节可能落在其他文件里）。索引与拆分原因见 [`docs/README.md`](README.md)。
 
 ## 3. FE7 / FE8 数据字典
 
@@ -147,13 +143,14 @@ A    241以降
    `{U}` = 美版，`{J}` = 日版。**这等于给原版 ROM 附了一份带注释的反汇编清单**，
    而且这个 hack 保留了原版的代码布局，所以符号表直接可用。
 
-2. **反汇编器。** 需要能解 Thumb。`objdump`（本机是 LLVM 21）**不支持裸二进制**
-   （`-b binary` 是 GNU 专属参数），所以用 Python 的 `capstone`：
+2. **反汇编器。** 需要能解 Thumb。`objdump`（LLVM）**不支持裸二进制**
+   （`-b binary` 是 GNU 专属参数），所以用 Python 的 `capstone`。
+   任一 Python 3 解释器都行，没有 capstone 就让 `uv` 现拉一个：
 
    ```bash
-   /Users/woxqaq/.workbuddy-ai/binaries/python/versions/3.13.12/bin/python3 \
-     -m venv /Users/woxqaq/.workbuddy-ai/binaries/python/envs/default
-   /Users/woxqaq/.workbuddy-ai/binaries/python/envs/default/bin/pip install capstone
+   uv run --with capstone python \
+     .workbuddy-ai/skills/febuildergba-rom-extraction/scripts/disasm.py \
+     <rom.gba> <startOffset> <endOffset>
    ```
 
    然后切一段 ROM 出来解：
@@ -226,15 +223,7 @@ struct SupportBonuses {
 > 读表用 0x18 步长（实测 62 条、61 个间隔全是 0x18），字段偏移用上表。
 > 两者都对 —— 一个是结构体大小，一个是分配步长。
 
-**独立交叉验证（`terrain.idAlignment` 检查）**：拿 `0x12`（Peak，飞行专属地形）当判据。
-实测 **17 个飞行职业能踩、95 个地面职业不能踩**，例外只有
-`Thug` / `Berserker` / 2 个 `Dragon`（这个 hack 里山贼系与怪物确实能踩 Peak）。
-**两套 id 对得上**，所以给消耗表贴名字是安全的。
-
-> **这只是标签，不是机制。** 地形的回避/防御/魔防修正在职业记录的
-> `+68` / `+72` / `+76` 三个指针里（§3.4），已接入 —— `UnitClass.terrainBonuses`
-> 给出 `{ avoid, def, res }` 三张 65 项表，`terrainBonusImmune` 标记三项全 0 的职业。
-
-> 来源：`MapTerrainNameForm.cs` / `MapTerrainNameEngForm.cs`（`Init()` 的步长、终止条件、`GetName()`）。
+> 地形名表（步长、终止条件、与消耗表 id 的 Peak 交叉验证）见 [`rom-layout.md`](rom-layout.md) §3.12；
+> 地形加成三表（职业记录 `+68` / `+72` / `+76`）见 §3.4。本节不重复。
 
 ---

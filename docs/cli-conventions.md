@@ -1,7 +1,7 @@
 # CLI 工程约定与验证策略（§5 / §6）
 
-> **本文件是 `AGENTS.md` 的拆分件**（原 `§5 + §6`）。章节编号保持原样，`§x.y` 交叉引用仍有效。
-> 索引见 [`docs/README.md`](README.md)，入口是 [`AGENTS.md`](../AGENTS.md)。
+> 本文件是 [`AGENTS.md`](../AGENTS.md) 的拆分件（原 `§5 + §6`），章节编号保持原样。
+> 索引见 [`docs/README.md`](README.md)。
 
 ## 5. CLI 工程约定
 

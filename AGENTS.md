@@ -106,6 +106,9 @@ docs/                    ← 本文件拆出去的深度内容（见 §0.1）
 | FE7U | ⏳ 指针常量已核实（§3.2 / §3.11），代码路径已就绪但**未在真实 ROM 上验证** |
 | FE7J / FE8J / FE6J | ❌ 未支持（SJIS 文本解码未实现；FE6 记录结构不同） |
 
+> **维护约定**：每完成或推翻一项就当场更新这张表。进度表落后于代码比没有进度表更糟——
+> 下一条「已实现/未验证」的错误结论往往就是从一张过期表长出来的。
+
 > **`fixtures/dream-of-five.gba` 的真实身份**：游戏代码 `BE8E01`（FE8U），
 > 但标题字段被改成了 `FIREEMBLEM2E`（FE7U 的标题）。**以游戏代码为准，不要信标题。**
 > 这是一个大幅改造过的 FE8U hack：职业表 128 条（原版更少）、
@@ -544,7 +547,7 @@ grep -n "EXPLAIN.Text\|AccessibleDescription" <Form>.Designer.cs   # 门槛/说�
 
 # ⭐ 参考代码答不上来时：反汇编 ROM 自己的代码（§3.13）
 grep -i <关键词> FEBuilderGBA/FEBuilderGBA/bin/Debug/config/data/asmmap_FE8.txt   # 原版函数符号表
-/Users/woxqaq/.workbuddy-ai/binaries/python/envs/default/bin/python \
+uv run --with capstone python \
   .workbuddy-ai/skills/febuildergba-rom-extraction/scripts/disasm.py \
   fixtures/dream-of-five.gba 0x28550 0x285B0
 
@@ -569,10 +572,9 @@ cd cli && ./node_modules/.bin/tsc --noEmit
 
 # mgba 凹点助手（见 §3.15 升级抽点 / §3.17 战斗掷骰）
 node cli/scripts/emit-mgba-units.ts            # 重新生成 mgba/units.lua（从 cli/out/*.units.json）
-node mgba/test/run.mjs                         # 自测（fengari 假内存，124 项）
+node mgba/test/run.mjs                         # 自测（fengari 假内存，124 项；找不到 fengari 时设 MGBA_TEST_WORKSPACE）
 node mgba/test/run.mjs --preview               # 顺带打印面板快照
-/Users/woxqaq/.workbuddy-ai/binaries/python/envs/default/bin/python mgba/test/battle_golden.py
-                                               # 战斗模型黄金值（改战斗模型后先跑这个）
+python3 mgba/test/battle_golden.py             # 战斗模型黄金值（改战斗模型后先跑这个；纯 stdlib）
 # 实机：mGBA → Tools → Scripting → Open → mgba/fe-aodian.lua（无命令行载入）
 
 # config/data：CLI 读 vendored 副本；上游源头在 submodule 里（见 §1.1 / §4.7）

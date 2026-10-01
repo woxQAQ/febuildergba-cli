@@ -16,11 +16,9 @@ Format is tab-separated:  <GBA address>\t<function name>\t<notes>...
 `{U}` = US release, `{J}` = Japanese. `grep -i <keyword> asmmap_FE8.txt` to find
 the function you need, then disassemble from that address to the next symbol.
 
-Setup (needs capstone; the venv is isolated per the runtime rules):
+Setup (any Python 3 with capstone works; let uv pull it on demand):
 
-    /Users/woxqaq/.workbuddy-ai/binaries/python/versions/3.13.12/bin/python3 \
-      -m venv /Users/woxqaq/.workbuddy-ai/binaries/python/envs/default
-    /Users/woxqaq/.workbuddy-ai/binaries/python/envs/default/bin/pip install capstone
+    uv run --with capstone python disasm.py <rom.gba> <startOffset> <endOffset>
 
 Usage:
 
@@ -31,7 +29,7 @@ Symbol map addresses are GBA addresses, so file offset = address - 0x08000000.
 
 Example - the support bonus arithmetic (see SKILL.md 1.6.3):
 
-    <venv>/bin/python disasm.py /Users/woxqaq/FEBuilderGBA/fixtures/dream-of-five.gba 0x2852C 0x285B0
+    uv run --with capstone python disasm.py fixtures/dream-of-five.gba 0x2852C 0x285B0
 """
 
 import sys

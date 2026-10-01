@@ -1,7 +1,7 @@
 # 参考程序的构建与运行（§8）
 
-> **本文件是 `AGENTS.md` 的拆分件**（原 `§8`）。章节编号保持原样，`§x.y` 交叉引用仍有效。
-> 索引见 [`docs/README.md`](README.md)，入口是 [`AGENTS.md`](../AGENTS.md)。
+> 本文件是 [`AGENTS.md`](../AGENTS.md) 的拆分件（原 `§8`），章节编号保持原样。
+> 索引见 [`docs/README.md`](README.md)。
 
 ## 8. 附录：参考程序的构建与运行
 

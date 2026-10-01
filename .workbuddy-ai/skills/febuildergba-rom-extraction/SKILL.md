@@ -293,25 +293,22 @@ costs = rom.bytes(p32(classAddr + 56), 65)     // 65 项，0xFF = 不可通行
 `{U}` = 美版，`{J}` = 日版。**这等于给原版 ROM 附了一份带注释的反汇编清单。**
 hack 通常保留原版的代码布局，所以符号表直接可用。
 
-**② 反汇编器。** 需要解 Thumb。本机的 `objdump` 是 LLVM 21，**不支持裸二进制**
-（`-b binary` 是 GNU 专属参数），所以用 Python 的 `capstone`：
-
-```bash
-# 一次性准备（venv 在隔离目录，不污染用户环境）
-/Users/woxqaq/.workbuddy-ai/binaries/python/versions/3.13.12/bin/python3 \
-  -m venv /Users/woxqaq/.workbuddy-ai/binaries/python/envs/default
-/Users/woxqaq/.workbuddy-ai/binaries/python/envs/default/bin/pip install capstone
-```
+**② 反汇编器。** 需要解 Thumb。LLVM 的 `objdump` **不支持裸二进制**
+（`-b binary` 是 GNU 专属参数），所以用 Python 的 `capstone`。
+任一 Python 3 解释器都行，没有 capstone 就让 `uv` 现拉。
 
 **反汇编脚本已随本 skill 提供**：`scripts/disasm.py`
 
 ```bash
-PY=/Users/woxqaq/.workbuddy-ai/binaries/python/envs/default/bin/python
-$PY /Users/woxqaq/FEBuilderGBA/.workbuddy-ai/skills/febuildergba-rom-extraction/scripts/disasm.py \
-   <rom.gba> <startOffset> <endOffset> [baseAddress]
+# CWD = 仓库根
+uv run --with capstone python \
+  .workbuddy-ai/skills/febuildergba-rom-extraction/scripts/disasm.py \
+  <rom.gba> <startOffset> <endOffset> [baseAddress]
 
 # 例：支援加成的算术
-$PY .../scripts/disasm.py /Users/woxqaq/FEBuilderGBA/fixtures/dream-of-five.gba 0x2852C 0x285B0
+uv run --with capstone python \
+  .workbuddy-ai/skills/febuildergba-rom-extraction/scripts/disasm.py \
+  fixtures/dream-of-five.gba 0x2852C 0x285B0
 ```
 
 **工作流**：`grep -i <关键词> asmmap_FE8.txt` 找符号 → 从符号表读出地址 →
@@ -894,9 +891,9 @@ grep -i <关键词> $SRC/bin/Debug/config/data/asmmap_FE8.txt
 # 自动升级链路（§1.6.9）：AutolevelUnit / AutolevelRealistic / GetAutoleveledStat / GetStatIncrease
 grep -iE "autolevel|GetStatIncrease|NextRN" $SRC/bin/Debug/config/data/asmmap_FE8.txt
 # 2) 按符号切一段出来解（capstone；LLVM objdump 不支持裸二进制）
-/Users/woxqaq/.workbuddy-ai/binaries/python/envs/default/bin/python \
-  /Users/woxqaq/FEBuilderGBA/.workbuddy-ai/skills/febuildergba-rom-extraction/scripts/disasm.py \
-  /Users/woxqaq/FEBuilderGBA/fixtures/<rom>.gba 0x28550 0x285B0
+uv run --with capstone python \
+  .workbuddy-ai/skills/febuildergba-rom-extraction/scripts/disasm.py \
+  fixtures/<rom>.gba 0x28550 0x285B0
 
 # --- 跑已有的 CLI（CWD = 仓库根）---
 cd /Users/woxqaq/FEBuilderGBA/cli
