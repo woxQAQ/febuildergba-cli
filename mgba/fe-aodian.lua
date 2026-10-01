@@ -11,7 +11,7 @@
  依据（全部来自反汇编本 ROM 自己的代码，不是猜的）
  ------------------------------------------------
  目标 ROM: fixtures/dream-of-five.gba（FE8U hack "DoF"）
- 符号表:   FEBuilderGBA/bin/Debug/config/data/asmmap_FE8.txt
+ 符号表:   FEBuilderGBA/FEBuilderGBA/bin/Debug/config/data/asmmap_FE8.txt
 
  * 随机数状态 = 0x03000000 起的 3 个 u16
      NextRN      @0x08000B88
@@ -68,7 +68,7 @@
  ------------------------------------
  面板上的 `burned since level-up` 是游戏从上次升级到现在消耗掉的随机数个数。
  凹点的常规手法是「打敌人 -> 长经验 -> 升级」，这一仗本身也会烧随机数；把面板
- 给的 k 和这个计数器对着看，就能验证预测准不准（见 battle cost 与 AGENTS.md §3.17）。
+ 给的 k 和这个计数器对着看，就能验证预测准不准（见 battle cost 与 docs/battle-math.md §3.17）。
 
  已知不确定项
  -----------
@@ -88,7 +88,7 @@ local CONFIG = {
   RENDER_EVERY    = 4,      -- 每多少帧检查一次面板（内容没变就不重画，见 RENDER_DIFF）
   RENDER_DIFF     = true,   -- true = 只在内容变化时才写缓冲（防闪烁）
   STEP_LIMIT      = 2048,   -- 单帧内最多追多少个随机数步（超过就认为测不准）
-  BATTLE          = true,   -- true = 预测里计入「打这一仗」消耗的随机数（见 AGENTS.md §3.17）
+  BATTLE          = true,   -- true = 预测里计入「打这一仗」消耗的随机数（见 docs/battle-math.md §3.17）
   BATTLE_FILTER   = true,   -- 只认「攻方 = gActiveUnit」的战斗（过滤敌回合 AI 的模拟）
   BATTLE_NUDGE    = 0,      -- 战斗消耗的手动修正（模型在特殊职业/武器上可能差 1-2 个）
 }
@@ -110,7 +110,7 @@ local STAT_OFF = { 0x12, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19 }
 local CD_ID, CD_GROWTH = 0x04, 0x1C
 local CL_FLAGS, CL_CAPS = 0x0B, 0x13
 
--- --- 战斗（全部由反汇编确证，见 AGENTS.md §3.17） ---------------------------
+-- --- 战斗（全部由反汇编确证，见 docs/battle-math.md §3.17） ---------------------------
 -- gBattleStats 的 u16 低位是**战斗模式**：BattleGenerateReal 写 1（真实战斗，
 -- 掷骰），SimulateBattle 写 2（模拟/预览，Roll*IfBattleStarted 读到 &2 就跳过
 -- 掷骰）。所以「玩家在攻击预览界面」= 低位为 2 —— 此时 gBattleActor /
@@ -297,7 +297,7 @@ local function better(a1, a2, b1, b2)
 end
 
 -- ===========================================================================
--- 战斗随机数消耗模型（全部由反汇编确证，见 AGENTS.md §3.17）
+-- 战斗随机数消耗模型（全部由反汇编确证，见 docs/battle-math.md §3.17）
 -- ===========================================================================
 --
 -- 一次「出手」= MakeNextBattleHitRound -> GenerateCurrentRoundData，顺序是：

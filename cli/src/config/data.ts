@@ -22,7 +22,7 @@
  *   - `eventcond_<game>*.txt`          - chapter condition slot names
  *
  * To refresh them after an FEBuilderGBA update, re-copy those 27 files from
- * `FEBuilderGBA/bin/Debug/config/data/` into `cli/data/`.
+ * `FEBuilderGBA/FEBuilderGBA/bin/Debug/config/data/` into `cli/data/`.
  *
  * ## File format
  *

@@ -1,7 +1,7 @@
 /**
  * Self-consistency checks that need no external reference tool.
  *
- * These are the checks described in AGENTS.md §6. They cannot prove the field
+ * These are the checks described in docs/cli-conventions.md §6. They cannot prove the field
  * offsets are right - only cross-checking against FEBuilderGBA can do that - but
  * they catch the common failure modes cheaply: wrong pointer slot, wrong record
  * stride, broken text decoding, off-by-one indexing.
@@ -836,7 +836,7 @@ export function validateRom(loaded: LoadedRom): ValidationReport {
     'warn',
   );
 
-  // ---- enemy stat projection (AGENTS.md §3.20) ----------------------------
+  // ---- enemy stat projection (docs/battle-math.md §3.20) ----------------------------
   //
   // The enemy half of the doubling rule has no table behind it: enemies are
   // ordinary placement records, so their stats have to be projected. These

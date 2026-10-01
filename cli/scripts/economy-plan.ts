@@ -195,7 +195,7 @@ const ATTACKS_PER_CHAPTER = 6;
  * 参考敌方攻速 —— **不再是拍的常数，是从配置记录投影出来的分布**。
  *
  * 数据来自 `enemy-stats` 命令（`node src/index.ts enemy-stats ... --out
- * out/dream-of-five.enemy-stats.json`），公式与证据见 `AGENTS.md` §3.20。
+ * out/dream-of-five.enemy-stats.json`），公式与证据见 `docs/battle-math.md` §3.20。
  * 一句话：敌人和自军共用同一份 20 字节配置记录，所以
  *
  *     敌攻速 = 职业基础速度 + 角色表增量 + 自动升级 − max(0, 武器重量 − 体格)
@@ -1118,7 +1118,7 @@ function report(route: 'A' | 'B'): string {
       `FEBuilderGBA 的两个引擎补丁（\`PATCH_Eliminate attack speed penalty\` / ` +
       `\`PATCH_Required pursuit attack speed difference\`）标的地址 ` +
       `\`0x02AB92\` / \`0x02AFBC\`、\`0x02AFCE\` **与反汇编结果逐个吻合**，` +
-      `说明这个 hack 没动过这段代码。细节见仓库 \`AGENTS.md\` §3.18。`,
+      `说明这个 hack 没动过这段代码。细节见仓库 \`docs/battle-math.md\` §3.18。`,
   );
   push();
   push(
@@ -1217,7 +1217,7 @@ function report(route: 'A' | 'B'): string {
   push();
   push(
     `> ⚠️ **这张表里前 ${enemyAs.size} 行是数据，后 5 行是敏感性。** 参考敌攻速已经**不是假设**了：` +
-      `它由 \`enemy-stats\` 命令从配置记录逐条投影出来（\`AGENTS.md\` §3.20），` +
+      `它由 \`enemy-stats\` 命令从配置记录逐条投影出来（\`docs/battle-math.md\` §3.20），` +
       `每个阶段那一行就是该阶段敌人的实际分布。` +
       `保留后面几行是为了让你看到「如果这个数错了会错多少」：` +
       `把参考值从 8 抬到 15，能追击的组合会掉一大截 —— 这就是**速度**在这份报告里的分量。`,
@@ -1805,7 +1805,7 @@ function report(route: 'A' | 'B'): string {
       `\`AutolevelUnit @ 0x08018120\`（用职业的 \`enemyGrowths\`，` +
       `\`count = 等级 − 1\`，转职再加一轮 9 / 19）、道具表 \`+23\`。` +
       `产物：\`node src/index.ts enemy-stats … --out out/dream-of-five.enemy-stats.json\`；` +
-      `公式与反汇编证据见 \`AGENTS.md\` §3.20。` +
+      `公式与反汇编证据见 \`docs/battle-math.md\` §3.20。` +
       `⚠️ **仍剩下的三条**：` +
       `① **AI 挑哪把武器读不到** —— 投影取「记录里最重的那把」（对你最有利），` +
       `换成第一把武器中位数只动 0.1–0.3，所以这条基本不影响结论；` +

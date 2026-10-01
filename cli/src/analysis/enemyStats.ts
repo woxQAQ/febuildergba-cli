@@ -62,7 +62,7 @@
  * "this number is not exact". This also means autoleveling **burns random
  * numbers**, which matters to the RNG assistant in `mgba/`.
  *
- * See `AGENTS.md` §3.20.
+ * See `docs/battle-math.md` §3.20.
  */
 
 import type { GameLayout } from '../data/layouts.ts';

@@ -8,7 +8,7 @@
  * 20-byte records of the same shape, and the only thing that makes one an enemy
  * is two bits inside the record (`+3` bits 1-2). Blocks are reached from event
  * scripts, so "where are the enemies" is answered by walking the scripts and
- * reading the allegiance of every record you land on. See `AGENTS.md` §3.19.
+ * reading the allegiance of every record you land on. See `docs/chapters-and-events.md` §3.19.
  *
  * This script is the evidence for that claim and a regression check on the
  * reader: if the block/record counts or the validity counters move, something

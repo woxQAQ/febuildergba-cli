@@ -30,7 +30,7 @@
  * That third test is what makes the search reliable: for the unit table,
  * `checkPointer = 0x2c` (44) lands on the support-data pointer every unit has.
  *
- * Reference: FEBuilderGBA/ROMFE7U.cs, ROMFE7JP.cs, ROMFE8U.cs, ROMFE8JP.cs,
+ * Reference: FEBuilderGBA/FEBuilderGBA/ROMFE7U.cs, ROMFE7JP.cs, ROMFE8U.cs, ROMFE8JP.cs,
  *            ROMFE6JP.cs, and `U.FindROMPointer` (U.cs).
  */
 
@@ -153,7 +153,7 @@ export interface ShopLayout {
  *     `MapTerrainNameForm.MakeList/GetName` delegate to when
  *     `RomInfo.is_multibyte` is false.
  *
- * Reference: FEBuilderGBA/MapTerrainNameForm.cs, MapTerrainNameEngForm.cs,
+ * Reference: FEBuilderGBA/FEBuilderGBA/MapTerrainNameForm.cs, MapTerrainNameEngForm.cs,
  *            ROMFE8U.cs:79, ROMFE7U.cs:79, ROMFE8JP.cs:79, ROMFE7JP.cs:79,
  *            ROMFE6JP.cs:90.
  */

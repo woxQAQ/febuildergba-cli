@@ -10,8 +10,8 @@
  * `u8/u16/u32` take a *file offset*. `p32/p32p` read a *GBA address* out of the
  * ROM and hand back a *file offset*.
  *
- * Reference: FEBuilderGBA/Rom.cs (`u8`, `u16`, `u32`, `p32`, `p32p`),
- *            FEBuilderGBA/U.cs  (`toOffset`, `isPointer`, `isSafetyOffset`).
+ * Reference: FEBuilderGBA/FEBuilderGBA/Rom.cs (`u8`, `u16`, `u32`, `p32`, `p32p`),
+ *            FEBuilderGBA/FEBuilderGBA/U.cs  (`toOffset`, `isPointer`, `isSafetyOffset`).
  */
 
 export const POINTER_BASE = 0x0800_0000;

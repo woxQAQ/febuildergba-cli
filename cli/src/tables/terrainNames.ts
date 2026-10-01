@@ -25,7 +25,7 @@
  * decoder yet, so those records come back with the raw bytes and
  * `decoded: false` instead of a silently wrong string.
  *
- * Reference: FEBuilderGBA/MapTerrainNameForm.cs, MapTerrainNameEngForm.cs.
+ * Reference: FEBuilderGBA/FEBuilderGBA/MapTerrainNameForm.cs, MapTerrainNameEngForm.cs.
  */
 
 import type { RomBuffer } from '../rom/RomBuffer.ts';

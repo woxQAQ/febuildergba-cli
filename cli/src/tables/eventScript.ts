@@ -31,7 +31,7 @@
  * That ordering is load-bearing: without it a short pattern would shadow a
  * longer one that starts with the same bytes.
  *
- * Reference: FEBuilderGBA/EventScript.cs.
+ * Reference: FEBuilderGBA/FEBuilderGBA/EventScript.cs.
  */
 
 import { parseTwoColumnTable, readTextFile, resolveDataFile, splitTab, isComment } from '../config/data.ts';

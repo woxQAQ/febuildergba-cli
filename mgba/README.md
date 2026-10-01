@@ -154,7 +154,7 @@ mGBA 每往文本缓冲写一次（`clear` / `print`），就会把整块文本�
 ## 3. 依据：这些都是从 ROM 自己的代码里反汇编出来的
 
 不是猜的，也不是照抄别的资料。符号表在
-`FEBuilderGBA/bin/Debug/config/data/asmmap_FE8.txt`，反汇编脚本在
+`FEBuilderGBA/FEBuilderGBA/bin/Debug/config/data/asmmap_FE8.txt`，反汇编脚本在
 `.workbuddy-ai/skills/febuildergba-rom-extraction/scripts/disasm.py`。
 
 | 东西 | 地址 | 说明 |

@@ -37,7 +37,7 @@
  *    non-zero are meaningful; values beyond that are leftovers from whoever
  *    authored the table and must be ignored.
  *
- * Reference: FEBuilderGBA/SupportUnitForm.cs
+ * Reference: FEBuilderGBA/FEBuilderGBA/SupportUnitForm.cs
  */
 
 import { RomBuffer } from '../rom/RomBuffer.ts';

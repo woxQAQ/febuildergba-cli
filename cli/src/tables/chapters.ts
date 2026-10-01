@@ -377,7 +377,7 @@ export interface PlacedUnit {
  * (`EventUnitForm.Init`, EventUnitForm.cs:147).
  *
  * The same reader serves player, NPC and enemy blocks - that is not a
- * convenience, it is how the game works. See `AGENTS.md` §3.19.
+ * convenience, it is how the game works. See `docs/chapters-and-events.md` §3.19.
  */
 export function readPlacements(
   rom: RomBuffer,

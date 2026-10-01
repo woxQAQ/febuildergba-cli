@@ -10,7 +10,7 @@ the ROM has the data - the rule is implemented in the ROM's own ARM code.
 
 The ROM ships with a symbol map naming every vanilla function:
 
-    FEBuilderGBA/bin/Debug/config/data/asmmap_FE8.txt   (also .en / .zh)
+    FEBuilderGBA/FEBuilderGBA/bin/Debug/config/data/asmmap_FE8.txt   (also .en / .zh)
 
 Format is tab-separated:  <GBA address>\t<function name>\t<notes>...
 `{U}` = US release, `{J}` = Japanese. `grep -i <keyword> asmmap_FE8.txt` to find
@@ -31,7 +31,7 @@ Symbol map addresses are GBA addresses, so file offset = address - 0x08000000.
 
 Example - the support bonus arithmetic (see SKILL.md 1.6.3):
 
-    <venv>/bin/python disasm.py ../fixtures/dream-of-five.gba 0x2852C 0x285B0
+    <venv>/bin/python disasm.py /Users/woxqaq/FEBuilderGBA/fixtures/dream-of-five.gba 0x2852C 0x285B0
 """
 
 import sys

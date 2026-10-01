@@ -10,23 +10,36 @@ agent_created: true
 
 ## 0. 背景与定位
 
-`/Users/woxqaq/FEBuilderGBA` 是一个 C# WinForms 的 GBA 火纹 ROM 编辑器。
+`FEBuilderGBA/FEBuilderGBA/`（仓库根下 `FEBuilderGBA/` 这个 **git submodule** 之内）是一个
+C# WinForms 的 GBA 火纹 ROM 编辑器。
 **它不是要开发的项目，是只读参考资料** —— 它把 ROM 的内存布局、指针表、结构体全部硬编码了，
 这就是权威规格。
 
-产出物是仓库根目录 `cli/` 下的 **TypeScript + Node CLI**（零运行时依赖，只用 `Buffer`）。
-详细约定与已挖出的 FE7 数据字典见该仓库根目录的 **`AGENTS.md`** —— 动手前先读它。
+> ⚠️ **路径基准（2026-10-01 起）**：仓库根 = `/Users/woxqaq/FEBuilderGBA`。
+> **C# checkout 根 = `FEBuilderGBA/`（submodule 挂载点），源码目录 = `FEBuilderGBA/FEBuilderGBA/`。**
+> 名字重复两层不是笔误。**旧文档里「`FEBuilderGBA/` 后面紧接 `bin/Debug` 或某个 `.cs` 文件名」
+> 这类写法都少了一层 `FEBuilderGBA/`** —— 见到就自己补上（本次已全仓修正）。
 
-**绝对不要修改 `FEBuilderGBA/` 下的 C# 代码。**
+产出物是仓库根目录 `cli/` 下的 **TypeScript + Node CLI**（零运行时依赖，只用 `Buffer`）。
+**动手前先读两份**：
+- 仓库根的 **`AGENTS.md`** —— 项目约定、路径基准、**§0.2 八条最贵的教训**、§2 挖结构方法论、§4 陷阱清单。
+- **`docs/README.md`** —— 已挖出的数据字典（原 `AGENTS.md` §3，2026-10-01 拆出来）。
+  ⚠️ **章节编号仍是 `§3.x`**：`§3.3` 角色表 / `§3.4` 职业表在 `docs/rom-layout.md`，
+  `§3.11` 出场链路 / `§3.19` 敌人摆放在 `docs/chapters-and-events.md`，
+  `§3.17` 战斗掷骰 / `§3.18` 攻速追击 / `§3.20` 敌人属性在 `docs/battle-math.md`，
+  `§3.13` 反汇编在 `docs/disassembly.md`。**查 `§x.y` 时按 `docs/README.md` 的索引定位文件。**
+
+**绝对不要修改 `FEBuilderGBA/`（submodule）下的 C# 代码。**
 
 > **本 skill 是「项目级」的** —— 存放在 `<仓库根>/.workbuddy-ai/skills/`，只在 FEBuilderGBA 这个
 > 工作区生效。**不要把它复制/移动到全局的 `~/.workbuddy-ai/skills/`**（用户明确要求过）。
-> 本 skill 里所有相对路径都假定 CWD = 仓库根，脚本路径是绝对路径，因此放在哪一层目录都能跑。
+> 相对路径有两种基准，命令块里都会显式 `cd`：**挖 C# 用源码目录 `FEBuilderGBA/FEBuilderGBA/`，
+> 跑 CLI 用仓库根**。脚本路径是绝对路径，因此放在哪一层目录都能跑。
 
 ## 1. 必须先读的六条机制与边界
 
 > §1.4 与 §1.6 是最贵的两课：前者曾经断言「出场时间拿不到」（数据一直在
-> `bin/Debug/config/data/`），后者曾经断言「支援换算拿不到」「相性表和公版对不上」
+> `FEBuilderGBA/FEBuilderGBA/bin/Debug/config/data/`），后者曾经断言「支援换算拿不到」「相性表和公版对不上」
 > （答案都在 ROM 自己的代码里）。§1.6.8 是同一类：断言「敌人摆放表找不到」，
 > 真相是**这张表不存在** —— 敌人和自军共用同一种记录，阵营写在记录自己身上。
 > §1.6.9 顺着 §1.6.8 往下走：那条记录最后会变成什么攻速（`+3` bit 0 总开关、
@@ -102,25 +115,26 @@ p32p(a) = p32(p32(a))     // 二级指针
 `0x80` 吃 2 字节、`0x10` 吃 3 字节、`< 0x20` 或 `== 0x40` 或 `IsEnglishSPCode` 吃 1 字节，
 其余原样输出 1 字节。`IsEnglishSPCode(c) = c >= 0x81 || c ∈ {0x1F,0x7B,0x7C,0x7D,0x7F}`。
 
-### 1.4 数据在 `bin/Debug/config/data` —— 别急着划「拿不到」的边界
+### 1.4 数据在 `FEBuilderGBA/FEBuilderGBA/bin/Debug/config/data` —— 别急着划「拿不到」的边界
 
 > **这一节曾经写错，代价是一整轮返工。** 早期版本断言「出场时间拿不到」「职业特性位拿不到」，
-> 理由是 `FEBuilderGBA/config` 目录不存在。**这个理由本身就是错的。**
+> 理由是 `FEBuilderGBA/FEBuilderGBA/config` 目录不存在。**这个理由本身就是错的。**
 
 `U.ConfigDataFilename()`（`U.cs:3180`）拼的是
 `Path.Combine(BaseDirectory, "config", "data", type + TitleToFilename + "." + lang + ".txt")`，
 而 `BaseDirectory` 是**可执行文件所在目录**：
 
 ```
-FEBuilderGBA/bin/Debug/config/data/     ← 上游源头，422 个文件（且被 git 跟踪）
-FEBuilderGBA/config/data/               ← 不存在，别再找这里
-cli/data/                               ← 我们 vendored 的副本，27 个文件
+FEBuilderGBA/FEBuilderGBA/bin/Debug/config/data/     ← 上游源头，422 个文件（且被 git 跟踪）
+FEBuilderGBA/FEBuilderGBA/config/data/               ← 不存在，别再找这里
+cli/data/                                            ← 我们 vendored 的副本，27 个文件
 ```
 
-**下「某数据不可得」的结论之前，先 `find . -name '<文件名>'` 或 `ls bin/Debug`。**
-`7-zip32.dll` 同样在 `bin/Debug/` —— 运行参考程序**不需要额外补任何东西**。
+**下「某数据不可得」的结论之前，先 `find . -name '<文件名>'` 或
+`ls FEBuilderGBA/FEBuilderGBA/bin/Debug`。**
+`7-zip32.dll` 同样在 `FEBuilderGBA/FEBuilderGBA/bin/Debug/` —— 运行参考程序**不需要额外补任何东西**。
 
-⚠️ **不要直接读 `FEBuilderGBA/bin/Debug/config/data/`** —— 那会把 CLI 和 C# 仓库耦合，
+⚠️ **不要直接读 `FEBuilderGBA/FEBuilderGBA/bin/Debug/config/data/`** —— 那会把 CLI 和 C# 仓库耦合，
 单独 clone `cli/` 就跑不起来。把用到的**最小子集复制进 `cli/data/`**，只读副本。
 副本 = 3 前缀（`unitclass_checkbox_` / `event_` / `eventcond_`）× 3 游戏（FE6/FE7/FE8）
 × 3 语言（`''`/`.en`/`.zh`）= **27 文件**。`event_category_*` 用不到。
@@ -251,7 +265,7 @@ costs = rom.bytes(p32(classAddr + 56), 65)     // 65 项，0xFF = 不可通行
 
 | 错误结论 | 真相 |
 |---|---|
-| 「出场时间拿不到」（理由是 `FEBuilderGBA/config` 不存在） | 数据在 `bin/Debug/config/data/`（§1.4） |
+| 「出场时间拿不到」（理由是 `FEBuilderGBA/FEBuilderGBA/config` 不存在） | 数据在 `FEBuilderGBA/FEBuilderGBA/bin/Debug/config/data/`（§1.4） |
 | 「地形名字拿不到」 | `MapTerrainNameForm.cs` 就在读它 |
 | 「支援 C/B/A 门槛拿不到」 | 门槛写在 `SupportUnitForm.Designer.cs:460` 的 `EXPLAIN.Text` 里 |
 | 「相性加成表和公版对不上 / 被改过」 | 表没被改；**存的是半点值**，游戏最后 `>>1`（§1.6.5） |
@@ -267,7 +281,7 @@ costs = rom.bytes(p32(classAddr + 56), 65)     // 65 项，0xFF = 不可通行
 
 #### 1.6.2 三个前提，仓库里都已经有
 
-**① 原版函数符号表。** `FEBuilderGBA/bin/Debug/config/data/asmmap_<game>.txt`
+**① 原版函数符号表。** `FEBuilderGBA/FEBuilderGBA/bin/Debug/config/data/asmmap_<game>.txt`
 （也有 `.en` / `.zh` 变体）是**原版**的「函数名 → 地址」映射，tab 分隔：
 
 ```
@@ -297,7 +311,7 @@ $PY /Users/woxqaq/FEBuilderGBA/.workbuddy-ai/skills/febuildergba-rom-extraction/
    <rom.gba> <startOffset> <endOffset> [baseAddress]
 
 # 例：支援加成的算术
-$PY .../scripts/disasm.py ../fixtures/dream-of-five.gba 0x2852C 0x285B0
+$PY .../scripts/disasm.py /Users/woxqaq/FEBuilderGBA/fixtures/dream-of-five.gba 0x2852C 0x285B0
 ```
 
 **工作流**：`grep -i <关键词> asmmap_FE8.txt` 找符号 → 从符号表读出地址 →
@@ -313,9 +327,9 @@ $PY .../scripts/disasm.py ../fixtures/dream-of-five.gba 0x2852C 0x285B0
 指令」的开关，所以补丁文件里必然带地址和原始字节：
 
 ```bash
-ls FEBuilderGBA/bin/Debug/config/patch2/FE8U/            # 按功能分目录：SYSTEM/ skill*/ stairs/ ...
+ls FEBuilderGBA/FEBuilderGBA/bin/Debug/config/patch2/FE8U/            # 按功能分目录：SYSTEM/ skill*/ stairs/ ...
 grep -n "ADDRESS\|DETERMINATION_ADDRESS\|^OFF\|^FIX\|^COMBO" \
-  FEBuilderGBA/bin/Debug/config/patch2/FE8U/SYSTEM/<补丁>.txt
+  FEBuilderGBA/FEBuilderGBA/bin/Debug/config/patch2/FE8U/SYSTEM/<补丁>.txt
 ```
 
 读法：
@@ -816,7 +830,7 @@ map 36 共享 5 个配置块）。**报数时说明用的是哪个口径。**
 3. 打开 `XxxForm.designer.cs`，跑这两条命令还原字段：
 
 ```bash
-cd /Users/woxqaq/FEBuilderGBA/FEBuilderGBA
+cd /Users/woxqaq/FEBuilderGBA/FEBuilderGBA/FEBuilderGBA   # = 仓库根/FEBuilderGBA/FEBuilderGBA
 
 # 控件名 → 类型字母 + 字节偏移
 grep -oE "this\.[A-Za-z_0-9]+ = new (System\.Windows\.Forms\.)?(NumericUpDown|TextBoxEx|ComboBoxEx|CheckBoxEx|ListBoxEx)" XxxForm.designer.cs \
@@ -852,7 +866,9 @@ u16(addr) → 文本 ID → text_base + id*4 → 条目值
 
 ```bash
 # --- 挖 C# 源码 ---
-cd /Users/woxqaq/FEBuilderGBA/FEBuilderGBA
+FEB=/Users/woxqaq/FEBuilderGBA/FEBuilderGBA        # C# checkout 根（submodule 挂载点）
+SRC=$FEB/FEBuilderGBA                              # C# 源码目录（.cs 平铺在这里）
+cd $SRC
 
 # 找某表的定义（读入规则也在这里）
 grep -n "static InputFormRef Init" XxxForm.cs
@@ -867,22 +883,22 @@ grep -rn "RomInfo.unit_pointer" --include="*.cs" .
 grep -n "EXPLAIN.Text\|AccessibleDescription" XxxForm.Designer.cs
 
 # --- ⭐⭐ 找地址的最快路径：patch2 的 #ENGINE 补丁（§1.6.2 ③）---
-ls FEBuilderGBA/bin/Debug/config/patch2/FE8U/            # SYSTEM/ skill*/ stairs/ ... 按功能分目录
+ls $SRC/bin/Debug/config/patch2/FE8U/            # SYSTEM/ skill*/ stairs/ ... 按功能分目录
 grep -n "ADDRESS\|DETERMINATION_ADDRESS\|^OFF\|^FIX" \
-  FEBuilderGBA/bin/Debug/config/patch2/FE8U/SYSTEM/<补丁>.txt
+  $SRC/bin/Debug/config/patch2/FE8U/SYSTEM/<补丁>.txt
 # ADDRESS 是文件偏移；OFF: 是改前的原始字节 —— 拿它去 ROM 核对，一致就说明指令还在原地
 
 # --- ⭐ 参考代码答不上来时：反汇编 ROM 自己的代码（§1.6）---
 # 1) 原版函数符号表（tab 分隔：地址 <TAB> 名字 <TAB> 说明）
-grep -i <关键词> ../bin/Debug/config/data/asmmap_FE8.txt
+grep -i <关键词> $SRC/bin/Debug/config/data/asmmap_FE8.txt
 # 自动升级链路（§1.6.9）：AutolevelUnit / AutolevelRealistic / GetAutoleveledStat / GetStatIncrease
-grep -iE "autolevel|GetStatIncrease|NextRN" ../bin/Debug/config/data/asmmap_FE8.txt
+grep -iE "autolevel|GetStatIncrease|NextRN" $SRC/bin/Debug/config/data/asmmap_FE8.txt
 # 2) 按符号切一段出来解（capstone；LLVM objdump 不支持裸二进制）
 /Users/woxqaq/.workbuddy-ai/binaries/python/envs/default/bin/python \
   /Users/woxqaq/FEBuilderGBA/.workbuddy-ai/skills/febuildergba-rom-extraction/scripts/disasm.py \
-  ../../fixtures/<rom>.gba 0x28550 0x285B0
+  /Users/woxqaq/FEBuilderGBA/fixtures/<rom>.gba 0x28550 0x285B0
 
-# --- 跑已有的 CLI ---
+# --- 跑已有的 CLI（CWD = 仓库根）---
 cd /Users/woxqaq/FEBuilderGBA/cli
 node src/index.ts validate ../fixtures/<rom>.gba    # 退出码 0 = 无 error 级失败
 node src/index.ts text     ../fixtures/<rom>.gba --range 0x214-0x218   # 看每个 id 的存储格式
@@ -950,8 +966,8 @@ node scripts/unit-placement-census.ts --chapter 22    # 单章逐块明细
      负攻速**当 warn 不当 error** —— 它是真实数据（Gorgon Egg / Artillerist 等），不是解析错。
      报告出负攻速条数与前几个职业名，便于人工确认「是意料之中的那几类」
 2. **交叉验证**：在 Windows 上构建并运行 FEBuilderGBA，打开同一 ROM 对比显示值。
-   `config/` 目录树和 `7-zip32.dll` **已经在 `FEBuilderGBA/bin/Debug/` 里**（见 §1.4），
-   不需要额外准备。注意 `bin/Debug` 下没有 exe，仍需自己 `msbuild`。
+   `config/` 目录树和 `7-zip32.dll` **已经在 `FEBuilderGBA/FEBuilderGBA/bin/Debug/` 里**（见 §1.4），
+   不需要额外准备。注意 `FEBuilderGBA/FEBuilderGBA/bin/Debug` 下没有 exe，仍需自己 `msbuild`。
 3. **常识**：对照公开的 FE 角色属性数据。
 
 > **判据分级**：只有「解析可能错了」才当 error。
@@ -989,8 +1005,8 @@ node scripts/unit-placement-census.ts --chapter 22    # 单章逐块明细
 | 把「能升到 C 的点数」当 81 | 是 **80**（对话解锁点），对话后才变 81。差 1 就是「有没有真的看过支援对话」。见 §1.6.6 |
 | 把「支援上限 5」当「5 个伙伴」 | 是**等级数之和**（A=3/B=2/C=1）。一个 A + 一个 B 就满了。见 §1.6.6 |
 | 说「地形名字拿不到」 | **错。** `map_terrain_name_pointer` + `MapTerrainNameForm.cs`，65 条。见 §1.4 |
-| `config/data/*.txt` 说「不在仓库」 | **错。上游在 `FEBuilderGBA/bin/Debug/config/data/`**（422 文件，被 git 跟踪）；CLI 只读 vendored 的 `cli/data/`（27 文件）。见 §1.4 |
-| 直接读 `FEBuilderGBA/bin/Debug/config/data/` | 会把 CLI 和 C# 仓库耦合。复制最小子集进 `cli/data/`，只读副本 |
+| `config/data/*.txt` 说「不在仓库」 | **错。上游在 `FEBuilderGBA/FEBuilderGBA/bin/Debug/config/data/`**（422 文件，被 git 跟踪）；CLI 只读 vendored 的 `cli/data/`（27 文件）。见 §1.4 |
+| 直接读 `FEBuilderGBA/FEBuilderGBA/bin/Debug/config/data/` | 会把 CLI 和 C# 仓库耦合。复制最小子集进 `cli/data/`，只读副本 |
 | FE6 指针特殊 | `UnitForm.Init` 对 FE6 有专门分支，注释说「0x00 へのポインタしかない」。做 FE6 时单独查 |
 | 说「出场时间拿不到」 | **错，已跑通**。走 §1.4 的指针链路（`map_setting` → 条件表 → `LOAD1`） |
 | 用「ID 顺序」猜加入顺序 | 不要。角色 ID 顺序 ≠ 加入顺序，用 `LOAD1` / 初始配置块的章节号 |

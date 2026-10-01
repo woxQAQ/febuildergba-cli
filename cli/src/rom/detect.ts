@@ -1,7 +1,7 @@
 /**
  * ROM identification.
  *
- * Reference: FEBuilderGBA/Rom.cs -> `ROM.Load()` / `ROM.LoadLow()`.
+ * Reference: FEBuilderGBA/FEBuilderGBA/Rom.cs -> `ROM.Load()` / `ROM.LoadLow()`.
  */
 
 import { RomBuffer } from './RomBuffer.ts';

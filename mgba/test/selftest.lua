@@ -480,7 +480,7 @@ end
 -- 9. 战斗随机数消耗模型
 -- ===========================================================================
 
-print("\n[9] 战斗模型 (GenerateCurrentRoundData @0x0802B3EC，见 AGENTS.md §3.17)")
+print("\n[9] 战斗模型 (GenerateCurrentRoundData @0x0802B3EC，见 docs/battle-math.md §3.17)")
 
 -- 下面所有期望值都来自 mgba/test/battle_golden.py 的**独立 Python 实现**，
 -- 不是本脚本算出来的 —— 两边独立，对上了才算数。
