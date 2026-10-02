@@ -312,10 +312,15 @@ FEBuilderGBA 的编辑器是 `EventForceSortieForm`（提示语「必ず出撃�
 
 ---
 
-### 3.16 DoF 的战役结构（分析层结论）
+### 3.16 DoF 的战役结构（**结论存档，不是 CLI 能力**）
 
-**这一节不是 ROM 解析，是 `cli/scripts/training-plan.ts` 与 `dream-of-five.analysis.md` 得出的
-结论。** 它们回答「练哪些人、支援怎么配」，判断依据都是 §3.11 / §3.14 的解析结果。
+> **这一节是结论存档。** 它由「读 `cli/out/*.json` 再推理」得出，不是 ROM 解析。
+> 它曾经由 `cli/scripts/training-plan.ts` / `economy-plan.ts` 两个脚本产出报告 —— **那两个脚本已删除**：
+> 它们把路线结构、评分权重、「谁是调试单位」这类**判断**硬编码进了 TS，而且同一份结论在两处各写了一遍。
+> 边界规则见 **AGENTS.md §1.2**。本节保留的是**结论本身**（分线结构、回退规则），下次分析可直接复用，
+> 但**不要**把它重新写回 CLI。
+>
+> 判断依据仍是 §3.11 / §3.14 的解析结果。
 
 #### 3.16.1 分线游戏 —— 中段两条线角色完全不同
 
@@ -359,11 +364,11 @@ FEBuilderGBA 的编辑器是 `EventForceSortieForm`（提示语「必ず出撃�
 → **分线前 9 图只有 58 格要分给 21 人（平均 2.8 章）→ 必须只重点练 8–10 个。**
 → 终盘 16 格 vs 49–51 人可用，最后阵容只装得下名单的 1/3。
 
-**训练计划模型**（`cli/scripts/training-plan.ts`，读 `cli/out/*.json`，**不重新解析 ROM**；
-`--route=A|B`、`--json` → `cli/out/dream-of-five.training-plan.md`）：
+**「练谁」的模型骨架**（当时的口径，留作下次分析的清单，已不落在代码里）：
 窗口（可出场章数）/ 预期（均匀轮换出场章数）/ 练满（满勤终盘五维和）/ 空间（练满 − 当前）/
 独占（有几章是全场唯一承担该职能的人，只看杖·飞行·重甲·再动·盗贼）。
-**评分权重是拍的，报告里明说「优先看原始列」。**
+**评分权重是拍出来的** —— 正因为它不是 ROM 数据，所以不该出现在 CLI 里（§1.2）。
+这类报告现在由 agent 读 `cli/out/*.json` 现场产出。
 
 #### 3.16.3 加入点的可用性回退规则（值得复用）
 
@@ -393,8 +398,9 @@ joinChapter < 55 且非 null → 可信，直接用
 - **相性配对加成**（两人都 A）= `floor((rawA + rawB) × 3 / 2)`，用原始半点值 →
   `atk` 恒 +3、`critAvoid` 恒 +15；`def` 只有 Thunder/Ice/Anima 给。
   相性名硬编码在 `InputFormRef.cs:7006`（1炎 2雷 3風 4氷 5闇 6光 7理）。
-- **产物**：`cli/out/dream-of-five.analysis.md`（v3）+ `dream-of-five.training-plan.md`
-  + `dream-of-five.*.json`
+- **当时的产物**（已随脚本删除；`cli/out/` 本身也是 .gitignore 的生成目录）：
+  `dream-of-five.analysis.md`（v3）+ `dream-of-five.training-plan.md` + `dream-of-five.economy-*.md`。
+  现在 `cli/out/` 里只剩 CLI 自己产出的 `dream-of-five.*.json`。
 
 ---
 

@@ -794,6 +794,11 @@ function cmdChapters(loaded: LoadedRom, options: CliOptions): unknown {
       'Hack chapters often share one "load the whole party" script between ' +
         'several maps, so a LOAD1 seen in a late chapter is usually a re-load, ' +
         'not a join.',
+      'Deduplication is **per chapter**, never across chapters. One script can ' +
+        'be referenced by many maps, so the same goldEvents / itemsGiven ' +
+        '`address` (and the same placement block) reappears under every chapter ' +
+        'that reaches it. Deduplicate by address before summing: a single ' +
+        '5,000-gold script shared by 17 maps is one payout, not 85,000 gold.',
     ],
   };
 }

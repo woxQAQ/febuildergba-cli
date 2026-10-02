@@ -3,8 +3,21 @@
  * train, and how should I pair supports?".
  *
  * The shape is deliberately flat and self-describing: every number is labelled,
- * and the derived section does the arithmetic (growth totals, support counts)
- * so the model does not have to re-derive it from raw bytes.
+ * and every derived field states the convention that produced it.
+ *
+ * **What belongs here and what does not.** This file may only emit things that
+ * can be traced to a ROM byte or to a C# file in `FEBuilderGBA/`. Author-chosen
+ * numbers - weights, thresholds, rankings, "this unit is a debug unit" calls,
+ * phase labels - are **judgement** and belong to the consumer, not to the CLI.
+ * Two tests for a field:
+ *
+ *   1. Can you name the byte or the reference source it comes from?
+ *   2. Would two reasonable people disagree about the definition? If yes, it is
+ *      a judgement call, and putting it here makes it look like a ROM fact.
+ *
+ * The `derived` ranking block that used to live here (`growthRanking`,
+ * `supportRanking`, `bestGrowthPerStat`, `roleCoverage`) failed both tests and
+ * was removed. It is trivially re-derivable from `units[]` by whoever needs it.
  */
 
 import type { LoadedRom } from '../load.ts';
@@ -18,7 +31,6 @@ import {
   supportRankPlan,
 } from '../tables/supports.ts';
 import type { Mobility } from './roles.ts';
-import { MOBILITY_KINDS } from './roles.ts';
 import type { WeaponType } from '../tables/common.ts';
 import {
   affinityName,
@@ -456,28 +468,6 @@ export interface Report {
       joinMayBeEarlier: boolean;
     }[];
   };
-  derived: {
-    /**
-     * Units sorted by total growth rate, descending. `growthTotal` is the sum of
-     * the seven growth percentages - a crude but effective "does this unit scale"
-     * signal. It says nothing about base stats, class caps or availability, so
-     * treat it as a starting point, not a verdict.
-     */
-    growthRanking: { id: number; name: string; className: string; growthTotal: number }[];
-    /** Units with the most support options. */
-    supportRanking: { id: number; name: string; partnerCount: number }[];
-    /** Highest single growth per stat, useful for spotting specialists. */
-    bestGrowthPerStat: Record<string, { id: number; name: string; value: number } | null>;
-    /** How many units fall into each role bucket - a team-coverage overview. */
-    roleCoverage: {
-      total: number;
-      byMobility: Record<Mobility, number>;
-      withStaff: number;
-      magicUsers: number;
-      /** Distinct weapon types available across the roster. */
-      weaponTypes: WeaponType[];
-    };
-  };
 }
 
 /**
@@ -581,6 +571,12 @@ const LIMITATIONS: readonly string[] = [
     'When `earliestEvidenceChapter` (which includes `LOAD2`) is lower than ' +
     '`joinChapter`, `joinMayBeEarlier` is true - the real join is probably ' +
     'earlier.',
+  'Script-derived entries are deduplicated **within** a chapter, never across ' +
+    'chapters. One script can be referenced by many maps, so the same `address` ' +
+    'shows up under every chapter that reaches it: `goldEvents`, `itemsGiven` ' +
+    'and the placement blocks all need deduplicating by address before you sum ' +
+    'or count them. A single 5,000-gold script shared by 17 maps is one payout, ' +
+    'not 85,000 gold.',
   'Script walks stop after ten consecutive unrecognised opcodes, matching ' +
     'FEBuilderGBA. `truncatedScriptWalks` per chapter counts those; a recruit ' +
     'instruction after such a stop is missed.',
@@ -733,49 +729,6 @@ export function buildReport(loaded: LoadedRom): Report {
     })),
   };
 
-  const growthRanking = [...units]
-    .sort((x, y) => y.growthTotal - x.growthTotal)
-    .map((u) => ({
-      id: u.id,
-      name: u.name,
-      className: u.className,
-      growthTotal: u.growthTotal,
-    }));
-
-  const supportRanking = [...units]
-    .map((u) => ({ id: u.id, name: u.name, partnerCount: u.supportPartnerCount }))
-    .sort((x, y) => y.partnerCount - x.partnerCount);
-
-  const statKeys = ['hp', 'str', 'skl', 'spd', 'def', 'res', 'lck'] as const;
-  const bestGrowthPerStat: Report['derived']['bestGrowthPerStat'] = {};
-  for (const key of statKeys) {
-    let best: { id: number; name: string; value: number } | null = null;
-    for (const unit of units) {
-      const value = unit.growths[key];
-      if (best === null || value > best.value) {
-        best = { id: unit.id, name: unit.name, value };
-      }
-    }
-    bestGrowthPerStat[key] = best;
-  }
-
-  const roleCoverage: Report['derived']['roleCoverage'] = {
-    total: units.length,
-    byMobility: Object.fromEntries(MOBILITY_KINDS.map((k) => [k, 0])) as Record<Mobility, number>,
-    withStaff: 0,
-    magicUsers: 0,
-    weaponTypes: [],
-  };
-  const seenWeapons = new Set<WeaponType>();
-  for (const unit of units) {
-    if (!unit.role) continue;
-    roleCoverage.byMobility[unit.role.mobility]++;
-    if (unit.role.hasStaff) roleCoverage.withStaff++;
-    if (unit.role.isMagic) roleCoverage.magicUsers++;
-    for (const weapon of unit.role.weapons) seenWeapons.add(weapon);
-  }
-  roleCoverage.weaponTypes = [...seenWeapons];
-
   const meta: RomMeta = {
     file: loaded.path,
     sizeBytes: loaded.rom.length,
@@ -891,7 +844,6 @@ export function buildReport(loaded: LoadedRom): Report {
     objects: buildObjects(loaded),
     chapters: buildChapters(loaded),
     availability,
-    derived: { growthRanking, supportRanking, bestGrowthPerStat, roleCoverage },
   };
 }
 

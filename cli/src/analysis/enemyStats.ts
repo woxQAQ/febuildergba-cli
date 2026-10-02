@@ -4,11 +4,11 @@
  *
  * ## Why this exists
  *
- * `economy-plan.ts` has to answer "can this unit carry this weapon and still
- * double?" - and doubling is decided by `|attackerAS - defenderAS| >= 4`. The
- * player's half of that is computed from the unit and class tables. The
- * enemy's half used to be a hard-coded constant, because FE8 has no enemy
- * table and it was not obvious where an enemy's stats come from.
+ * Answering "can this unit carry this weapon and still double?" needs both
+ * sides of `|attackerAS - defenderAS| >= 4`. The player's half comes from the
+ * unit and class tables. The enemy's half used to be a hard-coded constant,
+ * because FE8 has no enemy table and it was not obvious where an enemy's stats
+ * come from.
  *
  * They come from four places, and all four are now read from the ROM:
  *

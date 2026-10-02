@@ -446,7 +446,6 @@ end
 local NAMES = (function()
   local candidates = {
     "mgba/units.lua", "./units.lua", "units.lua",
-    "/Users/woxqaq/FEBuilderGBA/mgba/units.lua",
   }
   for _, path in ipairs(candidates) do
     local chunk = loadfile(path)

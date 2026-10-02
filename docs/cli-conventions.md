@@ -23,11 +23,9 @@ cli/
 ├── tsconfig.json           # NodeNext / strict / noEmit
 ├── data/                   # vendored config/data 子集（27 文件，见 §1.1）—— 进 git
 ├── out/                    # dump 产出的 JSON（喂给 AI）；生成物，已 .gitignore
-├── scripts/                # 分析层（不在 src 里，因为它们产出报告而不是给 CLI 用）
-│   ├── economy-plan.ts     # 经济规划报告（§3.18 重量/追击 + §3.20 敌攻速 + §3.11.8 宝箱）
-│   ├── training-plan.ts    # 培养计划报告
-│   ├── emit-mgba-units.ts  # 给 mgba 凹点助手导单位表
-│   └── unit-placement-census.ts  # 敌人/友军配置普查（§3.19.6）
+├── scripts/                # **开发期工具**，不产出报告、不构成 CLI 能力面（见 §1.2）
+│   ├── emit-mgba-units.ts  # 代码生成：units.json → mgba/units.lua（id→名字 表）
+│   └── unit-placement-census.ts  # 回归自检：§3.19 普查证据，读 src/ 不写死结论
 └── src/
     ├── index.ts            # CLI 入口（node:util parseArgs）
     ├── load.ts             # loadRom()：识别 → 建表 → 解码 → 组装
@@ -71,12 +69,18 @@ node src/index.ts roles    ../fixtures/dream-of-five.gba     # 队伍搭配：�
 node src/index.ts supports ../fixtures/dream-of-five.gba
 node src/index.ts terrain  ../fixtures/dream-of-five.gba     # 地形名 65 条（§3.12）
 node src/index.ts chapters ../fixtures/dream-of-five.gba     # 出场/加入 + 编队人数 + 必上（§3.11 / §3.14）
+node src/index.ts items    ../fixtures/dream-of-five.gba     # 道具表：类型 / 数值 / 等级 / 耐久 / 三种价格
+node src/index.ts shops    ../fixtures/dream-of-five.gba     # 商店：准备画面的武器店 + 每张图的商店
 node src/index.ts objects  ../fixtures/dream-of-five.gba     # 宝箱/村庄/门/制圧点/商店 + 商店条目（§3.11.8）
 node src/index.ts enemy-stats ../fixtures/dream-of-five.gba --out out/dream-of-five.enemy-stats.json  # 敌攻速分布（§3.20）
 node src/index.ts text     ../fixtures/dream-of-five.gba 703 --range 0x214-0x218
 node src/index.ts dump     ../fixtures/dream-of-five.gba --out out/report.json
 node src/index.ts validate ../fixtures/dream-of-five.gba   # 退出码 0 = 无 error 级失败
 ```
+
+**共 14 个命令**，权威清单是 `cli/src/index.ts:1331` 的 `switch`（以及它的 `USAGE` 常量）。
+上面这一份只是加了「用在哪一节」的注释，**属于示例而不是规格** —— 增删命令时以代码为准，
+不要在这里维护第二份完整列表。（ROM 缺失时这些命令都跑不了，见 `AGENTS.md` §9 的前置条件。）
 
 **`chapters`** 默认只列**有支援数据的角色**的加入顺序（这是 AI 排队伍时真正关心的集合），
 加 `--all` 放开到全部。每行带 `joinChapter` / `joinChapterNumber` / `joinChapterTitle` /
@@ -138,11 +142,11 @@ terrainNames          65 条地形名 + 表地址/步长（§3.12）
 chapters[]            每章：章号 / 标题 / 初始配置 + LOAD 指令（§3.11）
 availability          加入推导：joinOrder[]（加入章节/章号/标题/来源/证据）+ 统计
 limitations[]         读这份报告前必读：哪些输入不在这里
-derived.growthRanking     成长率总和排名
-derived.supportRanking    支援对象数量排名
-derived.bestGrowthPerStat 各能力成长最高的角色
-derived.roleCoverage      机动性 / 治疗 / 魔法 / 武器类型覆盖
 ```
+
+**没有 `derived.*` 排名段了**（成长排名 / 支援排名 / 最佳成长 / 职能覆盖），
+它们曾经在这里，已删 —— 排名是**结论**不是**事实**，且从 `units[]` 一行就能重算。
+判据见 §1.2。
 
 **`limitations` 字段是刻意加的。** 它明写「哪些数据不在这份报告里」，
 防止下游（人或 AI）把「数据里没有」误当成「数据里是 0」。

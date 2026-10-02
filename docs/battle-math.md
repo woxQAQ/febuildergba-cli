@@ -595,6 +595,7 @@ bl  GetStatIncrease              ; floor(x/100)，余数用 Roll1RN 决定是否
 → 可达增益是 **`[floor(xMin/100), floor(xMax/100) + 1]`**，其中
 `xMin = v − q16`、`xMax = v + max(0, q8 − 1) − q16`；
 期望 ≈ `(v − q16 + max(0, q8 − 1)/2) / 100`。**GBA 没有硬件除法，`/8`、`/16` 都是移位。**
+**实现见 `cli/src/analysis/enemyStats.ts` 的 `autolevelBand(growth, count)`。**
 
 #### 3.20.7 转职加成 = 9（普通）/ 19（hard）
 

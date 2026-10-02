@@ -59,8 +59,10 @@ A    241以降
 当前等级为 B 时，点数最多涨到 240        → 支援对话可用 → 对话后点数变 241 → 等级 A
 ```
 
-- **80 / 160 / 240 是「解锁对话」的点数**（`SUPPORT_CONVERSATION_CAPS`）。
-- **81 / 161 / 241 是「对话之后持有」的点数**（`SUPPORT_RANK_THRESHOLDS`）。
+- **80 / 160 / 240 是「解锁对话」的点数**（`SUPPORT_CONVERSATION_CAPS`；原版符号
+  `sSupportMaxExpLookup`，值 = `SUPPORT_EXP_x − 1`）。
+- **81 / 161 / 241 是「对话之后持有」的点数**（`SUPPORT_RANK_THRESHOLDS`；原版
+  `SUPPORT_EXP_C/B/A = 81 / 161 / 241`）。
 - 所以「还要相邻几回合才能升到 C」= `ceil((80 − 初始值) / 成长值)`，**不是** `ceil((81 − 初始值) / 成长值)`。
   对话本身不消耗回合。
 
@@ -121,6 +123,18 @@ turnsTo             = 上述的累计（假设一解锁就立刻对话，所以�
 - 表里有 **7 条**记录，第 0 字节依次是相性 ID `1..7`。
 - 读入规则 `SupportAttributeForm.Init()` 是 `return rom.u8(addr) != 0;` —— **读到第 0 字节为 0 就停**。
 - 所以「7 条」不是巧合，而是相性总数（炎/雷/風/氷/闇/光/理）。
+
+相性 1–7 = `炎雷風氷闇光理`，参考程序硬编码在 `InputFormRef.cs:7006`。
+**ROM 里也有一张相性名文本 id 表**（反编译 `src/bmreliance.c` 的 `GetAffinityName`）：
+
+```
+相性 1..7 → 文本 id 0x510, 0x511, 0x512, 0x513, 0x50C, 0x50B, 0x50A
+（index 0 → 0x534，未使用）
+```
+
+实测解码出来正是 `Fire / Thunder / Wind / Ice / Dark / Light / Anima` ——
+与参考程序的硬编码表完全一致，**这是相性 ID 顺序的独立验证**：
+两边不是互相抄的，是各自从 ROM / 源码独立得到的。
 
 每条 8 字节：
 
