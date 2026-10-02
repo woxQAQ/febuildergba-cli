@@ -538,8 +538,8 @@ function report(route: 'A' | 'B') {
         pad(fmt(e.headroom, 0), 5) +
         pad(fmt(e.score, 0), 6) +
         (e.roles.join('/') || '—') +
-        (solo ? `   ⭐独占: ${solo}` : '') +
-        (e.joinNote ? `   ⚠️ ${e.joinNote}` : '')
+        (solo ? `   独占: ${solo}` : '') +
+        (e.joinNote ? `   ${e.joinNote}` : '')
     );
   }
 

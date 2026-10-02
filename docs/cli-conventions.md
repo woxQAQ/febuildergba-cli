@@ -90,7 +90,7 @@ node src/index.ts validate ../fixtures/dream-of-five.gba   # 退出码 0 = 无 e
 - 顶层 `forcedDeployment` —— 整张表（`table` / `everyMap` / `records` / `limitations`）
 - `stats` 里的 `forceSortieRecords` / `unitsForcedSomewhere` / `maxDeploySlots`
 
-> ⚠️ **`joinChapter` 是表索引，不是章号。** 要读 `joinChapterNumber` 或 `joinChapterTitle`。
+> **`joinChapter` 是表索引，不是章号。** 要读 `joinChapterNumber` 或 `joinChapterTitle`。
 > `joinChapterIsStory: false` 表示加入点落在未使用槽位或遭遇图上，**该行不可信**（§3.11.2.1）。
 
 **`--playable-only`**（用于 `units` / `roles`）把范围收窄到**有支援数据的单位**。
@@ -137,7 +137,7 @@ supportAffinities[]   7 条相性：原始半点值 `bonuses` + 展开后的 `by
 terrainNames          65 条地形名 + 表地址/步长（§3.12）
 chapters[]            每章：章号 / 标题 / 初始配置 + LOAD 指令（§3.11）
 availability          加入推导：joinOrder[]（加入章节/章号/标题/来源/证据）+ 统计
-limitations[]         ⚠️ 读这份报告前必读：哪些输入不在这里
+limitations[]         读这份报告前必读：哪些输入不在这里
 derived.growthRanking     成长率总和排名
 derived.supportRanking    支援对象数量排名
 derived.bestGrowthPerStat 各能力成长最高的角色

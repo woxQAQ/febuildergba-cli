@@ -507,7 +507,7 @@ export interface Chapter {
    * when slot 11 points at the same block, which is the case for every chapter
    * in this ROM **except `mapIndex 22` (`C10B: Needle's Eye`)**.
    *
-   * ⚠️ That chapter's slot 11 is a 9-record block of *green allies*, not a
+   * That chapter's slot 11 is a 9-record block of *green allies*, not a
    * player block, and `GetChapterAllyUnitCount` does not filter on allegiance -
    * it counts records until `u8(+0) == 0` (`0x08012344`). So this field really
    * does come out as 9 there, and the prep screen on hard mode would offer 9

@@ -8,7 +8,7 @@
 > 下面所有偏移都是 **file offset**（不是 GBA 地址）。GBA 地址 = file offset + `0x08000000`。
 > 所有 `*_pointer` 字段都是**指针槽**，用前先 `p32()`。
 
-### 3.15 升级抽点算术 + mgba 凹点助手 ⭐⭐⭐
+### 3.15 升级抽点算术 + mgba 凹点助手
 
 **产物在 `mgba/`**（与 `cli/` 平级）：`fe-aodian.lua`（mGBA Lua 脚本）、`test/selftest.lua`
 （124 项自测）、`test/battle_golden.py`（战斗模型的独立 Python 黄金值，见 §3.17）、
@@ -18,7 +18,7 @@
 得到哪些属性成长」，标出收益最大的 k；**选中敌人看到攻击预览时，直接回答「现在就打这个敌人
 能涨多少点」**（把这一仗本身消耗的随机数也算进去，见 §3.17）。
 
-⚠️ **这是只读面板 —— 没有任何热键**（不读键、不写内存、不注入按键）。早先版本有一套
+**这是只读面板 —— 没有任何热键**（不读键、不写内存、不注入按键）。早先版本有一套
 `L + …` 组合键（标记基准 / 切换单位 / 搜索 / 写入随机数），因为**和游戏自己的按键冲突**
 （FE8 里 `L` 是切换光标单位）且实际用不上，已全部删除；原来靠热键调的参数改成
 `CONFIG` 项（`FOCUS` / `K0` / `UNIT_MODE` / `SLOT` / `BATTLE_NUDGE`），改完重载脚本生效。
@@ -39,7 +39,7 @@ Roll1RN     @0x08000CA0 = (t > NextRN_100()) ? 1 : 0 -> 恰好消耗 1 个
 ```
 
 `0x03000000` 由 `NextRN` / `LoadRNState` / `StoreRNState` **三处字面量互相印证**。
-⚠️ `0x03000008` 是**另一个** RNG（`gOtherRNState` / `GetOtherRN`），与升级无关。
+`0x03000008` 是**另一个** RNG（`gOtherRNState` / `GetOtherRN`），与升级无关。
 
 #### 3.15.2 抽点（`CheckForLevelUp` @`0x0802BA28`）
 
@@ -52,12 +52,12 @@ if rate > NextRN_100(): g += 1           -- 余数部分
 ```
 
 - **7 项顺序 = HP, 力, 技, 速, 防, 魔防, 幸运**（`+0x1C..+0x22`）
-  ⚠️ **≠ 界面顺序**（界面是 速/幸/防/魔），面板要重排。
+  **≠ 界面顺序**（界面是 速/幸/防/魔），面板要重排。
 - 成长率读角色数据 `+0x1C..+0x22`；若 `unit->state(+0x0C) & 0x2000` 置位则**每项 +5**
   （Metis 类道具的成长加成）。
 - **7 项全 0 时游戏会重抽**：最多再抽 **2 轮**，每轮**先抽 HP**，一旦有任意一项非 0 就立刻停止。
   → 一次升级消耗的随机数 ∈ **`{7} ∪ [8,14] ∪ [15,21]`**。
-  ⚠️ 只有**最后一项**（幸运）有成长时才会出现「整轮重抽」的 14 —— 因为重抽总是先抽 HP。
+  只有**最后一项**（幸运）有成长时才会出现「整轮重抽」的 14 —— 因为重抽总是先抽 HP。
 
 #### 3.15.3 上限夹取（`CheckForLevelUpCaps` @`0x0802BF24`）
 
@@ -84,7 +84,7 @@ if rate > NextRN_100(): g += 1           -- 余数部分
 **CharacterData（ROM）**：`+0x04` unitId、`+0x1C..0x22` 成长率。
 **ClassData（ROM）**：`+0x0B` 位 6-7、`+0x13..0x19` 上限。
 
-#### 3.15.5 ⚠️ 已删除的「写入 + 校准」尝试，以及它留下的教训
+#### 3.15.5 已删除的「写入 + 校准」尝试，以及它留下的教训
 
 早先版本有一套热键：`L+A` 标记基准、`L+R` 全范围搜索、`L+Start` 把 RNG 状态**直接写到**
 最优位置。**已全部删除**（现在是只读面板）—— 原因一是和游戏自己的按键冲突（FE8 里 `L`
@@ -116,7 +116,7 @@ if rate > NextRN_100(): g += 1           -- 余数部分
 - `emu:read8/16/32`、`emu:write8/16/32`、`emu:getKey(k)`（0..9 = A/B/Select/Start/Right/Left/
   Up/Down/R/L）、`emu:getKeys()`、`emu:setKeys(mask)`、`emu:currentFrame()`；
   `callbacks:add("frame"|"keysRead"|..., fn)`。
-- ⭐ **面板闪烁 = 每帧无条件重画。** mGBA 每写一次文本缓冲（`clear`/`print`）就把整块
+- **面板闪烁 = 每帧无条件重画。** mGBA 每写一次文本缓冲（`clear`/`print`）就把整块
   文本纹理重传一遍；「每 RENDER_EVERY 帧 clear + 重画同一份内容」= 15 Hz 纹理重传
   → 看着一直在闪。修法：**内容不变就一个字节都不碰缓冲**（`CONFIG.RENDER_DIFF`）。
   同理，异常也不能每帧上报（`console:error` 刷屏也像在闪）—— 判据要取「错误消息变了
@@ -128,7 +128,7 @@ if rate > NextRN_100(): g += 1           -- 余数部分
 - **fengari**（Lua 5.3 的 JS 实现，装在托管 node 工作区）跑 `mgba/test/selftest.lua`：
   自建假 GBA 内存 + 假 mGBA API，真的调用 `frame` 回调走端到端。`node mgba/test/run.mjs [--preview]`。
 - 关键数值（升级的随机数消耗分布）另用**独立的 Python 实现**产出黄金分布做交叉验证 ——
-  ⚠️ 不要靠心算重抽规则，会错。
+  不要靠心算重抽规则，会错。
 - 名字表 `mgba/units.lua` 由 `cli/scripts/emit-mgba-units.ts` 从 `cli/out/*.units.json` 生成，
   **不要手改**。
 
@@ -136,7 +136,7 @@ if rate > NextRN_100(): g += 1           -- 余数部分
 
 ---
 
-### 3.17 战斗掷骰模型（一次「打这个敌人」烧掉多少随机数）⭐⭐⭐
+### 3.17 战斗掷骰模型（一次「打这个敌人」烧掉多少随机数）
 
 **为什么需要**：凹点的实际手法是「打敌人 → 长经验 → 升级」。要回答「当前状态下打这个敌人能涨
 多少点」，就得先算出**这一仗本身消耗几个随机数**，再把这几个数加到升级抽点之前。
@@ -151,7 +151,7 @@ Roll1RN  @0x08000CA0 : (P > NextRN_100()) ? 1 : 0   -> 恰好消耗 1 个
 Roll2RN  @0x08000CB8 : (P > ((NextRN_100()+NextRN_100()) >> 1)) ? 1 : 0  -> 恰好消耗 2 个
 ```
 
-⚠️ **`P == 0` 也照样消耗** —— `RollRNIfBattleStarted` 只是**无条件转发**给 `Roll1RN`，
+**`P == 0` 也照样消耗** —— `RollRNIfBattleStarted` 只是**无条件转发**给 `Roll1RN`，
 `Roll1RN` 也无条件抽一个 `NextRN_100`。所以「必杀率 0」的普通攻击每次出手仍烧 1 个。
 （`Roll2RN` 是**带符号**平均：`lsrs r0,r4,#0x1f; adds r4,r4,r0; asrs r4,r4,#1`。）
 
@@ -170,7 +170,7 @@ Roll2RNIfBattleStarted @0x0802A558  -> 转发 Roll2RN
 | `1` | `BattleGenerateReal` @`0x0802A350` | **真实战斗** —— 随机数已经在烧了 |
 | `2` | `SimulateBattle` @`0x0802A318` | **模拟 / 预览** —— 一个随机数都没烧 |
 
-⭐ **这就是预测时机**：玩家在攻击预览界面时（`& 2 != 0`），`gBattleActor` / `gBattleTarget`
+**这就是预测时机**：玩家在攻击预览界面时（`& 2 != 0`），`gBattleActor` / `gBattleTarget`
 已经填好、而随机数还没开始烧 —— 正好可以在「按下确认之前」把整场消耗算出来。
 
 #### 3.17.3 一次「出手」的完整顺序（`GenerateCurrentRoundData` @`0x0802B3EC`）
@@ -229,7 +229,7 @@ Roll2RNIfBattleStarted @0x0802A558  -> 转发 Roll2RN
 
 - `BattleCheckDoubling` @`0x0802AF90`：读两侧 `+0x5E`（s16，攻速），**`|diff| > 3`** 才追击；
   顺带按攻速交换两方指针；武器类型 `== 3`（杖）或 `GetItemAttributes == 0xb5` 直接返回 0。
-- ⚠️ `0x0802B094` **不是** `BattleCheckBrave`：它读 `unit+0x4C` 的 `0x20` 位（武器属性），
+- `0x0802B094` **不是** `BattleCheckBrave`：它读 `unit+0x4C` 的 `0x20` 位（武器属性），
   置位则设置**某个全局 u32**（`[0x0203A608]` 指向的对象）的 bit 4，**不消耗随机数**。
   符号表把 `0x0802B018` 命名为 `BattleCheckBrave`，实际函数体在 `0x0802B094`。
 
@@ -255,7 +255,7 @@ Roll2RNIfBattleStarted @0x0802A558  -> 转发 Roll2RN
 | **`+0x6A`** | **最终必杀率**（crit − dodge） | `0x0802AC90` |
 | `+0x6C` | 瞬杀率 (u16) | `0x0802AC90` 把 `0x6C` 当条件 |
 
-⚠️ **游戏用的是 `+0x64` / `+0x6A`（最终值），不是 `+0x60` / `+0x66`。**
+**游戏用的是 `+0x64` / `+0x6A`（最终值），不是 `+0x60` / `+0x66`。**
 证据：`0x0802B1C4`（`MakeNextBattleHitRound` 第 1 个调用）把 `+0x64` → `gBattleStats+0x0A`、
 `+0x6A` → `+0x0C`。而 `0x0802AC60`/`0x0802AC90` 的**唯一调用点**是 `0x0802A9AE`/`0x0802A9B6`
 （在 `0x802A6DC` 内），`0x0802A6DC` 同时被 `BattleGenerateSimulationInternal`（`0x802A1E0`）与
@@ -269,7 +269,7 @@ Roll2RNIfBattleStarted @0x0802A558  -> 转发 Roll2RN
 （`0x0802B530`）；瞬杀成功则 `Damage = 0x7F`；必杀再 ×3（`0x0802B522`）。
 
 **`SimulateBattle` 的调用点**（全 ROM 3 处）：`0x08022EF8`（玩家预览）、`0x0803DEEA`
-（`AiSimulateBattle` @`0x0803DEC8`）、`0x0804A36E`。⚠️ 后两处会短暂置低位 2 ——
+（`AiSimulateBattle` @`0x0803DEC8`）、`0x0804A36E`。后两处会短暂置低位 2 ——
 所以面板还要**过滤「攻方 = `gActiveUnit`」**（`BATTLE_FILTER`），否则敌回合 AI 的模拟会污染预测。
 
 #### 3.17.6 产物与验证
@@ -284,7 +284,7 @@ Roll2RNIfBattleStarted @0x0802A558  -> 转发 Roll2RN
   六组场景：`basic 6 (A3 T3)` / `dbl 9 (A3 T3 A3)` / `brave 8 (A3 A3 T2-)` /
   `skill 7 (A5 T2-)` / `missA 5 (A2- T3)` / `kill 3 (A3)`。
 
-#### 3.17.7 ⚠️ 三处仍然没建模（要读道具表，罕见武器才触发）
+#### 3.17.7 三处仍然没建模（要读道具表，罕见武器才触发）
 
 1. ⑧ 那次掷骰（武器效果 = 4）—— 面板里 `weffect` 恒为 0。
 2. ④ 的「攻方武器效果 ≠ 1」排除项。
@@ -295,7 +295,7 @@ Roll2RNIfBattleStarted @0x0802A558  -> 转发 Roll2RN
 
 ---
 
-### 3.18 攻速与追击 —— `BattleLoadAS` / `BattleCheckDoubling` ⭐⭐
+### 3.18 攻速与追击 —— `BattleLoadAS` / `BattleCheckDoubling`
 
 经济报告要用「这把武器会不会让单位掉追击」，所以必须知道攻速和追击阈值**在 ROM 里怎么算**。
 两条**不是公知公式，是反汇编核实的**。
@@ -310,7 +310,7 @@ Roll2RNIfBattleStarted @0x0802A558  -> 转发 Roll2RN
 | 同上 | `OFF` / `FIX` | `0x40 0x1A` → `0xC0 0x46`（即 `subs r0,r0,r1` → `nop`） |
 | `PATCH_Required pursuit attack speed difference.txt` | `ADDRESS` | `0x02AFBC 0x2AFCE` |
 
-⚠️ 这些地址是**文件偏移**（`file offset`），GBA 地址 = `+ 0x08000000`。
+这些地址是**文件偏移**（`file offset`），GBA 地址 = `+ 0x08000000`。
 
 #### 3.18.2 `BattleLoadAS @ 0x0802AB74`（U 版；J 版 `0x0802AAE4`）
 
@@ -325,7 +325,7 @@ Roll2RNIfBattleStarted @0x0802A558  -> 转发 Roll2RN
 0802AB8C  movs   r1, #0           ; ← 钳位：max(0, 重量 - 体格)
 0802AB8E  movs   r0, #0x16
 0802AB90  ldrsb  r0, [r4, r0]     ; r0 = 单位 +0x16（有符号字节）= 速度
-0802AB92  subs   r0, r0, r1       ; ★ 速度 - 惩罚   ← 补丁标的 DETERMINATION_ADDRESS
+0802AB92  subs   r0, r0, r1       ; 速度 - 惩罚   ← 补丁标的 DETERMINATION_ADDRESS
 0802AB94  adds   r1, r4, #0
 0802AB96  adds   r1, #0x5e
 0802AB98  strh   r0, [r1]         ; 存到 战斗单位 +0x5E = 攻速
@@ -338,7 +338,7 @@ Roll2RNIfBattleStarted @0x0802A558  -> 转发 Roll2RN
 
 **结论（已核实）**：`攻速 = 速度 − max(0, 武器重量 − 体格)`，且攻速存在**战斗单位 `+0x5E`（u16）**。
 
-✅ **DoF 没改这段代码** —— ROM 在 `0x02AB92` 处的字节就是 `40 1A`，与补丁里 `OFF` 的值**逐字节相同**。
+**DoF 没改这段代码** —— ROM 在 `0x02AB92` 处的字节就是 `40 1A`，与补丁里 `OFF` 的值**逐字节相同**。
 所以原版 FE8U 的攻速公式对本 hack 原样成立。
 
 #### 3.18.3 `BattleCheckDoubling @ 0x0802AF90`（U 版；J 版 `0x0802AF00`）
@@ -351,11 +351,11 @@ Roll2RNIfBattleStarted @0x0802A558  -> 转发 Roll2RN
 0802AFB4  subs   r1, r3, r2       ; r1 = AS_A - AS_B
 0802AFB8  cmp    r1, #0
 0802AFBA  blt    #0x802afcc       ; 负 → 跳到镜像分支
-0802AFBC  cmp    r1, #3           ; ★ 补丁 ADDRESS 之一
+0802AFBC  cmp    r1, #3           ; 补丁 ADDRESS 之一
 0802AFBE  ble    #0x802b010       ; ≤ 3 → 不追击
 0802AFC0  b      #0x802afd2       ; > 3 → 追击
 0802AFCC  subs   r0, r2, r3       ; 镜像：AS_B - AS_A
-0802AFCE  cmp    r0, #3           ; ★ 补丁 ADDRESS 之二
+0802AFCE  cmp    r0, #3           ; 补丁 ADDRESS 之二
 0802AFD0  ble    #0x802b010       ; ≤ 3 → 不追击
 ```
 
@@ -367,7 +367,7 @@ Roll2RNIfBattleStarted @0x0802A558  -> 转发 Roll2RN
 - **追击是「多打一次」，不是加 50% 伤害** —— `MakeBattleRound` 按 `GetBattleHitCount` 决定出手次数，
   一次命中变两次。
 - **体格没有成长**（角色表/职业表里体格是固定值），所以早期速度低时同一把武器吃掉的攻速更多。
-- ⚠️ **敌方攻速静态读不到**：FE8 的条件表只有 20 个槽位、**没有 `ENEMY_UNIT`**，敌人走
+- **敌方攻速静态读不到**：FE8 的条件表只有 20 个槽位、**没有 `ENEMY_UNIT`**，敌人走
   **地图变更数据**（本 CLI 未解析）。所以经济报告里的「参考敌攻速」是**拍的常数**，
   必须给敏感性，不能当成实测。
 - 攻速、追击阈值都拿到了，但**命中/必杀/伤害的完整链路**是另一套函数
@@ -388,7 +388,7 @@ Roll2RNIfBattleStarted @0x0802A558  -> 转发 Roll2RN
 0802AAF4  movs     r0, #0
 0802AAF6  ldrsh    r1, [r4, r0]    ; r1 = 武器威力（攻击力存在战斗单位 +0x5A）
 0802AAF8  lsls     r0, r1, #1      ; r0 = 威力 × 2
-0802AAFA  adds     r0, r0, r1      ; r0 = 威力 × 2 + 威力 = 威力 × 3   ★
+0802AAFA  adds     r0, r0, r1      ; r0 = 威力 × 2 + 威力 = 威力 × 3
 0802AAFC  lsls     r0, r0, #0x10
 0802AAFE  lsrs     r5, r0, #0x10   ; 截回 u16
 ```
@@ -404,11 +404,11 @@ Roll2RNIfBattleStarted @0x0802A558  -> 转发 Roll2RN
 | `GetItemEffectivenessPtr` | `0x080176D0` | 取武器特效表 |
 | `gSlayerEffectivenessTable` | `0x088ADF39` | 特效倍率表（**在数据段，不在代码段**） |
 
-⚠️ **这条直接说明「每金换多少期望伤害」这个指标的天花板**：它衡量**效率**，不衡量**够不够**。
+**这条直接说明「每金换多少期望伤害」这个指标的天花板**：它衡量**效率**，不衡量**够不够**。
 敌人防御一高，再便宜的武器也是 0 伤害 —— 那时 `期望/金` 这个比值本身就没有意义。
 所以经济报告 §3 的排名只能用来决定「日常批量采购」，**特效系和银系该买什么必须看具体地图**。
 
-#### 3.18.6 敌方属性能不能算？（能，但有随机成分；本 CLI 还没做）⭐⭐
+#### 3.18.6 敌方属性能不能算？（能，但有随机成分；本 CLI 还没做）
 
 经济报告里「参考敌攻速 = 常数 10」是**拍的**。被问到时核了一遍，结论分三层：
 
@@ -420,7 +420,7 @@ Roll2RNIfBattleStarted @0x0802A558  -> 转发 Roll2RN
 - 敌人摆放记录是 **20 字节**（`eventunit_data_size = 20`），字段见 §3.11.3 那张表：
   `+0` unit_id / `+1` class_id / `+3`–`+4` 等级增长值 / `+12`–`+15` 携带道具。
   `EventUnitForm.cs:499-501` 就是这么读的。**有职业、有等级、有装备 → 属性可推。**
-- ⚠️ **但 FE8 的条件表没有 `ENEMY_UNIT` 槽。** `EventCondForm.cs:1406-1417` 写得很清楚：
+- **但 FE8 的条件表没有 `ENEMY_UNIT` 槽。** `EventCondForm.cs:1406-1417` 写得很清楚：
 
   | 版本 | 敌人配置槽 | 自军配置槽 |
   |---|---|---|
@@ -432,14 +432,14 @@ Roll2RNIfBattleStarted @0x0802A558  -> 转发 Roll2RN
   它只有 `FREEMAP_ENEMY_UNIT` ×3，那是**魔物出现图**专用的。）
   → FE8 的初始敌人从别处进来，**本 CLI 没走通那条路**，所以 `ENEMY_AS` 只能拍。
 
-**③ ⚠️ 就算走通了，敌方属性也不是纯确定值 —— 自动升级会烧随机数。**
+**③ 就算走通了，敌方属性也不是纯确定值 —— 自动升级会烧随机数。**
 
 `GetAutoleveledStat @ 0x0802B9C4`：
 
 ```
 0802B9C8  muls     r4, r1, r4        ; v = 等级 × 成长
 0802B9D2  asrs     r0, r0, #3        ; r0 = v / 8
-0802B9D4  bl       #0x08000C80       ; ★ NextRN_N(v/8) —— 不是除法 helper，是随机数！
+0802B9D4  bl       #0x08000C80       ; NextRN_N(v/8) —— 不是除法 helper，是随机数！
 0802B9E2  asrs     r0, r0, #4        ; r0 = v / 16
 0802B9E4  subs     r0, r1, r0        ; r0 = RN - v/16
 0802B9E6  adds     r0, r4, r0        ; r0 = v + RN - v/16
@@ -453,7 +453,7 @@ Roll2RNIfBattleStarted @0x0802A558  -> 转发 Roll2RN
 0802B9A6  ble      #0x802b9b0
 0802B9A8  adds     r4, #1            ; 每满 100 点 → 保底 +1
 0802B9AA  subs     r0, #0x64
-0802B9B0  bl       #0x08000CA0       ; ★ Roll1RN(...) —— 决定余数进不进位
+0802B9B0  bl       #0x08000CA0       ; Roll1RN(...) —— 决定余数进不进位
 0802B9BA  adds     r4, #1
 ```
 
@@ -461,7 +461,7 @@ Roll2RNIfBattleStarted @0x0802A558  -> 转发 Roll2RN
 （`±v/16` 的抖动 + 余数按概率进位 → 量级 **±1 点**）。
 所以真要做的话，**输出应该是「基准值 ± 1」的区间**，不是单一确定值。
 
-> ⭐ **教训（我在这里写错过一次）**：反汇编里看到 `bl <addr>`，**必须去 `asmmap` 查那个地址是什么**。
+> **教训（我在这里写错过一次）**：反汇编里看到 `bl <addr>`，**必须去 `asmmap` 查那个地址是什么**。
 > 我第一遍把 `bl 0x08000C80` 当成普通的除法 helper，于是得出了「闭式算术、不烧随机数」
 > 这个**完全相反**的结论，还写进了报告。`0x08000C80` = `NextRN_N`、`0x08000CA0` = `Roll1RN` ——
 > 它们和 `LoadRNState` / `StoreRNState` / `NextRN_100` / `Roll2RN` 挤在 `0x08000C0C`–`0x08000CC0`
@@ -480,7 +480,7 @@ Roll2RNIfBattleStarted @0x0802A558  -> 转发 Roll2RN
 
 ---
 
-### 3.20 敌人属性投影 —— 从配置记录到攻速 ⭐⭐
+### 3.20 敌人属性投影 —— 从配置记录到攻速
 
 §3.19 解决了「敌人在哪」；这一节解决「敌人多快」。产物是 CLI 命令
 **`enemy-stats`**（`src/analysis/enemyStats.ts`），经济报告的参考敌攻速就是它给的。
@@ -498,10 +498,10 @@ Roll2RNIfBattleStarted @0x0802A558  -> 转发 Roll2RN
 | 自动升级 | `AutolevelUnit @ 0x08018120`，用**职业**的 `enemyGrowths`（`+0x1B`） |
 | 武器重量 | 记录 `+12..15` → 道具表 `+23` |
 
-⚠️ `unitId` 的**低 7 位不是 id** —— `+0` 整个字节就是 unit id（0 终止）。
+`unitId` 的**低 7 位不是 id** —— `+0` 整个字节就是 unit id（0 终止）。
 但 `+1`（classId）**为 0 时表示「用角色自己的职业」**，不是「职业 0」。
 
-#### 3.20.2 ⭐⭐ 自动升级的总开关 = `+3` bit 0
+#### 3.20.2 自动升级的总开关 = `+3` bit 0
 
 `Event2C_LoadUnits @ 0x0800FB84` 一路走到 `0x08017C10`，那里第一件事就是：
 
@@ -516,7 +516,7 @@ Roll2RNIfBattleStarted @0x0802A558  -> 转发 Roll2RN
 这一位就是编辑器里的「成長率: 成長させない / クラス依存」，而它**在阵营判断之前**。
 本 ROM **11% 的敌人记录**这一位是 0（303/2805）—— 漏掉就会把这些敌人的属性算高。
 
-#### 3.20.3 ⭐ 两条自动升级路径，分派在 `0x08017C36`
+#### 3.20.3 两条自动升级路径，分派在 `0x08017C36`
 
 ```
 08017C36  ldr r2, [r5]          ; r2 = unit[+0] = pCharacter
@@ -557,7 +557,7 @@ Roll2RNIfBattleStarted @0x0802A558  -> 转发 Roll2RN
 要点：
 - 转职那一轮的掩码是 **`0x100`**，即 `(角色.abilityFlags[1] | 职业.abilityFlags[1]) & 0x01`
   = `unitclass_checkbox_FE8.txt` 的 **特性2 bit0「上級クラス(武器S)」**。
-  ⚠️ 是 **`& 0x01` 且角色与职业**都要 OR 进来 —— 只取职业、或用 `& 0x02`，都不对。
+  是 **`& 0x01` 且角色与职业**都要 OR 进来 —— 只取职业、或用 `& 0x02`，都不对。
 - `IncreaseUnitStatsByLevelCount @ 0x08017FC4` 读 **`unit[+4]`（= 职业表）的
   `+0x1B..0x21`**，7 个字节依次落到 `unit[+0x12, +0x14, +0x15, +0x16, +0x17, +0x18, +0x19]`
   （**`+0x13` 跳过**，那是当前 HP）。顺序 = hp / str / skl / **spd(+0x16)** / def / res / lck。

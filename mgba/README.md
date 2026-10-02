@@ -61,7 +61,7 @@ read-only panel: no hotkeys. tune CONFIG at the top of the .lua and reload.
 vs A  Rena          Lv5  HP 24/24  hit  87 crit   4 AS  12 dmg 11
    T  Wren          Lv3  HP 30/30  hit  52 crit   0 AS  10 dmg  5
 cost   6 RNs  (A3 T3)                       <- 这一仗烧 6 个：攻方一次 3 个、守方一次 3 个
-ans    attack now -> TOT 2   SPD+1 LCK+1    <- ★ 当前状态下打这个敌人，升级涨这些
+ans    attack now -> TOT 2   SPD+1 LCK+1    <- * 当前状态下打这个敌人，升级涨这些
 
 -- burn k RNs, then fight, then level up (cost = battle RNs) --
      k cost   HP  STR  SKL  SPD  LCK  DEF  RES   TOT

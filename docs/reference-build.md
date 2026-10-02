@@ -30,7 +30,7 @@ msbuild FEBuilderGBA.sln /p:Configuration=Debug /p:Platform=x86
 
 ### 运行所需的两样外部资源 —— **仓库里已经有了**
 
-> ⚠️ 早期版本写「这两样都不在仓库里，必须自己补」，**这是错的**。实测两者都在，
+> 早期版本写「这两样都不在仓库里，必须自己补」，**这是错的**。实测两者都在，
 > 且**都被 git 跟踪**（`FEBuilderGBA/FEBuilderGBA/bin/Debug/config/` 有 43,075 个文件）：
 
 1. **`config/` 目录树** —— 已在 `FEBuilderGBA/FEBuilderGBA/bin/Debug/config/`：
