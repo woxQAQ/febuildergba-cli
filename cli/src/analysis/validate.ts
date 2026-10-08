@@ -23,6 +23,12 @@ import {
   SUPPORT_BONUS_STATS,
 } from '../tables/supportBonus.ts';
 import { MAP_ANY, forcedUnitsForMap } from '../tables/forceSortie.ts';
+import {
+  duplicateRegistrations,
+  isRealMap,
+  readAllTransitions,
+  traceStoryPath,
+} from '../tables/storyPath.ts';
 import { collectEnemyStats } from './enemyStats.ts';
 
 export interface CheckResult {
@@ -803,6 +809,62 @@ export function validateRom(loaded: LoadedRom): ValidationReport {
       (withoutEvidence.length > 0 ? `; missing: ${withoutEvidence.join(', ')}` : ''),
     'warn',
   );
+
+  // --- Story path --------------------------------------------------------
+  // The transition walk is a separate decode from the join-order walk, so it
+  // can fail on its own. Two things worth asserting: that the scripts were read
+  // to their terminating opcode rather than abandoned mid-way, and that the
+  // opening chapter really is unreferenced - if a hack opens with a map that
+  // something else points into, the chain `storypath` prints is not the story.
+  if (loaded.eventScripts.scripts.length > 0) {
+    const edges = readAllTransitions(loaded.rom, loaded.eventScripts, loaded.chapters);
+    const realMaps = new Set(
+      loaded.chapters.filter((c) => isRealMap(loaded.rom, c)).map((c) => c.index),
+    );
+    const truncated = edges.filter(
+      (e) => e.transitions.length === 0 && e.stopReason.startsWith('unrecognised opcode'),
+    );
+    const truncatedReal = truncated.filter((e) => realMaps.has(e.mapIndex));
+    add(
+      'story.scriptsDecoded',
+      truncatedReal.length === 0,
+      `${edges.length} END_EVENT scripts walked; ${truncated.length} stopped on an ` +
+        `unrecognised opcode (${truncatedReal.length} of them real maps, whose ` +
+        'transitions are then unknown rather than absent)',
+      'warn',
+    );
+
+    const path = traceStoryPath(edges, (m) => realMaps.has(m));
+    add(
+      'story.mainPathFound',
+      path.found && path.chain.length > 1,
+      path.found
+        ? `chain of ${path.chain.length} chapters starting at map ` +
+          `${path.chain[0]?.mapIndex ?? -1} and ending at map ` +
+          `${path.chain.at(-1)?.mapIndex ?? -1}; ` +
+          `${path.branches.length} chapters offer more than one next chapter` +
+          (path.closedLoop.length > 0
+            ? `; the walk closed a loop at map ${path.closedLoop.join(', ')}`
+            : '')
+        : path.startReason,
+      'warn',
+    );
+
+    const dupes = duplicateRegistrations(loaded.rom, loaded.chapters);
+    const dupRows = dupes.reduce((n, g) => n + g.length, 0);
+    add(
+      'story.duplicateRows',
+      dupRows === 0,
+      `${loaded.chapters.length} map rows, ${realMaps.size} real maps. ` +
+        (dupRows === 0
+          ? 'No row registers an existing battle twice.'
+          : `${dupRows} rows duplicate another battle (identical start event, ` +
+            `end event and condition table): ${dupes
+              .map((g) => g.join('/'))
+              .join('; ')}. Counting rows as chapters overcounts.`),
+      'warn',
+    );
+  }
 
   // ---- items ------------------------------------------------------------
   //

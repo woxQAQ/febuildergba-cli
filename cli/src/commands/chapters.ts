@@ -1,5 +1,6 @@
 import { hex } from '../cli/hex.ts';
 import { alwaysForcedUnits, forcedUnitsForMap, MAP_ANY, routeLabel } from '../tables/forceSortie.ts';
+import { isRealMap } from '../tables/storyPath.ts';
 import { isStoryTitle } from '../analysis/crossTable.ts';
 import type { Command } from './types.ts';
 
@@ -12,15 +13,35 @@ import type { Command } from './types.ts';
  *
  * See `tables/chapters.ts` for the full chain and its two documented
  * deviations from FEBuilderGBA.
+ *
+ * ## Output shape
+ *
+ * Two views, and deliberately not three. `joinOrder` is one row per **unit** -
+ * the question "when can I use this unit" is per-unit, and 62 rows answer it.
+ * `chapters` is one row per **map**, for questions about a single map.
+ *
+ * The per-map row does not repeat every placement record. A map's placement
+ * block holds one entry per deployment slot, and hack authors reuse unit ids as
+ * generic templates with a different class, so the block runs to several
+ * hundred entries where the roster is sixty characters. Emitting them all made
+ * this command the largest by output size (535 KB on Vision Quest, against 27 KB
+ * for `storypath`) while adding nothing the other views did not carry. What is
+ * kept is `detachedClasses`, the one thing placements say that join order cannot:
+ * a character fought this map as a different class than their own.
+ *
+ * `storypath` owns the main path, so this command does not repeat it.
  */
 export const chapters: Command = {
-  name: 'chapters',
-  summary: 'Join order: per-chapter rosters and mid-chapter recruit sites',
+name: 'chapters',
+  summary: 'Join order: when each unit becomes available, and per-map rosters',
   description:
-    'Two views of the same data: `joinOrder` is one row per unit ordered by when ' +
-    'it becomes available, and `chapters` is one row per map. **Prefer ' +
-    '`chapterNumber` over `mapIndex`** - the map table has a row per map id, so ' +
-    'the index also counts unused slots and bonus maps.',
+    'Two views of the same data: `joinOrder` is one row per **unit** ordered by ' +
+    'when it becomes available, and `chapters` is one row per **map**. ' +
+    '**Prefer `chapterNumber` over `mapIndex`** - the map table has a row per map ' +
+    'id, so the index also counts unused slots and bonus maps. **Run `storypath` ' +
+    'for the order chapters play in**: the chapter number restarts at 1 in every ' +
+    'act and cannot order them. Padded map rows are dropped unless `--all`; the ' +
+    'deploy roster is deduplicated per character rather than per slot.',
   run: ({ rom, flags }) => {
     const supportIds = new Set(rom.supports.entries.map((e) => e.unitId));
     const unitById = new Map(rom.units.map((u) => [u.id, u]));
@@ -52,8 +73,16 @@ export const chapters: Command = {
 
     const chapterRows = rom.chapters.map((chapter) => {
       const scan = rom.chapterScans.find((s) => s.chapterIndex === chapter.index);
+      /**
+       * True for a row that pads the map table out to its full length: the row
+       * does not claim its own slot id, so nothing refers to it either. Same
+       * test `storypath` uses, kept here so the two commands agree.
+       */
+      const isPaddedRow = !isRealMap(rom.rom, chapter);
       return {
         mapIndex: chapter.index,
+        /** False for the rows that only pad the table; see `storypath`. */
+        isPaddedRow,
         /**
          * The game's own chapter number (`u16(record + 0x80) / 2`). **Use this,
          * not `mapIndex`.** The table has a row per map id, so `mapIndex` counts
@@ -62,9 +91,12 @@ export const chapters: Command = {
         chapterNumber: chapter.chapterNumber,
         /** Chapter title from `+0x70`; `''` for unused slots, `@001F` for world-map maps. */
         title: chapter.title,
-        titleTextId: chapter.titleTextId,
+        /**
+         * Raw table pointers, for auditing a decode. `startEvent` /
+         * `endEvent` / `playerPlacement` are three of the twenty condition
+         * slots; `condTableAddress` is the table holding them.
+         */
         mapSettingAddress: hex(chapter.mapSettingAddr),
-        eventPlist: chapter.eventPlist,
         condTableAddress: chapter.condTableAddr === 0 ? null : hex(chapter.condTableAddr),
         startEvent: chapter.startEventAddr === 0 ? null : hex(chapter.startEventAddr),
         endEvent: chapter.endEventAddr === 0 ? null : hex(chapter.endEventAddr),
@@ -91,31 +123,75 @@ export const chapters: Command = {
           everyMap: f.mapIndex === MAP_ANY,
           recordAddress: hex(f.addr),
         })),
-        placements: chapter.placements.map((p) => {
-          const ref = described(p.unitId);
-          return {
-            ...ref,
-            placedClassId: p.classId,
-            placedClassName:
-              p.classId === 0 ? '(own class)' : (rom.classNames.get(p.classId) ?? null),
-            level: p.level,
-            prePlacementCoord: p.prePlacementCoord,
-            postPlacementCoords: p.postPlacementCount,
-            classOverridden: p.classId !== 0 && p.classId !== ref.ownClassId,
-          };
-        }),
-        recruitSites: (scan?.recruits ?? []).map((site) => ({
-          kind: site.kind,
-          slot: site.slotKind,
-          address: hex(site.addr),
-          instruction: site.instruction,
-          block: hex(site.blockAddr),
-          units: site.units.map((u) => ({
-            id: u.unitId,
-            name: describe(u.unitId),
-            placedClassId: u.classId,
-          })),
-        })),
+        /**
+         * Roster actually deployed here, one entry per **character** rather than
+         * per placement record: a character placed under two classes in the same
+         * map appears once per distinct class.
+         *
+         * Replaces the raw `placements` list, which was one entry per
+         * deployment slot and therefore hundreds of rows on a hack that reuses
+         * ids as generic templates.
+         */
+        roster: (() => {
+          const merged = new Map<string, {
+            id: number;
+            name: string;
+            ownClassName: string | null;
+            isSupportCharacter: boolean;
+            levels: number[];
+            classes: string[];
+            overridden: boolean;
+          }>();
+          for (const p of chapter.placements) {
+            const ref = described(p.unitId);
+            const placed =
+              p.classId === 0 ? '(own class)' : (rom.classNames.get(p.classId) ?? `class#${p.classId}`);
+            const key = `${p.unitId}|${placed}`;
+            const hit = merged.get(key);
+            if (hit === undefined) {
+              merged.set(key, {
+                id: ref.id,
+                name: ref.name,
+                ownClassName: ref.ownClassName,
+                isSupportCharacter: ref.isSupportCharacter,
+                levels: [p.level],
+                classes: [placed],
+                overridden: p.classId !== 0 && p.classId !== ref.ownClassId,
+              });
+            } else {
+              hit.levels.push(p.level);
+            }
+          }
+          return [...merged.values()].sort((a, b) => a.id - b.id);
+        })(),
+        /**
+         * Mid-chapter recruit sites, **filtered to the playable roster**.
+         *
+         * The scan reads every `LOAD1` in the chapter's scripts, and in a hack
+         * that reuses unit ids for generic templates that set includes enemies:
+         * on Vision Quest 204 ids appear across the sites and only 62 are
+         * characters. The other 142 are noise for a roster question, so they are
+         * dropped here and the character rows are already in `joinOrder`.
+         *
+         * What survives is the part `joinOrder` cannot express: a character
+         * recruited *during* this map rather than at its start.
+         */
+        midChapterRecruits: (() => {
+          const sites = scan?.recruits ?? [];
+          const out: Array<{
+            kind: string;
+            address: string;
+            units: Array<{ id: number; name: string }>;
+          }> = [];
+          for (const site of sites) {
+            const units = site.units
+              .filter((u) => supportIds.has(u.unitId))
+              .map((u) => ({ id: u.unitId, name: describe(u.unitId) }));
+            if (units.length === 0) continue;
+            out.push({ kind: site.kind, address: hex(site.addr), units });
+          }
+          return out;
+        })(),
         truncatedScriptWalks: scan?.truncatedWalks ?? 0,
         /**
          * Direct gold writes reachable from this chapter's scripts, from the two
@@ -129,20 +205,36 @@ export const chapters: Command = {
           instruction: g.instruction,
         })),
         /**
-         * Items this chapter's scripts hand out. `unitPrice` is the item's `+26`
-         * field: for a money bag (`Gold`, `3,000 Gold`, ...) that field **is** the
-         * gold amount the bag is worth, which is how the game pays out money.
+         * Items this chapter's scripts hand out, deduplicated by address.
+         *
+         * Hack chapters share one script across many maps, so the same payout
+         * reappears under every map that reaches it - the reference's own
+         * limitation note calls this out. Keeping one row per address stops a
+         * single 5,000-gold script from being counted once per map.
+         *
+         * `unitPrice` is the item's `+26` field: for a money bag (`Gold`,
+         * `3,000 Gold`, ...) that field **is** the gold amount the bag is worth,
+         * which is how the game pays out money.
          */
-        itemsGiven: (scan?.itemsGiven ?? []).map((g) => {
-          const item = rom.itemMap.get(g.itemId);
-          return {
-            address: hex(g.addr),
-            itemId: g.itemId,
-            name: item?.name ?? `item#${g.itemId}`,
-            unitPrice: item?.unitPrice ?? 0,
-            toUnit: g.unitId === 0xffff ? '(visiting unit)' : describe(g.unitId),
-          };
-        }),
+        itemsGiven: (() => {
+          const byAddress = new Map<
+            string,
+            { address: string; itemId: number; name: string; unitPrice: number; toUnit: string }
+          >();
+          for (const g of scan?.itemsGiven ?? []) {
+            const address = hex(g.addr);
+            if (byAddress.has(address)) continue;
+            const item = rom.itemMap.get(g.itemId);
+            byAddress.set(address, {
+              address,
+              itemId: g.itemId,
+              name: item?.name ?? `item#${g.itemId}`,
+              unitPrice: item?.unitPrice ?? 0,
+              toUnit: g.unitId === 0xffff ? '(visiting unit)' : describe(g.unitId),
+            });
+          }
+          return [...byAddress.values()];
+        })(),
       };
     });
 
@@ -359,17 +451,26 @@ export const chapters: Command = {
         maxDeploySlots: rom.chapters.reduce((n, c) => Math.max(n, c.deploySlots), 0),
       },
       joinOrder: rows,
-      chapters: chapterRows,
+      /**
+       * One row per map. Padded rows are dropped unless `--all`: the map table
+       * has a row per map *slot*, and those rows carry no roster, no events and
+       * no title, so a default run would spend two thirds of its output on
+       * nothing. `storypath` reports how many were dropped and which battles are
+       * registered twice.
+       */
+      chapters: flags.all ? chapterRows : chapterRows.filter((c) => !c.isPaddedRow),
       limitations: [
         'A placement record counts as the named character only when its class id ' +
           'is 0 or matches the unit\'s own class. Hack authors reuse one unit id ' +
           'as a generic template with varying class ids; those records are ' +
-          'reported with classOverridden=true and excluded from join order.',
+          'reported with `overridden` in `roster` and excluded from join order.',
         'mapIndex is a row number in the map-setting table, NOT a chapter ' +
           'number: the table has one row per map id, so it also holds unused ' +
           'slots (chapterNumber 0), world-map/skirmish maps (title "@001F", ' +
           'sharing a story chapter\'s number) and bonus maps. Use ' +
-          'chapterNumber / joinChapterNumber, or the decoded title.',
+          'chapterNumber / joinChapterNumber, or the decoded title. Run ' +
+          '`storypath` for the order the chapters actually play in - the chapter ' +
+          'number restarts at 1 in every act and cannot order them.',
         'Script walks stop after ten consecutive unrecognised opcodes, matching ' +
           'FEBuilderGBA. truncatedScriptWalks counts those. A recruit site after ' +
           'such a stop is missed.',
@@ -381,10 +482,13 @@ export const chapters: Command = {
           'several maps, so a LOAD1 seen in a late chapter is usually a re-load, ' +
           'not a join.',
         'Deduplication is **per chapter**, never across chapters. One script can ' +
-          'be referenced by many maps, so the same goldEvents / itemsGiven ' +
-          '`address` (and the same placement block) reappears under every chapter ' +
-          'that reaches it. Deduplicate by address before summing: a single ' +
-          '5,000-gold script shared by 17 maps is one payout, not 85,000 gold.',
+          'be referenced by many maps, so the same `address` in goldEvents / ' +
+          'itemsGiven reappears under every chapter that reaches it. Deduplicate ' +
+          'by address before summing: a single 5,000-gold script shared by 17 ' +
+          'maps is one payout, not 85,000 gold.',
+        '`midChapterRecruits` is filtered to the playable roster. The underlying ' +
+          'scan sees every LOAD1 including enemy placements, which in a hack that ' +
+          'reuses ids runs to several times the character count.',
       ],
     };
   },

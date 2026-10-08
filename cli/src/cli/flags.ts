@@ -50,9 +50,12 @@ export const FLAGS: readonly FlagSpec[] = [
     name: 'all',
     type: 'boolean',
     summary: 'Include empty/unused table slots',
-    commands: ['units', 'classes', 'terrain', 'items', 'objects', 'chapters'],
+    commands: ['units', 'classes', 'terrain', 'items', 'objects', 'chapters', 'storypath'],
     notes: {
-      chapters: 'also include non-character join records',
+      chapters: 'also include non-character join records and padded map rows',
+      storypath:
+        'also include padded map rows, whose transitions are copies, and the ' +
+        'raw instruction edges behind each destination',
     },
   },
   {
