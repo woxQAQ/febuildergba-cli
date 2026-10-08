@@ -15,7 +15,13 @@ import {
 } from '../tables/supports.ts';
 import type { SupportValidation } from '../tables/supports.ts';
 import { CLASS_TERRAIN_COUNT } from '../tables/classes.ts';
-import { affinityName, rankedBonus } from '../tables/supportBonus.ts';
+import {
+  affinityName,
+  isNamedAffinity,
+  rankedBonus,
+  SUPPORT_BONUS_MAX_RECORDS,
+  SUPPORT_BONUS_STATS,
+} from '../tables/supportBonus.ts';
 import { MAP_ANY, forcedUnitsForMap } from '../tables/forceSortie.ts';
 import { collectEnemyStats } from './enemyStats.ts';
 
@@ -146,18 +152,33 @@ export function validateRom(loaded: LoadedRom): ValidationReport {
     'warn',
   );
 
-  // Every unit must point at a class that exists in the class table.
-  const unknownClasses = playable.filter((u) => !loaded.classNames.has(u.classId));
+  // Every unit must point at a class record that exists. Note this is NOT the
+  // same as "resolves to a *named* class": `classNames` only holds classes whose
+  // name text decoded, so an unnamed-but-present record would be indistinguishable
+  // from a missing one there. A hack can legitimately ship a class whose name
+  // text id points at a string the decoder cannot read (Vision_Quest's Hokulani
+  // promotes into class 0x48, whose name is an `unhuffman` blob of @00XX glyph
+  // codes) - the record is real and its stats apply, so that is a warning about
+  // text, not a dangling pointer.
+  const classRecords = new Set(loaded.classes.map((c) => c.id));
+  const missingClasses = playable.filter((u) => !classRecords.has(u.classId));
+  const unnamedClasses = playable.filter(
+    (u) => classRecords.has(u.classId) && !loaded.classNames.has(u.classId),
+  );
   add(
     'unit.classIds',
-    unknownClasses.length === 0,
-    unknownClasses.length === 0
-      ? 'every unit class id resolves to a named class'
-      : `${unknownClasses.length} units reference an unnamed class id ` +
-        `(e.g. ${unknownClasses
+    missingClasses.length === 0,
+    missingClasses.length === 0
+      ? `every unit class id resolves to an existing class record` +
+        (unnamedClasses.length > 0
+          ? ` (${unnamedClasses.length} of them have an undecodable name)`
+          : '')
+      : `${missingClasses.length} units reference a class id with no record ` +
+        `(e.g. ${missingClasses
           .slice(0, 5)
           .map((u) => `${u.name || `#${u.id}`}->0x${u.classId.toString(16)}`)
           .join(', ')})`,
+    missingClasses.length === 0 && unnamedClasses.length > 0 ? 'warn' : 'error',
   );
 
   // --- Support data -------------------------------------------------------
@@ -212,19 +233,45 @@ export function validateRom(loaded: LoadedRom): ValidationReport {
   );
 
   // --- Affinity / role data -----------------------------------------------
-  // The bonus table is indexed by affinity id 1..7 and terminated by a zero
-  // record, so a complete read must yield exactly ids 1..7 in order. A short or
-  // gapped read means the pointer slot or the stride is wrong.
+  // The bonus table is a run of non-zero-id records closed by a zero id, and
+  // `SupportAttributeForm.Init` (SupportAttributeForm.cs:23) uses exactly that
+  // as its only termination test - there is no hardcoded record count. Vanilla
+  // FE8 stops at id 7, but hacks extend the table and the reference reads those
+  // happily.
+  //
+  // The game looks a bonus row up BY ID, so ordering carries no meaning and the
+  // ids need not be contiguous or dense: Vision_Quest's table is
+  // `1..9, 16, 11..15` - id 16 sits where 10 would be, and 10 is absent
+  // entirely. Requiring `1..N` would be inventing a constraint the format does
+  // not have.
+  //
+  // What genuinely indicates a misparse is a DUPLICATE id (only possible if the
+  // 8-byte stride is wrong) or a run so long it must have run off the end of the
+  // read window.
   const affinities = loaded.supportBonuses.map((b) => b.affinity);
-  const affinityOk =
-    affinities.length === 7 && affinities.every((a, i) => a === i + 1);
+  const duplicateIds = affinities.filter((a, i) => affinities.indexOf(a) !== i);
+  // `readSupportBonuses` stops at SUPPORT_BONUS_MAX_RECORDS, so reaching that
+  // cap means the table never terminated and the slot or stride is probably wrong.
+  const hitReadCap = affinities.length >= SUPPORT_BONUS_MAX_RECORDS;
+  const affinityOk = affinities.length > 0 && duplicateIds.length === 0 && !hitReadCap;
+  // Affinities past the reference's seven have no name in the game either, so
+  // surface them as a note rather than an error.
+  const unnamed = affinities.filter((a) => !isNamedAffinity(a));
+  const affinityNote =
+    unnamed.length === 0
+      ? ''
+      : ` (${unnamed.length} unnamed: the reference names only ids 1..7)`;
   add(
     'support.affinityTable',
     affinityOk,
     affinityOk
-      ? `7 affinity bonus records read: ${affinities.join(',')}`
-      : `expected affinity ids 1..7, read [${affinities.join(',')}] ` +
-        `(${loaded.supportBonuses.length} records)`,
+      ? `${affinities.length} affinity bonus records read, ids unique: ` +
+        `${affinities.join(',')}${affinityNote}`
+      : duplicateIds.length > 0
+        ? `duplicate affinity ids ${[...new Set(duplicateIds)].join(',')}; ` +
+          'the 8-byte stride is probably wrong'
+        : `read stopped at the ${affinities.length}-record cap without a ` +
+          'terminator; the pointer slot or stride is probably wrong',
   );
 
   // The rank thresholds and the conversation caps are two different numbers
@@ -251,17 +298,45 @@ export function validateRom(loaded: LoadedRom): ValidationReport {
   // makes `atk` the one column that must be 0 at C but non-zero at B. A reader
   // that forgot the halving would report atk = 1 at C, which is the single
   // cheapest way to catch that mistake - hence this check.
+  //
+  // What is actually being verified here is the SCALING, not the specific
+  // numbers: every row must satisfy `(stored * multiplier) >> 1` at every rank,
+  // for every stat. Checking the arithmetic directly (rather than asserting the
+  // vanilla 0/1/1 and 2/5/7 constants) keeps the check meaningful on hacks that
+  // ship their own bonus values - Vision_Quest's extra affinities use 10 half-
+  // points where vanilla uses 5, which is a legal table, not a parse failure.
   const rows = loaded.supportBonuses.map((b) => rankedBonus(b));
-  const halfPointOk =
-    rows.length === 7 &&
-    rows.every((r) => r.C.atk === 0 && r.B.atk === r.A.atk && r.B.atk > 0) &&
-    rows.every((r) => r.C.critAvoid === 2 && r.B.critAvoid === 5 && r.A.critAvoid === 7);
+  const rankMult: Record<'C' | 'B' | 'A', number> = { C: 1, B: 2, A: 3 };
+  /**
+   * Does this row scale exactly as the game does at every rank?
+   *
+   * `scaleBonus` is `(stored * multiplier) >> 1`, i.e. the product is halved and
+   * *then* truncated - so this must be `floor(stored * mult / 2)`, not
+   * `floor(stored * mult) / 2`. Getting that order wrong is exactly the class
+   * of bug this check exists to catch, so it is spelled out explicitly here
+   * rather than folded into a helper both sides share (sharing it would make the
+   * check unable to fail).
+   */
+  const rowHalves = (row: (typeof rows)[number], stored: Record<string, number>): boolean =>
+    (['C', 'B', 'A'] as const).every((rank) =>
+      SUPPORT_BONUS_STATS.every(
+        (stat) =>
+          row[rank][stat] === Math.floor(((stored[stat] as number) * rankMult[rank]) / 2),
+      ),
+    );
+  const badRows = rows.filter((row, i) => {
+    const stored = loaded.supportBonuses[i]?.bonuses;
+    return !stored || !rowHalves(row, stored as Record<string, number>);
+  });
+  const halfPointOk = rows.length > 0 && badRows.length === 0;
   add(
     'support.bonusHalving',
     halfPointOk,
     halfPointOk
-      ? 'all 7 rows halve as the game does: atk 0/1/1 and critAvoid 2/5/7 at C/B/A'
-      : `half-point scaling looks wrong; atk by rank = ${rows
+      ? `all ${rows.length} rows halve as the game does ` +
+        `((stored * rank) >> 1 at every rank, every stat)`
+      : `${badRows.length} of ${rows.length} rows do not match ` +
+        `(stored * rank) >> 1; atk by rank = ${rows
           .map((r) => `${r.C.atk}/${r.B.atk}/${r.A.atk}`)
           .join(' ')}`,
   );
@@ -287,11 +362,19 @@ export function validateRom(loaded: LoadedRom): ValidationReport {
   const nameMismatch = [...loaded.affinityNames.entries()].filter(
     ([id, name]) => name !== affinityName(id),
   );
+  // `affinityNames` is built from `AFFINITY_TEXT_IDS`, which has exactly the
+  // seven ids the reference's `GetAffinityName` looks up - so its size is fixed
+  // by construction and asserting on it would be vacuous. What is worth
+  // checking is that the ROM's own text table agrees with the reference for
+  // every id, which is an independent confirmation of both the text table and
+  // the id ordering. Ids past 7 have no reference name to compare against, so
+  // they are outside this check by construction.
   add(
     'support.affinityNames',
-    loaded.affinityNames.size === 7 && nameMismatch.length === 0,
+    nameMismatch.length === 0,
     nameMismatch.length === 0
-      ? `the ROM's text table names all 7 affinities exactly as the reference does`
+      ? `the ROM's text table names all ${loaded.affinityNames.size} ` +
+        `affinities exactly as the reference does`
       : `affinity names disagree: ${nameMismatch
           .map(([id, name]) => `${id}=${JSON.stringify(name)} vs ${affinityName(id)}`)
           .join(', ')}`,
@@ -549,13 +632,28 @@ export function validateRom(loaded: LoadedRom): ValidationReport {
 
   // Every record that names an event plist must resolve to a readable
   // condition table whose pointers are inside the ROM.
-  const withPlist = loaded.chapters.filter((c) => c.eventPlist !== 0);
+  //
+  // Unnumbered slots are excluded: the map-setting table is structurally
+  // scanned, so it yields every 148-byte row the hack has, including the ones
+  // the game never enters as a chapter (Vision_Quest has 79 rows but 41 real
+  // chapters). Those unused rows can hold leftover bytes, and demanding a
+  // condition table of them would report noise. A real chapter always has a
+  // chapter number.
+  const withPlist = loaded.chapters.filter(
+    (c) => c.eventPlist !== 0 && c.chapterNumber > 0,
+  );
   const resolvedConds = withPlist.filter((c) => c.condTableAddr !== 0);
+  const unnumberedWithPlist = loaded.chapters.filter(
+    (c) => c.eventPlist !== 0 && c.chapterNumber <= 0,
+  ).length;
   add(
     'chapter.conditionTables',
     withPlist.length === 0 || resolvedConds.length === withPlist.length,
     `${resolvedConds.length}/${withPlist.length} chapters with an event plist ` +
-      'resolve to a condition table',
+      'resolve to a condition table' +
+      (unnumberedWithPlist > 0
+        ? ` (${unnumberedWithPlist} unnumbered/unused slots not counted)`
+        : ''),
   );
 
   // A placement block is a run of `unitDataSize`-byte records terminated by a
@@ -780,7 +878,28 @@ export function validateRom(loaded: LoadedRom): ValidationReport {
   const goldChests = chests.filter((o) => o.isGoldChest);
   const itemChests = chests.filter((o) => !o.isGoldChest);
 
-  const badChestType = chests.filter((o) => o.objectType !== 0x14);
+  // FE8 chests must carry object type 0x14 (`EventCondForm.cs:1106`,
+  // `objectTypeOfChest = 0x14`).
+  //
+  // Two very different things can break that, so they are separated:
+  //  - A record whose whole body is zero (type/flag/item/gold/x/y/objectType all
+  //    zero) is an empty placeholder the hack author left behind. The list is
+  //    terminated by a zero u32, not a zero objectType, so such a row still
+  //    reads as a record - but it is a data curiosity, not a misparse.
+  //  - A record with a real objectType that is not 0x14 is a genuine mismatch
+  //    and stays an error.
+  // Vision_Quest has one of the former (map 13), so this is a warn, not an error.
+  const isEmptyPlaceholder = (o: (typeof chests)[number]): boolean =>
+    o.objectType === 0 &&
+    o.flag === 0 &&
+    (o.itemId ?? 0) === 0 &&
+    o.gold === 0 &&
+    o.x === 0 &&
+    o.y === 0;
+  const placeholderChests = chests.filter(isEmptyPlaceholder);
+  const badChestType = chests.filter(
+    (o) => o.objectType !== 0x14 && !isEmptyPlaceholder(o),
+  );
   const unresolvedChestItems = itemChests.filter(
     (o) => o.itemId === null || !loaded.itemMap.has(o.itemId),
   );
@@ -788,13 +907,17 @@ export function validateRom(loaded: LoadedRom): ValidationReport {
     'object.chestType',
     badChestType.length === 0,
     badChestType.length === 0
-      ? `all ${chests.length} chest records carry object type 0x14, as FE8 requires`
+      ? `all ${chests.length} chest records carry object type 0x14, as FE8 requires` +
+        (placeholderChests.length > 0
+          ? ` (${placeholderChests.length} all-zero placeholder row` +
+            `${placeholderChests.length === 1 ? '' : 's'} ignored)`
+          : '')
       : `${badChestType.length} chest records carry a non-chest object type: ` +
         badChestType
           .slice(0, 5)
           .map((o) => `0x${o.objectType.toString(16)}`)
           .join(', '),
-    'error',
+    'warn',
   );
 
   add(

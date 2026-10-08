@@ -115,7 +115,17 @@ import { RomBuffer } from '../rom/RomBuffer.ts';
 import type { TextContext } from '../text/huffman.ts';
 import { decodeTextId, displayName } from '../text/huffman.ts';
 
-/** `InputFormRef.GetAttributeName()` - hardcoded in the reference. */
+/**
+ * `InputFormRef.GetAttributeName()` - hardcoded in the reference.
+ *
+ * The reference names exactly these seven and returns `"-"` for every other
+ * id. Hacks do extend the table past 7 (Vision_Quest carries ids up to 16),
+ * and for those the game has no name to look up either - the id in the bonus
+ * table is the only thing that identifies them. So we report the reference's
+ * `"-"` rather than inventing an `affinity 11` label: a fabricated name reads
+ * like real data, while `-` is honest about being unnamed. Callers that need
+ * the id itself should print `id` alongside.
+ */
 export const AFFINITY_NAMES: Readonly<Record<number, string>> = {
   1: 'Fire',
   2: 'Thunder',
@@ -126,8 +136,33 @@ export const AFFINITY_NAMES: Readonly<Record<number, string>> = {
   7: 'Anima',
 };
 
+/** The label the reference prints for an affinity it has no name for. */
+export const UNNAMED_AFFINITY = '-';
+
+/** True when the reference (and therefore the game) has a name for this id. */
+export function isNamedAffinity(id: number): boolean {
+  return id in AFFINITY_NAMES;
+}
+
+/**
+ * `InputFormRef.GetAttributeName()`: the seven named affinities, else `"-"`.
+ *
+ * Never invents a name - see {@link AFFINITY_NAMES}.
+ */
 export function affinityName(id: number): string {
-  return AFFINITY_NAMES[id] ?? `affinity ${id}`;
+  return AFFINITY_NAMES[id] ?? UNNAMED_AFFINITY;
+}
+
+/**
+ * `affinityName` but always carrying the id, for contexts where the reader
+ * needs to tell `Fire` from `affinity 11`. Affinities the reference names are
+ * printed bare; anything else becomes `11 (-)`, which stays a single token and
+ * so cannot run into column-padding bugs the way a spaced label does.
+ */
+export function affinityLabel(id: number): string {
+  const named = AFFINITY_NAMES[id];
+  if (named !== undefined) return named;
+  return `${id} (${UNNAMED_AFFINITY})`;
 }
 
 /**
@@ -229,12 +264,21 @@ export interface SupportBonus {
  * `slot` is `layout.support.attributePointer`. Returns an empty array when the
  * pointer is unusable.
  */
+/**
+ * Hard cap on how many bonus records {@link readSupportBonuses} will read.
+ *
+ * The format's own terminator is a zero id; this only bounds a table that never
+ * terminates, so that a wrong pointer slot cannot walk the whole ROM. Exported
+ * so the validator can tell "the table ended" from "we hit the ceiling".
+ */
+export const SUPPORT_BONUS_MAX_RECORDS = 0x20;
+
 export function readSupportBonuses(rom: RomBuffer, slot: number): SupportBonus[] {
   const table = rom.p32(slot);
   if (!rom.isSafeOffset(table)) return [];
 
   const out: SupportBonus[] = [];
-  for (let index = 0; index < 0x20; index++) {
+  for (let index = 0; index < SUPPORT_BONUS_MAX_RECORDS; index++) {
     const addr = table + index * SUPPORT_BONUS_RECORD_SIZE;
     if (!rom.isSafeOffset(addr) || addr + SUPPORT_BONUS_RECORD_SIZE > rom.length) break;
 

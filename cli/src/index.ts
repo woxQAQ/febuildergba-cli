@@ -26,7 +26,7 @@ import {
   summarizeAs,
 } from './analysis/enemyStats.ts';
 import {
-  affinityName,
+  affinityLabel as affinityLabelForId,
   bonusByAffinity,
   rankedBonus,
   MAX_SIMULTANEOUS_SUPPORT_LEVELS,
@@ -52,9 +52,13 @@ import type { LoadedRom } from './load.ts';
 /**
  * Affinity name preferring the ROM's own text table, falling back to the
  * reference's hardcoded switch. See `readAffinityNames`.
+ *
+ * Ids the ROM has no name for (hacks extend the table past the seven the
+ * reference knows) fall back to `affinityLabel`, which carries the id - the
+ * affinity is real and its bonuses apply, it just has no name to show.
  */
 function affinityLabel(loaded: LoadedRom, id: number): string {
-  return loaded.affinityNames.get(id) ?? affinityName(id);
+  return loaded.affinityNames.get(id) ?? affinityLabelForId(id);
 }
 
 const USAGE = `
@@ -260,6 +264,12 @@ function cmdUnits(loaded: LoadedRom, options: CliOptions): unknown {
       growthTotal: u.growthTotal,
       weaponLevels: u.weaponLevels,
       affinity: u.attribute === 0 ? null : affinityLabel(loaded, u.attribute),
+      /**
+       * Raw affinity id, kept alongside the name because ids past the
+       * reference's seven have no name to show - `"-"` alone would leave the
+       * reader unable to tell which of several unnamed affinities this is.
+       */
+      affinityId: u.attribute === 0 ? null : u.attribute,
       mobility: role?.mobility ?? null,
       hasStaff: role?.hasStaff ?? null,
       supportAddress: u.hasSupportData ? `0x${u.supportAddress.toString(16).toUpperCase()}` : null,
