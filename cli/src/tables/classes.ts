@@ -1,4 +1,35 @@
 /**
+ * A class name, dispatched by storage format.
+ *
+ * Hacks store class names in either format, and the distinction matters: the
+ * **item font** (`ITEM_FONT`) is a separate glyph space where `< 0x80` is plain
+ * ASCII and `0x81..0xBC` are glyph codes for the letters that have no ASCII
+ * slot. A name stored that way must NOT go through `decodeTextId` -
+ * `applySpecialGlyphs` only expands the Latin-1 accented codes, so every
+ * glyph code survives as a literal `@00XX`, and the later `stripAllCodes`
+ * deletes them, leaving only the incidental ASCII letters.
+ *
+ * That is what turned Vision Quest's `Sword Pegasus` (id 71, `Natsuko`) into
+ * `"w"` and `Sword Cavalier` (id 35, `Marlen`) into `"w li"` - not custom
+ * names, just the item font read as text.
+ */
+function readClassName(rom: RomBuffer, textId: number, text: TextContext): string {
+  if (textId === 0) return '';
+
+  const entry = text.textBase + textId * 4;
+  if (!rom.isSafeOffset(entry)) return '';
+
+  const pointer = rom.u32(entry);
+  if (isUnHuffmanPatchPointer(pointer)) {
+    const addr = rom.toOffset(convertUnHuffmanPatchToPointer(pointer));
+    const { text: name } = decodeItemFontBytes(unHuffmanRawBytes(rom, addr));
+    return name.trim();
+  }
+
+  return displayName(decodeTextId(rom, textId, text));
+}
+
+/**
  * Class table.
  *
  * Record layout, 84 bytes. Derived from `ClassForm.designer.cs` control names
@@ -24,7 +55,17 @@
 
 import { RomBuffer } from '../rom/RomBuffer.ts';
 import type { TextContext } from '../text/huffman.ts';
-import { decodeTextId, displayName, sanitizeText } from '../text/huffman.ts';
+import {
+  classifyTextPointer,
+  convertUnHuffmanPatchToPointer,
+  decodeTextId,
+  displayName,
+  isUnHuffmanPatchPointer,
+  sanitizeText,
+  stripAllCodes,
+  unHuffmanRawBytes,
+} from '../text/huffman.ts';
+import { decodeItemFontBytes } from '../text/itemFont.ts';
 import type { ResolvedTable, WeaponLevels } from './common.ts';
 import { readWeaponLevels } from './common.ts';
 import type { ClassFlagDef, MountKind } from './classFlags.ts';
@@ -111,8 +152,26 @@ export interface UnitClass {
   nameTextId: number;
   name: string;
   description: string;
-  /** Class this one promotes into, or 0 when it is a promoted/terminal class. */
+  /**
+   * **The class this one is promoted FROM** - the field is a *reverse* link,
+   * despite the reference implementation's own naming. Verified on FE8U:
+   * `Knight`(1) stores 3, and 3 is `General`; `Paladin`(7) stores 5, and 5 is
+   * `Lance Cavalier`. Reading it as "this class promotes into X" produces
+   * nonsense (a level-1 unit looking already-promoted).
+   *
+   * To test "is this class already promoted", count *inbound* links instead:
+   * some `X` exists with `promotesToClassId === thisClass`.
+   *
+   * {@link UnitClass.sortOrder} is the forward view: each base/promoted pair
+   * shares a value (Brawler=1, Great Chief=2).
+   */
   promotesToClassId: number;
+  /**
+   * Promotion tier. Each base class and its promoted version share one value,
+   * so 1 = Brawler/Great Chief tier, 2 = Gladiator, ... Read this, not
+   * {@link promotesToClassId}, to know which side of a promotion a class is on.
+   */
+  sortOrder: number;
   movementRange: number;
   movementSpeed: number;
   bases: ClassBases;
@@ -295,9 +354,10 @@ export function readClass(ctx: ClassTableContext, index: number): UnitClass | nu
     index,
     address: addr,
     nameTextId,
-    name: displayName(decodeTextId(rom, nameTextId, text)),
+    name: readClassName(rom, nameTextId, text),
     description: sanitizeText(decodeTextId(rom, descriptionTextId, text)),
     promotesToClassId: rom.u8(addr + CLASS_OFFSET.promotesToClassId),
+    sortOrder: rom.u8(addr + CLASS_OFFSET.sortOrder),
     movementRange: rom.u8(addr + CLASS_OFFSET.movementRange),
     movementSpeed: rom.u8(addr + CLASS_OFFSET.movementSpeed),
     bases: readBases(rom, addr),

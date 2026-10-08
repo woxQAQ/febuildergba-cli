@@ -1,4 +1,4 @@
-import { summariseMobility, mobilityDisagreements } from '../analysis/roles.ts';
+import { summariseMobility, mobilityDisagreements } from '../tables/classRoles.ts';
 import { affinityLabel } from './shared.ts';
 import type { Command } from './types.ts';
 

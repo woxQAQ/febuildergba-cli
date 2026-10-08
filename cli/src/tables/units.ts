@@ -130,6 +130,17 @@ export interface Unit {
   description: string;
   classId: number;
   className: string;
+  /**
+   * True when this class is the *promoted* half of a base/promoted pair, i.e.
+   * some other class's reverse `promotesToClassId` points at it. Such a unit
+   * has already promoted and has no promotion left.
+   *
+   * Hack rosters skew heavily this way - Vision Quest starts 74% of its
+   * playable units in a promoted class - so "can this unit still promote" is
+   * a real strategic question, not a formality. Derived from the class table,
+   * which is why this lives here rather than in an analysis script.
+   */
+  isPromotedClass: boolean;
   mapFaceId: number;
   portraitId: number;
   attribute: number;
@@ -165,6 +176,11 @@ export interface UnitTableContext {
    * absent the class contribution is treated as zero.
    */
   classBases?: ReadonlyMap<number, ClassBases>;
+  /**
+   * Class ids that are the promoted half of a pair, i.e. classes some other
+   * class promotes *from*. Required to set {@link Unit.isPromotedClass}.
+   */
+  promotedClassIds?: ReadonlySet<number>;
 }
 
 /** Signed: these are deltas on the class base, and may be negative. */
@@ -257,6 +273,7 @@ export function readUnit(ctx: UnitTableContext, index: number): Unit | null {
     description,
     classId,
     className: ctx.classNames.get(classId) ?? '',
+    isPromotedClass: ctx.promotedClassIds?.has(classId) ?? false,
     mapFaceId: rom.u16(addr + UNIT_OFFSET.mapFaceId),
     portraitId: rom.u8(addr + UNIT_OFFSET.portraitId),
     attribute: rom.u8(addr + UNIT_OFFSET.attribute),

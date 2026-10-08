@@ -27,8 +27,8 @@ import type { SupportBonus } from './tables/supportBonus.ts';
 import { readAffinityNames, readSupportBonuses } from './tables/supportBonus.ts';
 import type { TerrainReadResult } from './tables/terrainNames.ts';
 import { readTerrainNames } from './tables/terrainNames.ts';
-import type { ClassRole } from './analysis/roles.ts';
-import { deriveClassRoles } from './analysis/roles.ts';
+import type { ClassRole } from './tables/classRoles.ts';
+import { deriveClassRoles } from './tables/classRoles.ts';
 import { findConfigDataDir } from './config/data.ts';
 import type { ClassFlagDef } from './tables/classFlags.ts';
 import { loadClassFlags } from './tables/classFlags.ts';
@@ -170,7 +170,30 @@ export function loadRom(path: string, options: LoadOptions = {}): LoadedRom {
   // Class base stats are needed to turn a unit's per-unit deltas into the stats
   // it actually starts with (`startingStat = class base + unit base`).
   const classBases = new Map(classes.map((c) => [c.id, c.bases]));
-  const units = readAllUnits({ rom, table: unitTable, text, classNames, classBases });
+  // Which classes are already promoted?
+  //
+  // NOT via `promotesToClassId`: in a base/promoted pair that field links the
+  // two ids **both ways** (verified on FE8U - `Brawler`(1) stores 3 and
+  // `Great Chief`(3) stores 1; same for 5/7, 9/11, 15/17), so it cannot
+  // break the tie. `sortOrder` can: verified across 9 pairs, the **higher**
+  // value is always the promoted side (Brawler=1 / Great Chief=2,
+  // Sword Pegasus=16 / Falcoknight=17, Swd Mercenary=3 / Hero=4).
+  //
+  // My partner is whatever `promotesToClassId` names. If my partner sorts
+  // higher than I do, *it* is the promoted one and I am still base.
+  const promotedClassIds = new Set<number>();
+  for (const c of classes) {
+    const target = classes.find((o) => o.id === c.promotesToClassId);
+    if (target && target.sortOrder < c.sortOrder) promotedClassIds.add(c.id);
+  }
+  const units = readAllUnits({
+    rom,
+    table: unitTable,
+    text,
+    classNames,
+    classBases,
+    promotedClassIds,
+  });
   const unitNames = buildUnitNameMap(units);
 
   const supports = readSupports(rom, units, unitNames);

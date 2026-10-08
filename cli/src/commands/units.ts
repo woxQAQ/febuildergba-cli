@@ -1,4 +1,5 @@
 import { hex } from '../cli/hex.ts';
+import { promotesForwardTarget } from '../analysis/report.ts';
 import { affinityLabel } from './shared.ts';
 import type { Command } from './types.ts';
 
@@ -26,6 +27,22 @@ export const units: Command = {
         nameRaw: u.nameRaw,
         className: u.className,
         classId: u.classId,
+        /**
+         * Already in the promoted half of a base/promoted pair, i.e. no
+         * promotion left. Hack rosters skew heavily this way (Vision Quest
+         * starts 74% of its playable units promoted), so whether a unit can
+         * still promote is a real question rather than a formality.
+         */
+        isPromotedClass: u.isPromotedClass,
+        /**
+         * The class this one promotes INTO, or `null` when it is already
+         * promoted. `classes[].promotesToClassId` links a pair both ways, so
+         * this resolves the direction via `sortOrder`; see `load.ts`.
+         */
+        promotesTo: (() => {
+          const target = promotesForwardTarget(rom.classes, u.classId);
+          return target === 0 ? null : (rom.classNames.get(target) ?? `class ${target}`);
+        })(),
         level: u.level,
         /** Per-unit deltas, signed - NOT the stats the unit starts with. */
         stats: u.stats,

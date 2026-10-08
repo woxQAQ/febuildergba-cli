@@ -1,11 +1,17 @@
 /**
- * Class role profiles, for team-composition analysis.
+ * Class role profiles: what a class can do in battle.
+ *
+ * **This is decoding, not analysis** - it lives in `tables/` because every input
+ * is a class record field (see the table below). It sat in `analysis/` for a
+ * while, which inverted the dependency direction: `load.ts` (the loader) had to
+ * import from `analysis/`, and an ablation run confirmed it - stubbing this file
+ * killed the weapon-coverage and per-unit `role` output of two other commands.
  *
  * ## Two sources, in priority order
  *
  * 1. **Ability flags** (class record `+40`..`+43`) - authoritative. The bit
  *    names come from `config/data/unitclass_checkbox_<game>.txt`; see
- *    `tables/classFlags.ts`. This is what distinguishes horse from wyvern from
+ *    `classFlags.ts`. This is what distinguishes horse from wyvern from
  *    pegasus from armour, and what identifies dancers / bards / thieves.
  *
  * 2. **Terrain movement costs** (pointer at `+56`) - a fallback for when
@@ -27,11 +33,11 @@
  * | `mobility` | `mount` when known, else movement costs |
  */
 
-import type { UnitClass } from '../tables/classes.ts';
-import { IMPASSABLE_COST } from '../tables/classes.ts';
-import type { MountKind } from '../tables/classFlags.ts';
-import type { WeaponType } from '../tables/common.ts';
-import { WEAPON_TYPES } from '../tables/common.ts';
+import type { UnitClass } from './classes.ts';
+import { IMPASSABLE_COST } from './classes.ts';
+import type { MountKind } from './classFlags.ts';
+import type { WeaponType } from './common.ts';
+import { WEAPON_TYPES } from './common.ts';
 
 /**
  * Terrain mobility, normalised across both sources.

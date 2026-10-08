@@ -30,7 +30,7 @@ import {
   SUPPORT_RANK_THRESHOLDS,
   supportRankPlan,
 } from '../tables/supports.ts';
-import type { Mobility } from './roles.ts';
+import type { Mobility } from '../tables/classRoles.ts';
 import type { WeaponType } from '../tables/common.ts';
 import {
   affinityName,
@@ -495,11 +495,27 @@ function isStoryChapter(chapter: Chapter | null): boolean | null {
   return chapter === null ? null : isStoryTitle(chapter.title);
 }
 
+/**
+ * The class `id` promotes INTO - the forward direction.
+ *
+ * `promotesToClassId` links a base/promoted pair in BOTH directions, so the
+ * link alone cannot tell you which side is promoted. `sortOrder` can: the
+ * higher value in a pair is the promoted class (see `load.ts`).
+ */
+export function promotesForwardTarget(classes: readonly UnitClass[], id: number): number {
+  const cls = classes.find((c) => c.id === id);
+  if (!cls) return 0;
+  const target = classes.find((c) => c.id === cls.promotesToClassId);
+  return target && target.sortOrder > cls.sortOrder ? target.id : 0;
+}
+
 function toUnitReport(unit: Unit, loaded: LoadedRom): UnitReport {
   const cls = loaded.classes.find((c) => c.id === unit.classId);
+  // Resolve the forward promotion target; `null` once the unit is promoted.
+  const promotesToClassId = promotesForwardTarget(loaded.classes, unit.classId);
   const promotesTo =
-    cls && cls.promotesToClassId !== 0
-      ? (loaded.classNames.get(cls.promotesToClassId) ?? `class ${cls.promotesToClassId}`)
+    cls && promotesToClassId !== 0
+      ? (loaded.classNames.get(promotesToClassId) ?? `class ${promotesToClassId}`)
       : null;
 
   const entry = loaded.supports.entries.find((e) => e.unitId === unit.id);
@@ -527,6 +543,7 @@ function toUnitReport(unit: Unit, loaded: LoadedRom): UnitReport {
     nameRaw: unit.nameRaw,
     className: unit.className,
     classId: unit.classId,
+    isPromotedClass: unit.isPromotedClass,
     level: unit.level,
     stats: unit.stats,
     startingStats: unit.startingStats,
@@ -672,10 +689,15 @@ export function buildReport(loaded: LoadedRom): Report {
       name: c.name,
       movement: c.movementRange,
       promotesToClassId: c.promotesToClassId,
-      promotesTo:
-        c.promotesToClassId === 0
-          ? null
-          : (loaded.classNames.get(c.promotesToClassId) ?? `class ${c.promotesToClassId}`),
+      /** Promotion tier; the pair's promoted half has the higher value. */
+      sortOrder: c.sortOrder,
+      promotesTo: (() => {
+        // Reverse link in the ROM; resolve the forward direction the same way
+        // `toUnitReport` does, and report `null` for already-promoted classes.
+        const target = promotesForwardTarget(loaded.classes, c.id);
+        if (target === 0) return null;
+        return loaded.classNames.get(target) ?? `class ${target}`;
+      })(),
       bases: c.bases,
       caps: c.caps,
       promotionBonuses: c.promotionBonuses,
