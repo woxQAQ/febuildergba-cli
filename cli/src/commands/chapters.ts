@@ -1,6 +1,6 @@
 import { hex } from '../cli/hex.ts';
 import { alwaysForcedUnits, forcedUnitsForMap, MAP_ANY, routeLabel } from '../tables/forceSortie.ts';
-import { isStoryTitle } from '../analysis/report.ts';
+import { isStoryTitle } from '../analysis/crossTable.ts';
 import type { Command } from './types.ts';
 
 /**

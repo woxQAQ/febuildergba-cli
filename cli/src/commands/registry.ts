@@ -12,7 +12,6 @@ import { shops } from './shops.ts';
 import { objects } from './objects.ts';
 import { enemyStats } from './enemyStats.ts';
 import { text } from './text.ts';
-import { dump } from './dump.ts';
 import { validate } from './validate.ts';
 
 /**
@@ -35,7 +34,6 @@ export const COMMANDS: readonly Command[] = [
   objects,
   enemyStats,
   text,
-  dump,
   validate,
 ];
 

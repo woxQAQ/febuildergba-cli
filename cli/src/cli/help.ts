@@ -78,7 +78,6 @@ export function usage(): string {
     '',
     'Examples:',
     '  fe-rom info         fixtures/dream-of-five.gba',
-    '  fe-rom dump         fixtures/dream-of-five.gba --out report.json',
     '  fe-rom roles        fixtures/dream-of-five.gba',
     '  fe-rom chapters     fixtures/dream-of-five.gba',
     '  fe-rom terrain      fixtures/dream-of-five.gba',

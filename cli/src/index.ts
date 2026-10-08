@@ -7,7 +7,7 @@
  *
  * Runs directly on Node >= 22.6 thanks to built-in TypeScript type stripping:
  *
- *     node src/index.ts dump ../../fixtures/dream-of-five.gba
+ *     node src/index.ts units ../../fixtures/dream-of-five.gba
  *
  * Zero runtime dependencies.
  *

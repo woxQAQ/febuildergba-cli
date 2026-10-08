@@ -1,4 +1,5 @@
 import { terrainHint } from '../tables/terrainNames.ts';
+import { promotesForwardTarget } from '../analysis/crossTable.ts';
 import type { Command } from './types.ts';
 
 export const classes: Command = {
@@ -28,10 +29,25 @@ export const classes: Command = {
       name: c.name,
       movement: c.movementRange,
       promotesToClassId: c.promotesToClassId,
-      promotesTo:
-        c.promotesToClassId === 0
-          ? null
-          : (rom.classNames.get(c.promotesToClassId) ?? `class ${c.promotesToClassId}`),
+      /**
+       * The class this one promotes INTO, or `null` when it is already
+       * promoted.
+       *
+       * `promotesToClassId` links a base/promoted pair in **both** directions
+       * (`Brawler` stores 3 and `Great Chief` stores 1), so it cannot tell you
+       * the direction by itself. `sortOrder` can: within a pair the promoted
+       * half has the higher value.
+       */
+      promotesTo: (() => {
+        const target = promotesForwardTarget(rom.classes, c.id);
+        return target === 0 ? null : (rom.classNames.get(target) ?? `class ${target}`);
+      })(),
+      /**
+       * Promotion tier; the base and promoted halves of a pair share one value
+       * (Brawler=1, Great Chief=2). Together with `promotesToClassId` this is
+       * what identifies a promotion pair at all.
+       */
+      sortOrder: c.sortOrder,
       bases: c.bases,
       caps: c.caps,
       promotionBonuses: c.promotionBonuses,
