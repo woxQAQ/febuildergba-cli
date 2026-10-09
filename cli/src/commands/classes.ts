@@ -7,8 +7,8 @@ export const classes: Command = {
   summary: 'Class table: bases, caps, movement, promotion targets',
   description:
     'One row per class. `bases` are the class\'s own stat floors; add a unit\'s ' +
-    '`stats` delta to get what that unit actually starts with. `impassableTerrains` ' +
-    'is resolved to names from the terrain-name table.',
+    '`stats` delta to get what that unit actually starts with. `--all` adds ' +
+    '`impassableTerrains`, the per-class terrain the class may not enter.',
   run: ({ rom, flags }) => {
     const rows = flags.all ? rom.classes : rom.classes.filter((c) => !c.isEmpty);
     const terrainName = new Map(rom.terrainNames.names.map((n) => [n.id, n.name]));
@@ -56,10 +56,20 @@ export const classes: Command = {
        * Terrain this class cannot enter at all (`cost == 0xFF`), named from the
        * terrain-name table - the cost columns and the name ids are the same
        * index space (see `tables/terrainNames.ts`). A flier's list is short.
+       *
+       * **`--all` only.** It is 26% of this command's output (38 KB on Vision
+       * Quest: 127 classes x ~28 ids) and no consumer reads it - the table is a
+       * full `movementCosts` column per class, so it is also the most
+       * reconstructible thing here. Dropped from the default so a class row
+       * stays a class row.
        */
-      impassableTerrains: c.movementCosts
-        .map((cost, id) => (cost === 0xff ? label(id) : null))
-        .filter((n): n is string => n !== null),
+      ...(flags.all
+        ? {
+            impassableTerrains: c.movementCosts
+              .map((cost, id) => (cost === 0xff ? label(id) : null))
+              .filter((n): n is string => n !== null),
+          }
+        : {}),
     }));
   },
 };

@@ -82,8 +82,10 @@ export function usage(): string {
     '  fe-rom chapters     fixtures/dream-of-five.gba',
     '  fe-rom storypath    fixtures/dream-of-five.gba',
     '  fe-rom terrain      fixtures/dream-of-five.gba',
-    '  fe-rom units        fixtures/dream-of-five.gba --playable-only',
+    '  fe-rom units        fixtures/dream-of-five.gba',
+    '  fe-rom units        fixtures/dream-of-five.gba --all',
     '  fe-rom enemy-stats  fixtures/dream-of-five.gba --hard',
+    '  fe-rom enemy-stats  fixtures/dream-of-five.gba --all',
     '  fe-rom text         fixtures/dream-of-five.gba 703 704 --range 0x210-0x218',
     '  fe-rom validate     fixtures/dream-of-five.gba',
   ].join('\n');

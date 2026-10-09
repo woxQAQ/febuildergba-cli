@@ -1,4 +1,3 @@
-import { hex } from '../cli/hex.ts';
 import { promotesForwardTarget } from '../analysis/crossTable.ts';
 import { affinityLabel } from './shared.ts';
 import type { Command } from './types.ts';
@@ -7,24 +6,33 @@ export const units: Command = {
   name: 'units',
   summary: 'Unit table: stats, growth rates, weapon levels, class',
   description:
-    'One row per unit slot. By default only populated slots are emitted; ' +
-    '`--all` includes the empty ones and `--playable-only` narrows to units ' +
-    'that carry support data.',
+    'One row per unit. By default only the **roster** is emitted - the units ' +
+    'that carry support data, which is the closest thing to a real roster this ' +
+    'parse can offer. `--all` emits every slot instead, empty slots and the ' +
+    'enemy / generic-template rows a hack keeps in the same table included. ' +
+    '`--playable-only` is the explicit spelling of the default.',
   run: ({ rom, flags }) => {
     const supportUnitIds = new Set(rom.supports.entries.map((e) => e.unitId));
-    let rows = flags.all ? rom.units : rom.units.filter((u) => !u.isEmpty);
-    if (flags.playableOnly) rows = rows.filter((u) => supportUnitIds.has(u.id));
+    /**
+     * Default is the roster, not "every populated slot".
+     *
+     * A hack's unit table is mostly enemy and generic-template rows. On Vision
+     * Quest 193 of the 255 populated slots carry no support data, and those
+     * rows were 288 KB - 74% - of this command's output while no consumer read
+     * them: `analyze.py` feeds every row in, then reports the count as
+     * "playable units". `chapters` has defaulted its `joinOrder` to the roster
+     * since it was written; this makes `units` agree with it.
+     *
+     * `--all` is the escape hatch and keeps the old behaviour.
+     */
+    const rosterOnly = !flags.all || flags.playableOnly;
+    const rows = rosterOnly ? rom.units.filter((u) => supportUnitIds.has(u.id)) : rom.units;
 
     return rows.map((u) => {
       const role = rom.classRoles.get(u.classId);
       return {
         id: u.id,
         name: u.name,
-        /**
-         * The decoded name with `@XXXX` text escapes left in. Differs from `name`
-         * only where the ROM put a glyph code inside the name field.
-         */
-        nameRaw: u.nameRaw,
         className: u.className,
         classId: u.classId,
         /**
@@ -98,7 +106,6 @@ export const units: Command = {
                   chapterNumber: ch.chapterNumber,
                   title: ch.title,
                   source: c.source,
-                  evidenceAddr: hex(c.evidenceAddr),
                   /** The placement put this unit in a different class than its own. */
                   classOverridden: c.classOverridden,
                 }
@@ -117,7 +124,6 @@ export const units: Command = {
         /** How many support partners this unit has, or 0 when it has no support data. */
         supportPartnerCount:
           rom.supports.entries.find((e) => e.unitId === u.id)?.partners.length ?? 0,
-        supportAddress: u.hasSupportData ? hex(u.supportAddress) : null,
       };
     });
   },

@@ -1,4 +1,3 @@
-import { hex, hexId } from '../cli/hex.ts';
 import { terrainHint } from '../tables/terrainNames.ts';
 import type { Command } from './types.ts';
 
@@ -18,25 +17,17 @@ export const terrain: Command = {
         table === null
           ? null
           : {
-              slot: hex(table.slotOffset),
-              address: hex(table.tableOffset),
               recordSize: table.recordSize,
               count: table.count,
-              shape: isMultibyte
-                ? '4-byte pointer to a raw Shift-JIS string (MapTerrainNameForm)'
-                : '2-byte text id (MapTerrainNameEngForm)',
             },
       entries: (
-        flags.all ? names : names.filter((n) => n.name !== '' || n.raw.length > 0)
+        flags.all ? names : names.filter((n) => n.name !== '')
       ).map((n) => ({
         id: n.id,
-        idHex: hexId(n.id),
         name: n.name,
         hint: terrainHint(n.id, isMultibyte) || null,
         textId: n.textId,
-        nameAddress: n.nameAddress === null ? null : hex(n.nameAddress),
         decoded: n.decoded,
-        ...(n.decoded ? {} : { raw: n.raw }),
       })),
       limitations: [
         'Terrain ids run 0..0x40 (65 entries) and match the movement-cost table ' +

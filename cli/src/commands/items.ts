@@ -1,4 +1,3 @@
-import { hex, hexId } from '../cli/hex.ts';
 import type { Command } from './types.ts';
 
 /**
@@ -23,8 +22,6 @@ export const items: Command = {
         table === null
           ? null
           : {
-              slot: hex(table.slotOffset),
-              address: hex(table.tableOffset),
               recordSize: table.recordSize,
               entriesRead: table.count,
               nonEmpty: rom.items.filter((i) => i.nameTextId !== 0).length,
@@ -32,7 +29,6 @@ export const items: Command = {
       priceRule: 'buyPrice = uses x unitPrice (+26); sellPrice = buyPrice / 2',
       entries: rows.map((i) => ({
         id: i.id,
-        idHex: hexId(i.id),
         name: i.name,
         type: i.typeName,
         rank: i.weaponRankLetter,

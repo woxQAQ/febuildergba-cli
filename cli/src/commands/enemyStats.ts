@@ -1,4 +1,3 @@
-import { hex } from '../cli/hex.ts';
 import {
   attackSpeedFirstWeapon,
   collectEnemyStats,
@@ -13,8 +12,14 @@ export const enemyStats: Command = {
   description:
     'Walks every reachable enemy placement block and projects attack speed, ' +
     'con and weight. `--hard` re-projects with the hard-mode autolevel round ' +
-    '(19 levels instead of 9). The `samples` array is flat on purpose: ' +
-    'per-chapter summaries cannot be combined into a route phase exactly.',
+    '(19 levels instead of 9).\n\n' +
+    'What is emitted is the **distribution** - overall, per autolevel routine ' +
+    'and per chapter, plus a per-class breakdown inside each chapter. The flat ' +
+    '`samples` array (one row per projected record) is `--all` only: it is the ' +
+    'raw material those summaries are computed from, so a run that reads a ' +
+    'summary was paying for a private copy of it. `--all` adds it back for a ' +
+    'consumer that needs to re-aggregate over an arbitrary chapter range, which ' +
+    'percentile summaries cannot do exactly.',
   run: ({ rom, flags }) => {
     const { samples, unresolvedClass } = collectEnemyStats({
       rom: rom.rom,
@@ -56,15 +61,18 @@ export const enemyStats: Command = {
         list.push(s);
         grouped.set(key, list);
       }
+      /**
+       * `classBaseSpd` and `meanUnitSpdDelta` used to be emitted here as well -
+       * the class floor and the mean character delta the projection adds to it.
+       * They are the inputs to `meanAs`/`medianAs`, not the answer, so a reader
+       * who wants "what speed are the Soldiers here" had to walk past two
+       * intermediate numbers to find it.
+       */
       return [...grouped.values()]
         .map((list) => ({
           classId: list[0]!.classId,
           className: list[0]!.className,
           count: list.length,
-          /** The class's own base speed, before the character delta and autolevel. */
-          classBaseSpd: list[0]!.classBaseSpd,
-          /** Mean signed character-table delta across these records. */
-          meanUnitSpdDelta: round(list.reduce((a, s) => a + s.unitSpdDelta, 0) / list.length),
           meanAs: round(summarizeAs(list).mean),
           medianAs: round(summarizeAs(list).median),
         }))
@@ -79,7 +87,6 @@ export const enemyStats: Command = {
           mapIndex: chapter.index,
           chapterNumber: chapter.chapterNumber,
           title: chapter.title,
-          startEvent: chapter.startEventAddr === 0 ? null : hex(chapter.startEventAddr),
           summary: summary(summarizeAs(sub)),
           /**
            * The same records priced with the **first** weapon in each record
@@ -134,25 +141,33 @@ export const enemyStats: Command = {
       },
       chapters: chapterRows,
       /**
-       * Every projected record, flat. Per-chapter summaries cannot be combined
-       * into a route phase exactly, so the raw rows are emitted and consumers
-       * aggregate for themselves.
+       * Every projected record, flat - **`--all` only.**
+       *
+       * It was 843 KB of this command's 1.25 MB on Vision Quest (67%), and no
+       * consumer read it: the same 3,246 records are already priced in
+       * `overall`, `byRoutine`, `chapters[].summary` and
+       * `chapters[].classes[]`. Two of these columns are parser internals and
+       * stay out even under `--all`: `unitId` is the row in the unit table the
+       * placement named - a generic template id, not a character - and `grow`
+       * is the autolevel flag bit that `routine` already spells out.
        */
-      samples: samples.map((s) => ({
-        mapIndex: s.mapIndex,
-        unitId: s.unitId,
-        classId: s.classId,
-        className: s.className,
-        level: s.level,
-        grow: s.grow,
-        routine: s.routine,
-        promoted: s.promoted,
-        spd: round(s.spd.mean),
-        con: s.con,
-        weight: s.weight,
-        weightFirst: s.weightFirst,
-        as: round(s.as.mean),
-      })),
+      ...(flags.all
+        ? {
+            samples: samples.map((s) => ({
+              mapIndex: s.mapIndex,
+              classId: s.classId,
+              className: s.className,
+              level: s.level,
+              routine: s.routine,
+              promoted: s.promoted,
+              spd: round(s.spd.mean),
+              con: s.con,
+              weight: s.weight,
+              weightFirst: s.weightFirst,
+              as: round(s.as.mean),
+            })),
+          }
+        : {}),
       /** Every record whose attack speed came out below zero, with its inputs. */
       negativeSamples: negative,
       limitations: [

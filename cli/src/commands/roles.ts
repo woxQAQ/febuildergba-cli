@@ -1,4 +1,3 @@
-import { summariseMobility, mobilityDisagreements } from '../tables/classRoles.ts';
 import { affinityLabel } from './shared.ts';
 import type { Command } from './types.ts';
 
@@ -6,8 +5,8 @@ export const roles: Command = {
   name: 'roles',
   summary: 'Team composition: weapon coverage, mobility, healers, affinities',
   description:
-    'What the roster can actually field: which units cover each weapon type, who ' +
-    'can heal or cast, and how mobility was determined per class.',
+    'What the roster can actually field: which units cover each weapon type, ' +
+    'who can heal or cast, and how many of them move at each speed.',
   run: ({ rom, flags }) => {
     const supportUnitIds = new Set(rom.supports.entries.map((e) => e.unitId));
     const playable = rom.units.filter(
@@ -78,9 +77,8 @@ export const roles: Command = {
         mobility: {
           ...Object.fromEntries(mobilityCounts),
           note:
-            'Labels come from the class ability flags when the ROM sets them ' +
-            '(check `mobilitySource` per class); otherwise they are inferred ' +
-            'from the terrain movement-cost table.',
+            'Labels come from the class ability flags when the ROM sets them; ' +
+            'otherwise they are inferred from the terrain movement-cost table.',
         },
         specialActionClasses: allRoles
           .filter((r) => r.specialAction !== null)
@@ -95,21 +93,13 @@ export const roles: Command = {
           classId: r.classId,
           className: r.className,
           mobility: r.mobility,
-          mobilitySource: r.mobilitySource,
           mount: r.mount,
           specialAction: r.specialAction,
           movement: r.movement,
           weapons: r.weapons,
           hasStaff: r.hasStaff,
           isMagic: r.isMagic,
-          abilityFlags: r.flags,
         })),
-      classMobilitySummary: summariseMobility(rom.classRoles),
-      mobilityDisagreements: mobilityDisagreements(rom.classRoles),
-      flagSource:
-        rom.configDir === null
-          ? 'config/data NOT found - mobility is inferred from terrain costs only'
-          : rom.configDir,
     };
   },
 };

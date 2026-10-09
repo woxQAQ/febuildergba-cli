@@ -23,13 +23,11 @@ export const objects: Command = {
           return {
             kind: o.kind,
             triggerType: hex(o.type),
-            objectType: hex(o.objectType),
             objectTypeName: o.objectTypeName,
             /** Achievement flag; 0 means the object can be used more than once. */
             flag: o.flag,
             x: o.x,
             y: o.y,
-            address: hex(o.addr),
             /** Chests only: the item inside, and what it would sell for. */
             ...(o.kind === 'chest'
               ? {
@@ -41,10 +39,6 @@ export const objects: Command = {
                   sellPrice: o.isGoldChest ? 0 : (item?.sellPrice ?? 0),
                 }
               : {}),
-            /** Villages and houses: the script the object runs. */
-            ...(o.eventAddr ? { event: hex(o.eventAddr) } : {}),
-            /** Shops: the 2-byte entry list (see the `shops` command). */
-            ...(o.shopAddr ? { shopList: hex(o.shopAddr) } : {}),
           };
         }),
       }));

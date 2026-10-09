@@ -7,6 +7,7 @@ import {
   MAX_SIMULTANEOUS_SUPPORT_LEVELS,
   SUPPORT_BONUSES_MAX_DISTANCE,
   SUPPORT_EXP_DISTANCE,
+  rankedBonus,
 } from '../tables/supportBonus.ts';
 import type { Command } from './types.ts';
 
@@ -14,9 +15,10 @@ export const supports: Command = {
   name: 'supports',
   summary: 'Support relationships as a deduplicated edge list',
   description:
-    'Every support pair, once per direction, with the rank plan for reaching ' +
-    'each level. `byUnit` is the same data indexed by unit id, which is often ' +
-    'the easier shape to work with.',
+    'Every support pair once, as an edge list ordered `a < b`, with the rank ' +
+    'plan for reaching each level. `byUnit` indexes the same pairs by unit id, ' +
+    'which is often the easier shape to work with; it carries ids and names ' +
+    'only, so take the numbers from `edges`.',
   run: ({ rom }) => ({
     limit: 7,
     /**
@@ -55,9 +57,9 @@ export const supports: Command = {
       affinity: b.affinity,
       /** `null` when the id is past the reference's seven and has no name. */
       affinityName: b.affinityName ?? null,
-      raw: b.raw,
       bonuses: b.bonuses,
-      byRank: b.byRank,
+      /** C/B/A rows scaled from `bonuses`. See `rankedBonus` in `supportBonus.ts`. */
+      byRank: rankedBonus(b),
     })),
     edges: rom.supportGraph.map((e) => ({
       a: e.a,
@@ -73,19 +75,21 @@ export const supports: Command = {
     byUnit: rom.supports.entries.map((entry) => ({
       id: entry.unitId,
       name: entry.unitName,
-      declaredCount: entry.declaredCount,
       /**
        * Partners actually present in the table. Hacks can leave the declared
-       * count disagreeing with the record, so both are reported.
+       * count disagreeing with the record, so the record is what is reported.
        */
       partnerCount: entry.partners.length,
-      partners: entry.partners.map((p) => ({
-        id: p.unitId,
-        name: p.unitName,
-        initial: p.initial,
-        growth: p.growth,
-        ...supportRankPlan(p.initial, p.growth),
-      })),
+      /**
+       * **Id and name only.** The pair's numbers are on `edges`, which this
+       * view only re-indexes: `edges` has one row per unordered pair (`a < b`)
+       * carrying `initial` / `growth` / `startingRank` / `turnsTo`, and a
+       * partner whose reverse direction disagrees with it is preserved in that
+       * edge's `mismatch`. Restating them here cost 91 KB on Vision Quest - 90%
+       * of `byUnit` - to duplicate `edges`' own 49 KB across 318 rows that hold
+       * 159 distinct pairs. Look the numbers up by `{id, partner.id}` instead.
+       */
+      partners: entry.partners.map((p) => ({ id: p.unitId, name: p.unitName })),
     })),
     limitations: [
       'A support bonus is the sum of BOTH units\' affinity rows, each scaled by ' +

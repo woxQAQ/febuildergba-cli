@@ -92,16 +92,6 @@ name: 'chapters',
         /** Chapter title from `+0x70`; `''` for unused slots, `@001F` for world-map maps. */
         title: chapter.title,
         /**
-         * Raw table pointers, for auditing a decode. `startEvent` /
-         * `endEvent` / `playerPlacement` are three of the twenty condition
-         * slots; `condTableAddress` is the table holding them.
-         */
-        mapSettingAddress: hex(chapter.mapSettingAddr),
-        condTableAddress: chapter.condTableAddr === 0 ? null : hex(chapter.condTableAddr),
-        startEvent: chapter.startEventAddr === 0 ? null : hex(chapter.startEventAddr),
-        endEvent: chapter.endEventAddr === 0 ? null : hex(chapter.endEventAddr),
-        playerPlacement: chapter.playerPlacementAddr === 0 ? null : hex(chapter.playerPlacementAddr),
-        /**
          * How many units this map lets you field. See `Chapter.deploySlots` in
          * `tables/chapters.ts` for how this is derived and why it is the same
          * number the game computes in `GetChapterAllyUnitCount`.
@@ -111,18 +101,23 @@ name: 'chapters',
         deploySlotsHard: chapter.deploySlotsHard,
         /**
          * Units the prep screen will not let you bench here
-         * (`event_force_sortie_pointer`). A record's `mapIndex` of 0xFF means
-         * "every map", so such units also appear on every chapter's list.
+         * (`event_force_sortie_pointer`).
+         *
+         * **Map-specific records only.** A record whose `mapIndex` is 0xFF
+         * applies to every map, so listing it here put the same two rows -
+         * Storch and Waluyo - into all 60 maps: 120 of the 159 entries emitted
+         * were copies. They are listed once in `forcedDeployment.everyMap`
+         * instead, so "who can I not bench here" is
+         * `forcedUnits` + `forcedDeployment.everyMap`, filtered by `routeFilter`.
          */
-        forcedUnits: forcedUnitsForMap(rom.forceSortie, chapter.index).map((f) => ({
-          ...described(f.unitId),
-          /** 0xFF = applies on every route; otherwise `ChapterData + 0x1B`. */
-          routeFilter: f.route,
-          routeFilterLabel: routeLabel(f.route),
-          /** True when the record has no map filter - the unit is forced everywhere. */
-          everyMap: f.mapIndex === MAP_ANY,
-          recordAddress: hex(f.addr),
-        })),
+        forcedUnits: forcedUnitsForMap(rom.forceSortie, chapter.index)
+          .filter((f) => f.mapIndex !== MAP_ANY)
+          .map((f) => ({
+            ...described(f.unitId),
+            /** 0xFF = applies on every route; otherwise `ChapterData + 0x1B`. */
+            routeFilter: f.route,
+            routeFilterLabel: routeLabel(f.route),
+          })),
         /**
          * Roster actually deployed here, one entry per **character** rather than
          * per placement record: a character placed under two classes in the same
@@ -165,13 +160,20 @@ name: 'chapters',
           return [...merged.values()].sort((a, b) => a.id - b.id);
         })(),
         /**
-         * Mid-chapter recruit sites, **filtered to the playable roster**.
+         * Mid-chapter recruit sites, **filtered to the playable roster and to
+         * actual recruit instructions**.
          *
-         * The scan reads every `LOAD1` in the chapter's scripts, and in a hack
-         * that reuses unit ids for generic templates that set includes enemies:
-         * on Vision Quest 204 ids appear across the sites and only 62 are
-         * characters. The other 142 are noise for a roster question, so they are
-         * dropped here and the character rows are already in `joinOrder`.
+         * Two filters, both earned by measurement on Vision Quest:
+         *
+         * 1. The scan reads every `LOAD*` in the chapter's scripts, and in a
+         *    hack that reuses unit ids for generic templates that set includes
+         *    enemies: 204 ids appear across the sites and only 62 are
+         *    characters. The other 142 are noise for a roster question, so they
+         *    are dropped here and the character rows are already in `joinOrder`.
+         * 2. Only `kind === 'recruit'` (`402C`, LOAD1 "仲間にする") recruits at
+         *    all. `412C`/`422C` are LOAD2/LOAD3 - they load units that are
+         *    already in the party - and they were 74 of the 122 sites, 42 KB of
+         *    this block's 52 KB, inside a field named "recruits".
          *
          * What survives is the part `joinOrder` cannot express: a character
          * recruited *during* this map rather than at its start.
@@ -180,15 +182,15 @@ name: 'chapters',
           const sites = scan?.recruits ?? [];
           const out: Array<{
             kind: string;
-            address: string;
             units: Array<{ id: number; name: string }>;
           }> = [];
           for (const site of sites) {
+            if (site.kind !== 'recruit') continue;
             const units = site.units
               .filter((u) => supportIds.has(u.unitId))
               .map((u) => ({ id: u.unitId, name: describe(u.unitId) }));
             if (units.length === 0) continue;
-            out.push({ kind: site.kind, address: hex(site.addr), units });
+            out.push({ kind: site.kind, units });
           }
           return out;
         })(),
@@ -200,6 +202,11 @@ name: 'chapters',
          * `itemsGiven`, not here.
          */
         goldEvents: (scan?.gold ?? []).map((g) => ({
+          /**
+           * The one place an address is part of the payload rather than a decode
+           * aid: a script shared by several maps is one payout seen several
+           * times, and this is the only key that says so. See `itemsGiven`.
+           */
           address: hex(g.addr),
           delta: g.delta,
           instruction: g.instruction,
@@ -325,7 +332,6 @@ name: 'chapters',
         /** False when `joinChapter` is an unused slot, a skirmish map or a bonus map. */
         joinChapterIsStory: joinIsStory,
         joinSource: join?.source ?? null,
-        joinEvidence: join === undefined ? null : hex(join.evidenceAddr),
         placedClassId: join?.placedClassId ?? null,
         /**
          * Chapters where the prep screen will not let this unit be benched
@@ -373,8 +379,6 @@ name: 'chapters',
         rom.mapSettings === null
           ? null
           : {
-              slot: hex(rom.mapSettings.slotOffset),
-              table: hex(rom.mapSettings.tableOffset),
               recordSize: rom.mapSettings.recordSize,
               count: rom.mapSettings.count,
               countSource: rom.mapSettings.countSource,
@@ -395,8 +399,6 @@ name: 'chapters',
           rom.forceSortie === null
             ? null
             : {
-                slot: hex(rom.forceSortie.slotOffset),
-                address: hex(rom.forceSortie.tableOffset),
                 recordSize: rom.forceSortie.recordSize,
                 count: rom.forceSortie.count,
                 termination: rom.forceSortie.termination,
@@ -419,7 +421,6 @@ name: 'chapters',
           chapterTitle: f.mapIndex === MAP_ANY ? null : (chapterOf(f.mapIndex)?.title ?? null),
           routeFilter: f.route,
           routeFilterLabel: routeLabel(f.route),
-          recordAddress: hex(f.addr),
         })),
         limitations: [
           'The route byte is compared by the game against a RUNTIME value ' +
@@ -427,8 +428,10 @@ name: 'chapters',
             'are reported regardless of it; check routeFilter when it is not 0xFF.',
           'A unit absent from this table is not necessarily benchable - the lord ' +
             'is force-deployed by a separate rule the table does not describe.',
-          'A record with mapIndex 0xFF applies to every map, so such units appear ' +
-            'on every chapter\'s forcedUnits list.',
+          'A record with mapIndex 0xFF applies to every map. Those records are ' +
+          'listed once in forcedDeployment.everyMap rather than repeated on ' +
+          'every chapter, so a chapter\'s forcedUnits holds only its own maps\' ' +
+          'records - union the two to answer "who can I not bench here".',
         ],
       },
       stats: {
@@ -486,9 +489,11 @@ name: 'chapters',
           'itemsGiven reappears under every chapter that reaches it. Deduplicate ' +
           'by address before summing: a single 5,000-gold script shared by 17 ' +
           'maps is one payout, not 85,000 gold.',
-        '`midChapterRecruits` is filtered to the playable roster. The underlying ' +
-          'scan sees every LOAD1 including enemy placements, which in a hack that ' +
-          'reuses ids runs to several times the character count.',
+        '`midChapterRecruits` keeps only `kind: "recruit"` sites (LOAD1) and ' +
+          'only the playable roster. LOAD2/LOAD3 load units that are already in ' +
+          'the party, and the underlying scan sees every placement including ' +
+          'enemy ones - in a hack that reuses ids that is several times the ' +
+          'character count and the bulk of the block.',
       ],
     };
   },

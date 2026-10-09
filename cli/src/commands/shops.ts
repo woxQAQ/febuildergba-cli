@@ -1,4 +1,3 @@
-import { hex } from '../cli/hex.ts';
 import type { Command } from './types.ts';
 
 /** `shops` — prep-screen shop plus every per-map shop, grouped by chapter. */
@@ -17,13 +16,11 @@ export const shops: Command = {
     const rows = shopData.shops;
 
     return {
-      prepShopAddress: hex(shopData.prepShopAddress),
       shopCount: rows.length,
       emptyShopPointers: shopData.emptyCount,
       shops: rows.map((s) => ({
         label: s.label,
         kind: s.kind,
-        address: hex(s.addr),
         mapIndex: s.mapIndex,
         chapterNumber: s.chapterNumber,
         entries: s.entries.map((e) => ({

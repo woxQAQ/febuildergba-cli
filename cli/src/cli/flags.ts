@@ -50,12 +50,21 @@ export const FLAGS: readonly FlagSpec[] = [
     name: 'all',
     type: 'boolean',
     summary: 'Include empty/unused table slots',
-    commands: ['units', 'classes', 'terrain', 'items', 'objects', 'chapters', 'storypath'],
+    commands: [
+      'units', 'classes', 'terrain', 'items', 'objects', 'chapters', 'storypath', 'enemy-stats',
+    ],
     notes: {
+      units:
+        'emit every slot, including the enemy / generic-template rows and the ' +
+        'empty ones - a plain run is already restricted to the roster',
+      classes: 'also resolve each class\' impassable terrain list',
       chapters: 'also include non-character join records and padded map rows',
       storypath:
         'also include padded map rows, whose transitions are copies, and the ' +
         'raw instruction edges behind each destination',
+      'enemy-stats':
+        'also emit `samples`, one row per projected enemy record - a plain run ' +
+        'emits only the distributions computed from them',
     },
   },
   {
@@ -64,6 +73,9 @@ export const FLAGS: readonly FlagSpec[] = [
     summary:
       'Restrict to units that carry support data - the closest thing to a real roster this parse can offer',
     commands: ['units', 'roles', 'chapters'],
+    notes: {
+      units: 'the default - a plain run already emits only those units',
+    },
   },
   {
     name: 'hard',
