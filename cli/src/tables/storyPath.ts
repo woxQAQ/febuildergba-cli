@@ -43,19 +43,19 @@
  * `MAPCHAPTER` type is therefore more robust than on its name.
  */
 
-import type { RomBuffer } from '../rom/RomBuffer.ts';
+import type { RomBuffer } from "../rom/RomBuffer.ts";
 import {
   argValue,
   disassemble,
   isExitCode,
   type EventCode,
   type EventScriptTable,
-} from './eventScript.ts';
-import type { Chapter } from './chapters.ts';
-import { hex } from '../format.ts';
+} from "./eventScript.ts";
+import type { Chapter } from "./chapters.ts";
+import { hex } from "../format.ts";
 
 /** Category token the opcode table puts on every map-moving instruction. */
-const MAP_CATEGORY = 'MAP';
+const MAP_CATEGORY = "MAP";
 
 /**
  * Opcodes that name a destination chapter.
@@ -66,10 +66,10 @@ const MAP_CATEGORY = 'MAP';
  * what makes a transition trustworthy.
  */
 export const TRANSITION_OPCODES: ReadonlySet<string> = new Set([
-  'MNCH', // next chapter, world map
-  'MNC2', // next chapter, no world map
-  'MNC3', // next chapter, no save
-  'LOMA', // switch to a specific map
+  "MNCH", // next chapter, world map
+  "MNC2", // next chapter, no world map
+  "MNC3", // next chapter, no save
+  "LOMA", // switch to a specific map
 ]);
 
 /** One decoded "this chapter goes to that chapter" edge. */
@@ -113,7 +113,7 @@ const MAX_STEPS = 4000;
 /** The mnemonic in parentheses at the end of a description, e.g. `(MNC2)`. */
 function mnemonicOf(description: string): string {
   const m = description.match(/\(([A-Z][A-Z0-9_+]*)\)/);
-  return m?.[1] ?? '';
+  return m?.[1] ?? "";
 }
 
 /**
@@ -124,18 +124,18 @@ function mnemonicOf(description: string): string {
  * again.
  */
 function destinationOf(rom: RomBuffer, code: EventCode): number {
-  const typed = code.script.args.find((a) => a.type === 'MAPCHAPTER');
+  const typed = code.script.args.find((a) => a.type === "MAPCHAPTER");
   if (typed !== undefined) return argValue(rom, code, typed.symbol);
-  const vars = code.script.args.filter((a) => a.type !== 'FIXED');
+  const vars = code.script.args.filter((a) => a.type !== "FIXED");
   const last = vars[vars.length - 1];
   return last === undefined ? 0 : argValue(rom, code, last.symbol);
 }
 
 /** The script pointer of a `CALL`, whatever letter the table gave it. */
 function callTargetOf(rom: RomBuffer, code: EventCode): number {
-  const typed = code.script.args.find((a) => a.type === 'POINTER_EVENT');
+  const typed = code.script.args.find((a) => a.type === "POINTER_EVENT");
   if (typed !== undefined) return argValue(rom, code, typed.symbol);
-  const vars = code.script.args.filter((a) => a.type !== 'FIXED');
+  const vars = code.script.args.filter((a) => a.type !== "FIXED");
   const last = vars[vars.length - 1];
   return last === undefined ? 0 : argValue(rom, code, last.symbol);
 }
@@ -159,7 +159,7 @@ export function readChapterTransitions(
 
   const walk = (start: number, depth: number): { decoded: number; stop: string } => {
     if (start === 0 || visited.has(start) || depth > MAX_CALL_DEPTH) {
-      return { decoded: 0, stop: 'depth limit or loop' };
+      return { decoded: 0, stop: "depth limit or loop" };
     }
     visited.add(start);
 
@@ -170,16 +170,13 @@ export function readChapterTransitions(
     for (let step = 0; step < MAX_STEPS; step++) {
       const code = disassemble(rom, addr, table);
 
-      if (code.script.description === 'UNKNOWN') {
+      if (code.script.description === "UNKNOWN") {
         return { decoded, stop: `unrecognised opcode at ${hex(addr)}` };
       }
 
       const mnemonic = mnemonicOf(code.script.description);
 
-      if (
-        code.script.category.includes(MAP_CATEGORY) &&
-        TRANSITION_OPCODES.has(mnemonic)
-      ) {
+      if (code.script.category.includes(MAP_CATEGORY) && TRANSITION_OPCODES.has(mnemonic)) {
         edges.push({
           opcode: mnemonic,
           targetMap: destinationOf(rom, code),
@@ -188,7 +185,7 @@ export function readChapterTransitions(
         });
       }
 
-      if (mnemonic === 'CALL') {
+      if (mnemonic === "CALL") {
         const ptr = callTargetOf(rom, code);
         if (ptr !== 0 && rom.isSafePointer(ptr)) {
           walk(rom.toOffset(ptr), depth + 1);
@@ -198,13 +195,13 @@ export function readChapterTransitions(
       decoded++;
       addr += code.bytes.length;
 
-      if (mnemonic === 'IF_CONDITIONAL' || mnemonic === 'IF_CANCEL') lastBranch = addr;
+      if (mnemonic === "IF_CONDITIONAL" || mnemonic === "IF_CANCEL") lastBranch = addr;
 
       if (isExitCode(rom, code, lastBranch)) {
         return { decoded, stop: `terminated at ${hex(addr)}` };
       }
     }
-    return { decoded, stop: 'step limit' };
+    return { decoded, stop: "step limit" };
   };
 
   if (chapter.endEventAddr === 0) {
@@ -214,7 +211,7 @@ export function readChapterTransitions(
       title: chapter.title,
       endEventAddress: 0,
       instructionsDecoded: 0,
-      stopReason: 'no END_EVENT',
+      stopReason: "no END_EVENT",
       transitions: [],
     };
   }
@@ -253,7 +250,7 @@ export function steppingDestinations(edge: ChapterEdges): number[] {
   return [
     ...new Set(
       edge.transitions
-        .filter((t) => t.opcode !== 'LOMA' && t.targetMap !== edge.mapIndex)
+        .filter((t) => t.opcode !== "LOMA" && t.targetMap !== edge.mapIndex)
         .map((t) => t.targetMap),
     ),
   ];
@@ -296,10 +293,7 @@ export function isRealMap(rom: RomBuffer, chapter: Chapter): boolean {
  * map 56 and map 63. Keying on the END_EVENT pointer alone is not enough,
  * because the padded rows also share one.
  */
-export function duplicateRegistrations(
-  rom: RomBuffer,
-  chapters: readonly Chapter[],
-): number[][] {
+export function duplicateRegistrations(rom: RomBuffer, chapters: readonly Chapter[]): number[][] {
   const bySignature = new Map<string, number[]>();
   for (const c of chapters) {
     if (c.startEventAddr === 0 || c.endEventAddr === 0) continue;
@@ -362,7 +356,7 @@ export interface PlayOrderStep {
    * branch. A side chapter is optional content, but it still occupies a slot in
    * the order because a playthrough that takes it plays it at that point.
    */
-  readonly role: 'main' | 'side';
+  readonly role: "main" | "side";
   /**
    * False for a row the walk passed through that is not a playable map - a row
    * that claims its own slot id but deploys no units, which is how a chain ends
@@ -443,7 +437,7 @@ export function buildPlayOrder(
 
   const steps: PlayOrderStep[] = [];
   const placed = new Set<number>();
-  const push = (mapIndex: number, role: 'main' | 'side'): void => {
+  const push = (mapIndex: number, role: "main" | "side"): void => {
     if (placed.has(mapIndex)) return;
     placed.add(mapIndex);
     steps.push({ order: steps.length + 1, mapIndex, role, playable: isReal(mapIndex) });
@@ -454,12 +448,12 @@ export function buildPlayOrder(
     if (placed.has(root) || onMainPath.has(root)) return;
     const edge = byMap.get(root);
     if (edge === undefined) return;
-    push(root, 'side');
+    push(root, "side");
     for (const dest of steppingDestinations(edge)) walkDetour(dest);
   };
 
   for (const edge of walk.chain) {
-    push(edge.mapIndex, 'main');
+    push(edge.mapIndex, "main");
     for (const dest of steppingDestinations(edge)) {
       if (onMainPath.has(dest)) continue;
       walkDetour(dest);
@@ -475,8 +469,8 @@ export function buildPlayOrder(
     startCandidates: walk.candidates.map((c) => c.mapIndex),
     startReason:
       walk.candidates[0] === undefined
-        ? 'no map numbered 1 that no real numbered chapter leads into'
-        : 'map-table order among the maps numbered 1 that no real numbered ' +
+        ? "no map numbered 1 that no real numbered chapter leads into"
+        : "map-table order among the maps numbered 1 that no real numbered " +
           `chapter leads into (chose map ${walk.candidates[0].mapIndex})`,
   };
 }
@@ -502,7 +496,7 @@ export function reachableFrom(edges: readonly ChapterEdges[], startMap: number):
     for (const t of e.transitions) {
       // LOMA is an in-chapter teleport; following it would pull in maps the
       // player never transitions to as a chapter.
-      if (t.opcode === 'LOMA') continue;
+      if (t.opcode === "LOMA") continue;
       if (!seen.has(t.targetMap)) queue.push(t.targetMap);
     }
   }
@@ -577,7 +571,7 @@ function walkMainPath(
   if (candidates.length === 0) return { chain, branches, closedLoop, candidates };
 
   const lomaOf = (e: ChapterEdges): number[] => [
-    ...new Set(e.transitions.filter((t) => t.opcode === 'LOMA').map((t) => t.targetMap)),
+    ...new Set(e.transitions.filter((t) => t.opcode === "LOMA").map((t) => t.targetMap)),
   ];
 
   const seen = new Set<number>();
@@ -592,9 +586,9 @@ function walkMainPath(
     }
 
     const next = byMap.get(advancing[0] ?? -1);
-    if (next === undefined) break;             // destination is not a map row
+    if (next === undefined) break; // destination is not a map row
     if (seen.has(next.mapIndex)) {
-      closedLoop.push(next.mapIndex);          // walked into the chain again
+      closedLoop.push(next.mapIndex); // walked into the chain again
       break;
     }
     cur = next;
@@ -614,15 +608,13 @@ export function traceStoryPath(
     closedLoop: walk.closedLoop,
     startReason:
       first === undefined
-        ? 'no map numbered 1 that no real numbered chapter leads into'
-        : 'map-table order among the maps numbered 1 that no real numbered ' +
+        ? "no map numbered 1 that no real numbered chapter leads into"
+        : "map-table order among the maps numbered 1 that no real numbered " +
           `chapter leads into (chose map ${first.mapIndex}; ` +
-          `candidates ${walk.candidates.map((c) => c.mapIndex).join(', ')})`,
+          `candidates ${walk.candidates.map((c) => c.mapIndex).join(", ")})`,
     startCandidates: walk.candidates.map((c) => c.mapIndex),
     reachable:
-      first === undefined
-        ? []
-        : [...reachableFrom(edges, first.mapIndex)].sort((a, b) => a - b),
+      first === undefined ? [] : [...reachableFrom(edges, first.mapIndex)].sort((a, b) => a - b),
     found: walk.chain.length > 0,
   };
 }

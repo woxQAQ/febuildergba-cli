@@ -14,7 +14,7 @@
  *            FEBuilderGBA/FEBuilderGBA/U.cs  (`toOffset`, `isPointer`, `isSafetyOffset`).
  */
 
-import { hex } from '../format.ts';
+import { hex } from "../format.ts";
 
 export const POINTER_BASE = 0x0800_0000;
 export const POINTER_END = 0x0a00_0000;
@@ -40,8 +40,7 @@ export class RomBuffer {
   private ensure(addr: number, size: number): void {
     if (!Number.isInteger(addr) || addr < 0 || addr + size > this.data.length) {
       throw new RangeError(
-        `read out of range: addr=${hex(addr)} size=${size} ` +
-          `romLength=${hex(this.data.length)}`,
+        `read out of range: addr=${hex(addr)} size=${size} ` + `romLength=${hex(this.data.length)}`,
       );
     }
   }
@@ -102,11 +101,7 @@ export class RomBuffer {
 
   /** Reference: `U.isSafetyOffset` (U.cs:2921). */
   isSafeOffset(addr: number): boolean {
-    return (
-      addr >= SAFE_OFFSET_FLOOR &&
-      addr < SAFE_OFFSET_CEILING &&
-      addr < this.data.length
-    );
+    return addr >= SAFE_OFFSET_FLOOR && addr < SAFE_OFFSET_CEILING && addr < this.data.length;
   }
 
   /** Reference: `U.isSafetyPointer` (U.cs:2927). */
@@ -144,7 +139,7 @@ export class RomBuffer {
 
   ascii(addr: number, len: number): string {
     this.ensure(addr, len);
-    return this.data.subarray(addr, addr + len).toString('latin1');
+    return this.data.subarray(addr, addr + len).toString("latin1");
   }
 
   bytes(addr: number, len: number): Buffer {

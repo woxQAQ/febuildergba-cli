@@ -28,10 +28,10 @@
  * Reference: FEBuilderGBA/FEBuilderGBA/MapTerrainNameForm.cs, MapTerrainNameEngForm.cs.
  */
 
-import type { RomBuffer } from '../rom/RomBuffer.ts';
-import type { TerrainNameLayout } from '../data/layouts.ts';
-import type { TextContext } from '../text/huffman.ts';
-import { decodeTextId, sanitizeName, stripAllCodes } from '../text/huffman.ts';
+import type { RomBuffer } from "../rom/RomBuffer.ts";
+import type { TerrainNameLayout } from "../data/layouts.ts";
+import type { TextContext } from "../text/huffman.ts";
+import { decodeTextId, sanitizeName, stripAllCodes } from "../text/huffman.ts";
 
 /** `U.isPointerOrNULL`: either 0 or a usable GBA pointer. */
 function isPointerOrNull(value: number): boolean {
@@ -108,7 +108,7 @@ export function readTerrainNames(
 
       names.push({
         id,
-        name: '',
+        name: "",
         textId: null,
         nameAddress: nameAddress === 0 ? null : nameAddress,
         // No Shift-JIS decoder in this CLI yet; see the module doc.
@@ -155,15 +155,15 @@ export function readTerrainNames(
  * for non-multibyte ROMs ("英語版だと、empty Chestsの区別がないので追記する").
  */
 export const TERRAIN_HINTS: Readonly<Record<number, string>> = {
-  0x04: 'closed village',
-  0x0b: 'castle gate',
-  0x14: 'drawbridge',
-  0x18: 'healing floor',
-  0x1b: 'breakable wall',
-  0x20: 'empty chest',
-  0x2e: 'fliers may pass',
-  0x34: 'log bridge',
-  0x37: 'ruins',
+  0x04: "closed village",
+  0x0b: "castle gate",
+  0x14: "drawbridge",
+  0x18: "healing floor",
+  0x1b: "breakable wall",
+  0x20: "empty chest",
+  0x2e: "fliers may pass",
+  0x34: "log bridge",
+  0x37: "ruins",
 };
 
 /** Ids whose hint is emitted for every release, not just the English ones. */
@@ -171,7 +171,7 @@ const ALWAYS_HINTS = new Set([0x18, 0x1b, 0x2e]);
 
 export function terrainHint(id: number, isMultibyte: boolean): string {
   const hint = TERRAIN_HINTS[id];
-  if (hint === undefined) return '';
-  if (!ALWAYS_HINTS.has(id) && isMultibyte) return '';
+  if (hint === undefined) return "";
+  if (!ALWAYS_HINTS.has(id) && isMultibyte) return "";
   return `[${hint}]`;
 }

@@ -1,6 +1,6 @@
-import { decodeTextIdDetailed } from '../text/huffman.ts';
-import { hex } from '../format.ts';
-import { UsageError, type Command } from './types.ts';
+import { decodeTextIdDetailed } from "../text/huffman.ts";
+import { hex } from "../format.ts";
+import { UsageError, type Command } from "./types.ts";
 
 /** Largest `--range` span we will expand, to keep output bounded. */
 const MAX_TEXT_RANGE = 4096;
@@ -19,7 +19,7 @@ function parseTextIds(specs: readonly string[], range: string | undefined): numb
     if (!match) throw new UsageError(`--range expects "start-end", got "${range}"`);
     const start = Number.parseInt(match[1] as string, 0);
     const end = Number.parseInt(match[2] as string, 0);
-    if (end < start) throw new UsageError('--range: end is before start');
+    if (end < start) throw new UsageError("--range: end is before start");
     if (end - start + 1 > MAX_TEXT_RANGE) {
       throw new UsageError(`--range spans more than ${MAX_TEXT_RANGE} ids`);
     }
@@ -30,19 +30,19 @@ function parseTextIds(specs: readonly string[], range: string | undefined): numb
 }
 
 export const text: Command = {
-  name: 'text',
-  summary: 'Decode one or more text ids (diagnostic)',
+  name: "text",
+  summary: "Decode one or more text ids (diagnostic)",
   description:
-    'Diagnostic: decode raw text ids to see what the ROM actually holds. Ids ' +
-    'go after the ROM path, `--range a-b` expands an inclusive span (max ' +
+    "Diagnostic: decode raw text ids to see what the ROM actually holds. Ids " +
+    "go after the ROM path, `--range a-b` expands an inclusive span (max " +
     `${MAX_TEXT_RANGE}). \`kind\` distinguishes the two storage forms hacks mix: ` +
     "'huffman' for ordinary compressed strings and 'unhuffman' for the " +
-    '`0x08000000`-marked patch strings, some of which carry only glyph codes.',
-  extraArgs: ' [id...]',
+    "`0x08000000`-marked patch strings, some of which carry only glyph codes.",
+  extraArgs: " [id...]",
   run: ({ rom, flags, args }) => {
     const ids = parseTextIds(args, flags.range);
     if (ids.length === 0) {
-      throw new UsageError('give at least one text id, or --range a-b');
+      throw new UsageError("give at least one text id, or --range a-b");
     }
 
     return ids.map((id) => {

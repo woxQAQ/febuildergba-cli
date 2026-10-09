@@ -40,9 +40,9 @@
  * English, bare (Japanese), Chinese. Pass `--lang` to change it.
  */
 
-import { existsSync, readFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 /**
  * Where we look for `config/data`, in order.
@@ -55,8 +55,8 @@ import { fileURLToPath } from 'node:url';
 export function defaultConfigSearchPaths(): string[] {
   const here = dirname(fileURLToPath(import.meta.url));
   // src/config -> src -> cli
-  const cliRoot = resolve(here, '..', '..');
-  return [process.env['FEBUILDERGBA_CONFIG'] ?? '', join(cliRoot, 'data')].filter(
+  const cliRoot = resolve(here, "..", "..");
+  return [process.env["FEBUILDERGBA_CONFIG"] ?? "", join(cliRoot, "data")].filter(
     (p) => p.length > 0,
   );
 }
@@ -84,9 +84,9 @@ export function findConfigDataDir(explicit?: string): string | null {
  * degrades to something readable instead of to nothing.
  */
 export const LANGUAGES: Readonly<Record<string, readonly string[]>> = {
-  en: ['.en', '', '.zh'],
-  ja: ['', '.en', '.zh'],
-  zh: ['.zh', '.en', ''],
+  en: [".en", "", ".zh"],
+  ja: ["", ".en", ".zh"],
+  zh: [".zh", ".en", ""],
 };
 
 /**
@@ -106,7 +106,7 @@ export function isKnownLanguage(language: string): boolean {
 export const LANGUAGE_NAMES: readonly string[] = Object.keys(LANGUAGES);
 
 /** Default when `--lang` is absent: English, then bare (Japanese), then Chinese. */
-export const DEFAULT_LANGUAGE = 'en';
+export const DEFAULT_LANGUAGE = "en";
 
 /**
  * Suffixes to try for a `--lang` value, or `null` when the language is not one
@@ -140,17 +140,17 @@ export function resolveDataFile(
 
 export function readTextFile(path: string): string {
   // Some of these files carry a UTF-8 BOM; strip it or the first key breaks.
-  return readFileSync(path, 'utf8').replace(/^\uFEFF/, '');
+  return readFileSync(path, "utf8").replace(/^\uFEFF/, "");
 }
 
 /** `//`-prefixed and blank lines are comments, per `U.IsComment`. */
 export function isComment(line: string): boolean {
   const t = line.trim();
-  return t.length === 0 || t.startsWith('//') || t.startsWith(';');
+  return t.length === 0 || t.startsWith("//") || t.startsWith(";");
 }
 
 export function splitTab(line: string): string[] {
-  return line.split('\t').map((s) => s.trim());
+  return line.split("\t").map((s) => s.trim());
 }
 
 export interface KeyedEntry {
@@ -172,14 +172,14 @@ export function parseKeyedTable(text: string): KeyedEntry[] {
   const out: KeyedEntry[] = [];
   for (const raw of text.split(/\r?\n/)) {
     if (isComment(raw)) continue;
-    const eq = raw.indexOf('=');
+    const eq = raw.indexOf("=");
     if (eq < 0) continue;
 
     const key = raw.slice(0, eq).trim();
     if (key.length === 0) continue;
 
     const value = raw.slice(eq + 1);
-    const name = value.split(/\t|\\r\\n/)[0]?.trim() ?? '';
+    const name = value.split(/\t|\\r\\n/)[0]?.trim() ?? "";
     out.push({ key, name });
   }
   return out;

@@ -41,12 +41,12 @@
  *            `ROMFE8JP.get_shop_name`, `WorldMapPointForm.GetShopAddr`.
  */
 
-import type { RomBuffer } from '../rom/RomBuffer.ts';
-import type { ShopLayout } from '../data/layouts.ts';
-import type { ChapterObjects } from './mapObjects.ts';
-import type { Item } from './items.ts';
+import type { RomBuffer } from "../rom/RomBuffer.ts";
+import type { ShopLayout } from "../data/layouts.ts";
+import type { ChapterObjects } from "./mapObjects.ts";
+import type { Item } from "./items.ts";
 
-export type ShopKind = 'weapon' | 'item' | 'secret' | 'prep';
+export type ShopKind = "weapon" | "item" | "secret" | "prep";
 
 export interface ShopEntry {
   itemId: number;
@@ -122,8 +122,8 @@ export function readShops(
     const entries = readEntryList(rom, prepShopAddress, layout.entrySize, items);
     if (entries.length) {
       shops.push({
-        kind: 'prep',
-        label: 'Prep screen',
+        kind: "prep",
+        label: "Prep screen",
         addr: prepShopAddress,
         mapIndex: null,
         chapterNumber: null,
@@ -136,7 +136,7 @@ export function readShops(
   // ---- per-map shops ----------------------------------------------------
   for (const chapter of chapterObjects) {
     for (const object of chapter.objects) {
-      if (object.kind !== 'shop') continue;
+      if (object.kind !== "shop") continue;
       const kind = layout.shopObjects[object.objectType];
       if (kind === undefined) continue;
       if (object.shopAddr === 0) continue;

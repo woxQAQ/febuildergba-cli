@@ -57,21 +57,51 @@ const TERMINATORS = new Set([0x1f]);
  */
 export const ITEM_FONT: Readonly<Record<number, string>> = {
   // lowercase
-  0x81: 'a', 0x82: 'b', 0x83: 'c', 0x84: 'd', 0x85: 'e', 0x86: 'f',
-  0x87: 'g', 0x88: 'h',
-  0x89: 'j', // inferred (i is ASCII 0x69)
-  0x8a: 'k',
-  0x8b: 'n', 0x8c: 'o', 0x8d: 'p', 0x8e: 'q', 0x8f: 'r', 0x90: 's',
-  0x95: 't', 0x96: 'u', 0x97: 'v', 0x98: 'x', 0x99: 'y', 0x9a: 'z',
+  0x81: "a",
+  0x82: "b",
+  0x83: "c",
+  0x84: "d",
+  0x85: "e",
+  0x86: "f",
+  0x87: "g",
+  0x88: "h",
+  0x89: "j", // inferred (i is ASCII 0x69)
+  0x8a: "k",
+  0x8b: "n",
+  0x8c: "o",
+  0x8d: "p",
+  0x8e: "q",
+  0x8f: "r",
+  0x90: "s",
+  0x95: "t",
+  0x96: "u",
+  0x97: "v",
+  0x98: "x",
+  0x99: "y",
+  0x9a: "z",
   // uppercase
-  0x9b: 'A', 0x9c: 'B', 0x9d: 'C', 0x9e: 'D', 0x9f: 'E', 0xa0: 'F',
-  0xa2: 'G', 0xa3: 'H', 0xa4: 'J', 0xa5: 'K', 0xa6: 'L',
-  0xa7: 'O', // inferred (M, N are ASCII)
-  0xa8: 'P',
-  0xac: 'R', 0xad: 'S', 0xae: 'U', 0xaf: 'V',
-  0xb0: 'X', 0xb1: 'Y', 0xb2: 'Z', // inferred (W is ASCII)
+  0x9b: "A",
+  0x9c: "B",
+  0x9d: "C",
+  0x9e: "D",
+  0x9f: "E",
+  0xa0: "F",
+  0xa2: "G",
+  0xa3: "H",
+  0xa4: "J",
+  0xa5: "K",
+  0xa6: "L",
+  0xa7: "O", // inferred (M, N are ASCII)
+  0xa8: "P",
+  0xac: "R",
+  0xad: "S",
+  0xae: "U",
+  0xaf: "V",
+  0xb0: "X",
+  0xb1: "Y",
+  0xb2: "Z", // inferred (W is ASCII)
   // punctuation
-  0xbc: ' ',
+  0xbc: " ",
 };
 
 export interface ItemFontDecodeResult {
@@ -90,7 +120,7 @@ export interface ItemFontDecodeResult {
  * does for names.
  */
 export function decodeItemFontBytes(bytes: readonly number[]): ItemFontDecodeResult {
-  let text = '';
+  let text = "";
   const unknown: number[] = [];
 
   for (const code of bytes) {
@@ -105,7 +135,7 @@ export function decodeItemFontBytes(bytes: readonly number[]): ItemFontDecodeRes
     const ch = ITEM_FONT[code];
     if (ch === undefined) {
       if (!unknown.includes(code)) unknown.push(code);
-      text += '\uFFFD';
+      text += "\uFFFD";
       continue;
     }
     text += ch;

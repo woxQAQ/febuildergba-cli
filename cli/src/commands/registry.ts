@@ -1,18 +1,18 @@
-import type { Command, CommandName } from './types.ts';
+import type { Command, CommandName } from "./types.ts";
 
-import { info } from './info.ts';
-import { units } from './units.ts';
-import { classes } from './classes.ts';
-import { roles } from './roles.ts';
-import { supports } from './supports.ts';
-import { terrain } from './terrain.ts';
-import { chapters } from './chapters.ts';
-import { items } from './items.ts';
-import { shops } from './shops.ts';
-import { objects } from './objects.ts';
-import { enemyStats } from './enemyStats.ts';
-import { text } from './text.ts';
-import { validate } from './validate.ts';
+import { info } from "./info.ts";
+import { units } from "./units.ts";
+import { classes } from "./classes.ts";
+import { roles } from "./roles.ts";
+import { supports } from "./supports.ts";
+import { terrain } from "./terrain.ts";
+import { chapters } from "./chapters.ts";
+import { items } from "./items.ts";
+import { shops } from "./shops.ts";
+import { objects } from "./objects.ts";
+import { enemyStats } from "./enemyStats.ts";
+import { text } from "./text.ts";
+import { validate } from "./validate.ts";
 
 /**
  * Every command, keyed by the word the user types.
@@ -37,7 +37,7 @@ const REGISTRY: Readonly<Record<CommandName, Command>> = {
   items,
   shops,
   objects,
-  'enemy-stats': enemyStats,
+  "enemy-stats": enemyStats,
   text,
   validate,
 };

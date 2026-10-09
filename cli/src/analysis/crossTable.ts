@@ -11,8 +11,8 @@
  * in `units` output while the dump had it wrong. Two code paths, one fact.
  */
 
-import type { UnitClass } from '../tables/classes.ts';
-import type { Chapter } from '../tables/chapters.ts';
+import type { UnitClass } from "../tables/classes.ts";
+import type { Chapter } from "../tables/chapters.ts";
 
 /**
  * True when a map-setting row names a real map: it has a title, and that title
@@ -23,7 +23,7 @@ import type { Chapter } from '../tables/chapters.ts';
  * carries chapter number 0, the same value as an unused slot.
  */
 export function isStoryTitle(title: string): boolean {
-  return title !== '' && title !== '@001F';
+  return title !== "" && title !== "@001F";
 }
 
 export function isStoryChapter(chapter: Chapter | null): boolean | null {

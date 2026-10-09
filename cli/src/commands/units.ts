@@ -1,16 +1,16 @@
-import { promotesForwardTarget } from '../analysis/crossTable.ts';
-import { affinityLabel } from './shared.ts';
-import type { Command } from './types.ts';
+import { promotesForwardTarget } from "../analysis/crossTable.ts";
+import { affinityLabel } from "./shared.ts";
+import type { Command } from "./types.ts";
 
 export const units: Command = {
-  name: 'units',
-  summary: 'Unit table: stats, growth rates, weapon levels, class',
+  name: "units",
+  summary: "Unit table: stats, growth rates, weapon levels, class",
   description:
-    'One row per unit. By default only the **roster** is emitted - the units ' +
-    'that carry support data, which is the closest thing to a real roster this ' +
-    'parse can offer. `--all` emits every slot instead, empty slots and the ' +
-    'enemy / generic-template rows a hack keeps in the same table included. ' +
-    '`--playable-only` is the explicit spelling of the default.',
+    "One row per unit. By default only the **roster** is emitted - the units " +
+    "that carry support data, which is the closest thing to a real roster this " +
+    "parse can offer. `--all` emits every slot instead, empty slots and the " +
+    "enemy / generic-template rows a hack keeps in the same table included. " +
+    "`--playable-only` is the explicit spelling of the default.",
   run: ({ rom, flags }) => {
     const supportUnitIds = new Set(rom.supports.entries.map((e) => e.unitId));
     /**
@@ -147,8 +147,7 @@ export const units: Command = {
               appearance !== undefined &&
               join !== undefined &&
               (rank(appearance) < rank(join) ||
-                (rank(appearance) === rank(join) &&
-                  appearance.chapterIndex < join.chapterIndex)),
+                (rank(appearance) === rank(join) && appearance.chapterIndex < join.chapterIndex)),
           };
         })(),
         /** How many support partners this unit has, or 0 when it has no support data. */

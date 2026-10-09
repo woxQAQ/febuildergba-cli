@@ -44,30 +44,30 @@
  *            `EventCondForm.MakePointerListBox`.
  */
 
-import type { RomBuffer } from '../rom/RomBuffer.ts';
-import { hex } from '../format.ts';
-import type { GameLayout } from '../data/layouts.ts';
-import type { Chapter } from './chapters.ts';
+import type { RomBuffer } from "../rom/RomBuffer.ts";
+import { hex } from "../format.ts";
+import type { GameLayout } from "../data/layouts.ts";
+import type { Chapter } from "./chapters.ts";
 
 /** `発生タイプ` (`u16` at `+0`). */
 export const OBJECT_TRIGGER_TYPES: Readonly<Record<number, string>> = {
-  0x05: 'seizeOrHouse', // 制圧ポイントと民家
-  0x06: 'village', // 訪問村
-  0x07: 'chest', // 宝箱
-  0x08: 'door', // 扉
-  0x0a: 'shop', // 店
+  0x05: "seizeOrHouse", // 制圧ポイントと民家
+  0x06: "village", // 訪問村
+  0x07: "chest", // 宝箱
+  0x08: "door", // 扉
+  0x0a: "shop", // 店
 };
 
 /** `種類` (`u8` at `+10`), FE8 values. FE7 shifts these down by 2. */
 export const OBJECT_TYPE_NAMES: Readonly<Record<number, string>> = {
-  0x07: 'chestFE7',
-  0x10: 'house',
-  0x12: 'door',
-  0x14: 'chest',
-  0x16: 'armory',
-  0x17: 'vendor',
-  0x18: 'secret',
-  0x20: 'townCentre',
+  0x07: "chestFE7",
+  0x10: "house",
+  0x12: "door",
+  0x14: "chest",
+  0x16: "armory",
+  0x17: "vendor",
+  0x18: "secret",
+  0x20: "townCentre",
 };
 
 export interface MapObject {
@@ -116,7 +116,7 @@ export function readChapterObjects(
   const listAddr = chapter.condPointers[slot] ?? 0;
   if (!rom.isSafeOffset(listAddr)) return [];
 
-  const isFe8 = layout.version === 'FE8U' || layout.version === 'FE8J';
+  const isFe8 = layout.version === "FE8U" || layout.version === "FE8J";
   const out: MapObject[] = [];
 
   for (let n = 0; n < 0x400; n++) {
@@ -148,7 +148,7 @@ export function readChapterObjects(
       objectType,
       objectTypeName:
         OBJECT_TYPE_NAMES[objectType] ??
-        (isChest && objectType === chestType ? 'chest' : hex(objectType)),
+        (isChest && objectType === chestType ? "chest" : hex(objectType)),
       x: rom.u8(addr + 8),
       y: rom.u8(addr + 9),
       itemId,

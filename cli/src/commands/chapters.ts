@@ -1,8 +1,13 @@
-import { hex } from '../format.ts';
-import { alwaysForcedUnits, forcedUnitsForMap, MAP_ANY, routeLabel } from '../tables/forceSortie.ts';
-import { duplicateRegistrations, isRealMap } from '../tables/storyPath.ts';
-import { isStoryTitle } from '../analysis/crossTable.ts';
-import type { Command } from './types.ts';
+import { hex } from "../format.ts";
+import {
+  alwaysForcedUnits,
+  forcedUnitsForMap,
+  MAP_ANY,
+  routeLabel,
+} from "../tables/forceSortie.ts";
+import { duplicateRegistrations, isRealMap } from "../tables/storyPath.ts";
+import { isStoryTitle } from "../analysis/crossTable.ts";
+import type { Command } from "./types.ts";
 
 /**
  * The chapter table, and everything keyed by chapter.
@@ -33,26 +38,24 @@ import type { Command } from './types.ts';
  *   - `offPath`         - real maps the main path does not reach.
  */
 export const chapters: Command = {
-  name: 'chapters',
-  summary: 'Chapter table: play order, per-map rosters, and when each unit joins',
+  name: "chapters",
+  summary: "Chapter table: play order, per-map rosters, and when each unit joins",
   description:
-    'The play order first, then everything keyed by chapter. **Order on ' +
-    '`storyOrder`, never on `chapterNumber`**: the chapter number is the one ' +
-    'the prep screen shows and it restarts at 1 in every act, so Vision ' +
-    'Quest\'s map 16 is followed by 41, 42 and only then 17. `playOrder` is ' +
-    'derived from the END_EVENT transitions; a side chapter is spliced in ' +
-    'where its branch puts it. `joinOrder` is one row per unit ordered by the ' +
-    'play position of its join chapter. Padded map rows are dropped unless ' +
-    '`--all`; the deploy roster is deduplicated per character rather than per ' +
-    'slot.',
+    "The play order first, then everything keyed by chapter. **Order on " +
+    "`storyOrder`, never on `chapterNumber`**: the chapter number is the one " +
+    "the prep screen shows and it restarts at 1 in every act, so Vision " +
+    "Quest's map 16 is followed by 41, 42 and only then 17. `playOrder` is " +
+    "derived from the END_EVENT transitions; a side chapter is spliced in " +
+    "where its branch puts it. `joinOrder` is one row per unit ordered by the " +
+    "play position of its join chapter. Padded map rows are dropped unless " +
+    "`--all`; the deploy roster is deduplicated per character rather than per " +
+    "slot.",
   run: ({ rom, flags }) => {
     const supportIds = new Set(rom.supports.entries.map((e) => e.unitId));
     const unitById = new Map(rom.units.map((u) => [u.id, u]));
     const byMap = new Map(rom.chapters.map((c) => [c.index, c]));
     const edgesByMap = new Map(rom.mapTransitions.map((e) => [e.mapIndex, e]));
-    const realMaps = new Set(
-      rom.chapters.filter((c) => isRealMap(rom.rom, c)).map((c) => c.index),
-    );
+    const realMaps = new Set(rom.chapters.filter((c) => isRealMap(rom.rom, c)).map((c) => c.index));
 
     const play = rom.playOrder;
     const position = play.position;
@@ -64,10 +67,10 @@ export const chapters: Command = {
       return c === undefined || c.title.length === 0 ? `(map ${mapIndex})` : c.title;
     };
     /** `main` / `side` / `offPath` / `padded` - how a map relates to the path. */
-    const playsAsOf = (mapIndex: number): 'main' | 'side' | 'offPath' | 'padded' => {
+    const playsAsOf = (mapIndex: number): "main" | "side" | "offPath" | "padded" => {
       const step = stepOf.get(mapIndex);
       if (step !== undefined) return step.role;
-      return realMaps.has(mapIndex) ? 'offPath' : 'padded';
+      return realMaps.has(mapIndex) ? "offPath" : "padded";
     };
 
     const describe = (id: number): string => {
@@ -131,7 +134,7 @@ export const chapters: Command = {
          * script was not read to its end, so a missing transition there is not
          * evidence of anything.
          */
-        stoppedBecause: edge?.stopReason ?? 'no END_EVENT',
+        stoppedBecause: edge?.stopReason ?? "no END_EVENT",
         /**
          * Instruction-level edges, `--all` only. `goesTo` answers "where can
          * this chapter go"; this answers "which instruction said so", which is
@@ -180,19 +183,24 @@ export const chapters: Command = {
          * map appears once per distinct class.
          */
         roster: (() => {
-          const merged = new Map<string, {
-            id: number;
-            name: string;
-            ownClassName: string | null;
-            isSupportCharacter: boolean;
-            levels: number[];
-            classes: string[];
-            overridden: boolean;
-          }>();
+          const merged = new Map<
+            string,
+            {
+              id: number;
+              name: string;
+              ownClassName: string | null;
+              isSupportCharacter: boolean;
+              levels: number[];
+              classes: string[];
+              overridden: boolean;
+            }
+          >();
           for (const p of chapter.placements) {
             const ref = described(p.unitId);
             const placed =
-              p.classId === 0 ? '(own class)' : (rom.classNames.get(p.classId) ?? `class#${p.classId}`);
+              p.classId === 0
+                ? "(own class)"
+                : (rom.classNames.get(p.classId) ?? `class#${p.classId}`);
             const key = `${p.unitId}|${placed}`;
             const hit = merged.get(key);
             if (hit === undefined) {
@@ -237,7 +245,7 @@ export const chapters: Command = {
             units: Array<{ id: number; name: string }>;
           }> = [];
           for (const site of sites) {
-            if (site.kind !== 'recruit') continue;
+            if (site.kind !== "recruit") continue;
             const units = site.units
               .filter((u) => supportIds.has(u.unitId))
               .map((u) => ({ id: u.unitId, name: describe(u.unitId) }));
@@ -287,7 +295,7 @@ export const chapters: Command = {
               itemId: g.itemId,
               name: item?.name ?? `item#${g.itemId}`,
               unitPrice: item?.unitPrice ?? 0,
-              toUnit: g.unitId === 0xffff ? '(visiting unit)' : describe(g.unitId),
+              toUnit: g.unitId === 0xffff ? "(visiting unit)" : describe(g.unitId),
             });
           }
           return [...byAddress.values()];
@@ -297,15 +305,13 @@ export const chapters: Command = {
 
     const rows: Array<Record<string, unknown>> = [];
     const chapterOf = (index: number | null | undefined) =>
-      index === null || index === undefined
-        ? null
-        : (byMap.get(index) ?? null);
+      index === null || index === undefined ? null : (byMap.get(index) ?? null);
     const titleOf = (index: number | null | undefined): string | null =>
       chapterOf(index)?.title ?? null;
     const where = (index: number | null | undefined): string => {
       const chapter = chapterOf(index);
       if (chapter === null) return `map#${index}`;
-      const body = chapter.title === '' ? '(untitled)' : chapter.title;
+      const body = chapter.title === "" ? "(untitled)" : chapter.title;
       const place = orderOf(index) === null ? `off-path` : `play ${orderOf(index)}`;
       return `${place} ${body}`;
     };
@@ -344,23 +350,23 @@ export const chapters: Command = {
       if (forced.length > 0) {
         const places =
           forcedEverywhere.length > 0
-            ? 'on every map'
+            ? "on every map"
             : forced
-                .map((f) => (f.chapterIndex === null ? 'every map' : where(f.chapterIndex)))
-                .join(', ');
+                .map((f) => (f.chapterIndex === null ? "every map" : where(f.chapterIndex)))
+                .join(", ");
         notes.push(`forced deployment: must be fielded ${places}.`);
       }
       if (join === undefined) {
         notes.push(
           earliestChapter === null
-            ? 'no chapter evidence found at all'
+            ? "no chapter evidence found at all"
             : `no recruit instruction names this unit; it is only loaded ` +
-              `(${earliestSource}) in ${where(earliestChapter)}.`,
+                `(${earliestSource}) in ${where(earliestChapter)}.`,
         );
       } else if (joinStoryOrder === null) {
         notes.push(
           `the recruit instruction points at ${where(join.chapterIndex)}, which the ` +
-            'main path never reaches - the story position is unknown, not late.',
+            "main path never reaches - the story position is unknown, not late.",
         );
       } else if (earliestChapter !== null && earliestChapter < join.chapterIndex) {
         notes.push(
@@ -372,8 +378,8 @@ export const chapters: Command = {
       if (joinIsStory === false) {
         notes.push(
           `the recruit instruction points at map#${join?.chapterIndex}, which has ` +
-            'no title (an unused slot or a world-map encounter map) - treat this ' +
-            'join chapter as unreliable.',
+            "no title (an unused slot or a world-map encounter map) - treat this " +
+            "join chapter as unreliable.",
         );
       }
       rows.push({
@@ -426,7 +432,7 @@ export const chapters: Command = {
         earliestEvidenceChapterNumber: chapterOf(earliestChapter)?.chapterNumber ?? null,
         earliestEvidenceChapterTitle: titleOf(earliestChapter),
         earliestEvidenceSource: earliestSource,
-        ...(notes.length === 0 ? {} : { note: notes.join(' ') }),
+        ...(notes.length === 0 ? {} : { note: notes.join(" ") }),
       });
     }
     rows.sort(
@@ -450,7 +456,7 @@ export const chapters: Command = {
         /** Rows that are actual maps - the chapter count. */
         playable: play.steps.filter((s) => s.playable).length,
         /** Side chapters spliced in at a branch. */
-        sideChapters: play.steps.filter((s) => s.role === 'side').length,
+        sideChapters: play.steps.filter((s) => s.role === "side").length,
         /** The no-detour path, which is `playOrder.length - sideChapters`. */
         mainPathLength: play.mainPath.length,
         /**
@@ -462,7 +468,8 @@ export const chapters: Command = {
         startCandidates: play.startCandidates,
         endOfChain: {
           lastMap: play.mainPath.at(-1) ?? null,
-          lastTitle: (play.mainPath.at(-1) ?? -1) === -1 ? '' : label(play.mainPath.at(-1) as number),
+          lastTitle:
+            (play.mainPath.at(-1) ?? -1) === -1 ? "" : label(play.mainPath.at(-1) as number),
           /** Maps the walk re-entered, i.e. it stopped because it looped. */
           closedLoop: play.closedLoop.map((m) => ({ mapIndex: m, title: label(m) })),
         },
@@ -473,7 +480,7 @@ export const chapters: Command = {
           role: s.role,
           playable: s.playable,
           chapterNumber: byMap.get(s.mapIndex)?.chapterNumber ?? 0,
-          title: byMap.get(s.mapIndex)?.title ?? '',
+          title: byMap.get(s.mapIndex)?.title ?? "",
         })),
       },
       /**
@@ -505,7 +512,7 @@ export const chapters: Command = {
         .map((m) => ({
           mapIndex: m,
           chapterNumber: byMap.get(m)?.chapterNumber ?? 0,
-          title: byMap.get(m)?.title ?? '',
+          title: byMap.get(m)?.title ?? "",
           deploySlots: byMap.get(m)?.deploySlots ?? 0,
           goesTo: [...new Set((edgesByMap.get(m)?.transitions ?? []).map((t) => t.targetMap))],
         })),
@@ -532,10 +539,10 @@ export const chapters: Command = {
               count: rom.mapSettings.count,
               countSource: rom.mapSettings.countSource,
               countNote:
-                rom.mapSettings.countSource === 'structural'
-                  ? 'The reference terminator test (u32(+0) must not be a pointer) ' +
-                    'rejected every record, so the table was scanned on structure.'
-                  : 'Counted with the reference terminator test.',
+                rom.mapSettings.countSource === "structural"
+                  ? "The reference terminator test (u32(+0) must not be a pointer) " +
+                    "rejected every record, so the table was scanned on structure."
+                  : "Counted with the reference terminator test.",
             },
       conditionSlots: rom.condSlots.map((s) => ({
         index: s.index,
@@ -567,20 +574,21 @@ export const chapters: Command = {
           mapIndex: f.mapIndex,
           mapIndexIsAny: f.mapIndex === MAP_ANY,
           storyOrder: orderOf(f.mapIndex === MAP_ANY ? null : f.mapIndex),
-          chapterNumber: f.mapIndex === MAP_ANY ? null : (chapterOf(f.mapIndex)?.chapterNumber ?? null),
+          chapterNumber:
+            f.mapIndex === MAP_ANY ? null : (chapterOf(f.mapIndex)?.chapterNumber ?? null),
           chapterTitle: f.mapIndex === MAP_ANY ? null : (chapterOf(f.mapIndex)?.title ?? null),
           routeFilter: f.route,
           routeFilterLabel: routeLabel(f.route),
         })),
         limitations: [
-          'The route byte is compared by the game against a RUNTIME value ' +
-            '(ChapterData + 0x1B), so it cannot be resolved statically. Records ' +
-            'are reported regardless of it; check routeFilter when it is not 0xFF.',
-          'A unit absent from this table is not necessarily benchable - the lord ' +
-            'is force-deployed by a separate rule the table does not describe.',
-          'A record with mapIndex 0xFF applies to every map. Those records are ' +
-            'listed once in forcedDeployment.everyMap rather than repeated on ' +
-            'every chapter, so a chapter\'s forcedUnits holds only its own maps\' ' +
+          "The route byte is compared by the game against a RUNTIME value " +
+            "(ChapterData + 0x1B), so it cannot be resolved statically. Records " +
+            "are reported regardless of it; check routeFilter when it is not 0xFF.",
+          "A unit absent from this table is not necessarily benchable - the lord " +
+            "is force-deployed by a separate rule the table does not describe.",
+          "A record with mapIndex 0xFF applies to every map. Those records are " +
+            "listed once in forcedDeployment.everyMap rather than repeated on " +
+            "every chapter, so a chapter's forcedUnits holds only its own maps' " +
             'records - union the two to answer "who can I not bench here".',
         ],
       },
@@ -622,45 +630,45 @@ export const chapters: Command = {
             a.mapIndex - b.mapIndex,
         ),
       limitations: [
-        'Order on `storyOrder`. `chapterNumber` is the number the prep screen ' +
-          'shows and it restarts at 1 in every act, so consecutive numbers are ' +
-          'not consecutive chapters: Vision Quest\'s path runs 16, 41, 42, 17. ' +
-          '`mapIndex` is a row number in the map-setting table and counts ' +
-          'unused slots and bonus maps too.',
-        'A transition says where a chapter CAN go. Which branch a playthrough ' +
-          'takes depends on flag conditions inside the branch, which this does ' +
-          'not walk - so a side chapter\'s position is where the branch puts it, ' +
-          'not proof that every playthrough sees it there.',
-        'Transitions reached through CALL live in a shared helper event, so they ' +
-          'fire for every chapter that calls it. The per-map attribution is ' +
-          'correct but the helper may also run mid-chapter.',
-        'A map whose END_EVENT names itself is read as a self-loop and ignored ' +
-          'when ordering; Dream of Five\'s map 18 does this before naming the ' +
-          'chapter it actually leads to.',
-        'A placement record counts as the named character only when its class id ' +
-          'is 0 or matches the unit\'s own class. Hack authors reuse one unit id ' +
-          'as a generic template with varying class ids; those records are ' +
-          'reported with `overridden` in `roster` and excluded from join order.',
-        'Script walks stop after ten consecutive unrecognised opcodes, matching ' +
-          'FEBuilderGBA. truncatedScriptWalks counts those. A recruit site after ' +
-          'such a stop is missed.',
-        'LOAD2 (412C) and LOAD3 (422C) do not recruit; they appear in ' +
-          'earliestEvidenceChapter only. A LOAD2 loads units that are already in ' +
-          'the party, so when it predates the joinChapter the real join is ' +
-          'probably earlier - such rows carry a `note`.',
+        "Order on `storyOrder`. `chapterNumber` is the number the prep screen " +
+          "shows and it restarts at 1 in every act, so consecutive numbers are " +
+          "not consecutive chapters: Vision Quest's path runs 16, 41, 42, 17. " +
+          "`mapIndex` is a row number in the map-setting table and counts " +
+          "unused slots and bonus maps too.",
+        "A transition says where a chapter CAN go. Which branch a playthrough " +
+          "takes depends on flag conditions inside the branch, which this does " +
+          "not walk - so a side chapter's position is where the branch puts it, " +
+          "not proof that every playthrough sees it there.",
+        "Transitions reached through CALL live in a shared helper event, so they " +
+          "fire for every chapter that calls it. The per-map attribution is " +
+          "correct but the helper may also run mid-chapter.",
+        "A map whose END_EVENT names itself is read as a self-loop and ignored " +
+          "when ordering; Dream of Five's map 18 does this before naming the " +
+          "chapter it actually leads to.",
+        "A placement record counts as the named character only when its class id " +
+          "is 0 or matches the unit's own class. Hack authors reuse one unit id " +
+          "as a generic template with varying class ids; those records are " +
+          "reported with `overridden` in `roster` and excluded from join order.",
+        "Script walks stop after ten consecutive unrecognised opcodes, matching " +
+          "FEBuilderGBA. truncatedScriptWalks counts those. A recruit site after " +
+          "such a stop is missed.",
+        "LOAD2 (412C) and LOAD3 (422C) do not recruit; they appear in " +
+          "earliestEvidenceChapter only. A LOAD2 loads units that are already in " +
+          "the party, so when it predates the joinChapter the real join is " +
+          "probably earlier - such rows carry a `note`.",
         'Hack chapters often share one "load the whole party" script between ' +
-          'several maps, so a LOAD1 seen in a late chapter is usually a re-load, ' +
-          'not a join.',
-        'Deduplication is **per chapter**, never across chapters. One script can ' +
-          'be referenced by many maps, so the same `address` in goldEvents / ' +
-          'itemsGiven reappears under every chapter that reaches it. Deduplicate ' +
-          'by address before summing: a single 5,000-gold script shared by 17 ' +
-          'maps is one payout, not 85,000 gold.',
+          "several maps, so a LOAD1 seen in a late chapter is usually a re-load, " +
+          "not a join.",
+        "Deduplication is **per chapter**, never across chapters. One script can " +
+          "be referenced by many maps, so the same `address` in goldEvents / " +
+          "itemsGiven reappears under every chapter that reaches it. Deduplicate " +
+          "by address before summing: a single 5,000-gold script shared by 17 " +
+          "maps is one payout, not 85,000 gold.",
         '`midChapterRecruits` keeps only `kind: "recruit"` sites (LOAD1) and ' +
-          'only the playable roster. LOAD2/LOAD3 load units that are already in ' +
-          'the party, and the underlying scan sees every placement including ' +
-          'enemy ones - in a hack that reuses ids that is several times the ' +
-          'character count and the bulk of the block.',
+          "only the playable roster. LOAD2/LOAD3 load units that are already in " +
+          "the party, and the underlying scan sees every placement including " +
+          "enemy ones - in a hack that reuses ids that is several times the " +
+          "character count and the bulk of the block.",
       ],
     };
   },

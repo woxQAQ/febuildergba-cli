@@ -1,15 +1,15 @@
-import { terrainHint } from '../tables/terrainNames.ts';
-import { hex } from '../format.ts';
-import { promotesForwardTarget } from '../analysis/crossTable.ts';
-import type { Command } from './types.ts';
+import { terrainHint } from "../tables/terrainNames.ts";
+import { hex } from "../format.ts";
+import { promotesForwardTarget } from "../analysis/crossTable.ts";
+import type { Command } from "./types.ts";
 
 export const classes: Command = {
-  name: 'classes',
-  summary: 'Class table: bases, caps, movement, promotion targets',
+  name: "classes",
+  summary: "Class table: bases, caps, movement, promotion targets",
   description:
-    'One row per class. `bases` are the class\'s own stat floors; add a unit\'s ' +
-    '`stats` delta to get what that unit actually starts with. `--all` adds ' +
-    '`impassableTerrains`, the per-class terrain the class may not enter.',
+    "One row per class. `bases` are the class's own stat floors; add a unit's " +
+    "`stats` delta to get what that unit actually starts with. `--all` adds " +
+    "`impassableTerrains`, the per-class terrain the class may not enter.",
   run: ({ rom, flags }) => {
     const rows = flags.all ? rom.classes : rom.classes.filter((c) => !c.isEmpty);
     const terrainName = new Map(rom.terrainNames.names.map((n) => [n.id, n.name]));
@@ -20,9 +20,9 @@ export const classes: Command = {
     // ground class lists it as impassable.
     const label = (id: number): string => {
       const name = terrainName.get(id);
-      if (name !== undefined && name !== '') return name;
+      if (name !== undefined && name !== "") return name;
       const hint = terrainHint(id, isMultibyte);
-      return `terrain ${hex(id)}${hint === '' ? '' : ` ${hint}`}`;
+      return `terrain ${hex(id)}${hint === "" ? "" : ` ${hint}`}`;
     };
 
     return rows.map((c) => ({

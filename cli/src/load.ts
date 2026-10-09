@@ -29,58 +29,58 @@
  * you discover by profiling. See `LoadStats` below.
  */
 
-import { readFileSync } from 'node:fs';
+import { readFileSync } from "node:fs";
 
-import { RomBuffer } from './rom/RomBuffer.ts';
-import type { RomIdentity } from './rom/detect.ts';
-import { detectVersion, MIN_ROM_SIZES } from './rom/detect.ts';
-import type { GameLayout } from './data/layouts.ts';
-import { getLayout } from './data/layouts.ts';
-import type { TextContext } from './text/huffman.ts';
-import { makeTextContext } from './text/huffman.ts';
-import type { ResolvedTable } from './tables/common.ts';
-import { resolveTable } from './tables/common.ts';
-import type { UnitClass } from './tables/classes.ts';
-import { buildClassNameMap, readAllClasses } from './tables/classes.ts';
-import type { Unit } from './tables/units.ts';
-import { buildUnitNameMap, readAllUnits } from './tables/units.ts';
-import type { SupportGraphEdge, SupportReadResult } from './tables/supports.ts';
-import { buildSupportGraph, readSupports } from './tables/supports.ts';
-import type { SupportBonus } from './tables/supportBonus.ts';
-import { readAffinityNames, readSupportBonuses } from './tables/supportBonus.ts';
-import type { TerrainReadResult } from './tables/terrainNames.ts';
-import { readTerrainNames } from './tables/terrainNames.ts';
-import type { ClassRole } from './tables/classRoles.ts';
-import { deriveClassRoles } from './tables/classRoles.ts';
-import { findConfigDataDir, isKnownLanguage } from './config/data.ts';
-import type { ClassFlagDef } from './tables/classFlags.ts';
-import { loadClassFlags } from './tables/classFlags.ts';
-import type { EventScriptTable, CondSlot } from './tables/eventScript.ts';
-import { loadConditionSlots, loadEventScripts } from './tables/eventScript.ts';
+import { RomBuffer } from "./rom/RomBuffer.ts";
+import type { RomIdentity } from "./rom/detect.ts";
+import { detectVersion, MIN_ROM_SIZES } from "./rom/detect.ts";
+import type { GameLayout } from "./data/layouts.ts";
+import { getLayout } from "./data/layouts.ts";
+import type { TextContext } from "./text/huffman.ts";
+import { makeTextContext } from "./text/huffman.ts";
+import type { ResolvedTable } from "./tables/common.ts";
+import { resolveTable } from "./tables/common.ts";
+import type { UnitClass } from "./tables/classes.ts";
+import { buildClassNameMap, readAllClasses } from "./tables/classes.ts";
+import type { Unit } from "./tables/units.ts";
+import { buildUnitNameMap, readAllUnits } from "./tables/units.ts";
+import type { SupportGraphEdge, SupportReadResult } from "./tables/supports.ts";
+import { buildSupportGraph, readSupports } from "./tables/supports.ts";
+import type { SupportBonus } from "./tables/supportBonus.ts";
+import { readAffinityNames, readSupportBonuses } from "./tables/supportBonus.ts";
+import type { TerrainReadResult } from "./tables/terrainNames.ts";
+import { readTerrainNames } from "./tables/terrainNames.ts";
+import type { ClassRole } from "./tables/classRoles.ts";
+import { deriveClassRoles } from "./tables/classRoles.ts";
+import { findConfigDataDir, isKnownLanguage } from "./config/data.ts";
+import type { ClassFlagDef } from "./tables/classFlags.ts";
+import { loadClassFlags } from "./tables/classFlags.ts";
+import type { EventScriptTable, CondSlot } from "./tables/eventScript.ts";
+import { loadConditionSlots, loadEventScripts } from "./tables/eventScript.ts";
 import type {
   Chapter,
   ChapterScan,
   CondSlotInfo,
   JoinDerivation,
   MapSettingTable,
-} from './tables/chapters.ts';
+} from "./tables/chapters.ts";
 import {
   deriveJoins,
   describeCondSlots,
   readChapters,
   readMapSettingTable,
   scanChapter,
-} from './tables/chapters.ts';
-import type { ChapterEdges, PlayOrder } from './tables/storyPath.ts';
-import { buildPlayOrder, isRealMap, readAllTransitions } from './tables/storyPath.ts';
-import type { ForceSortieTable } from './tables/forceSortie.ts';
-import { readForceSortie } from './tables/forceSortie.ts';
-import type { Item, ItemReadResult } from './tables/items.ts';
-import { buildItemMap, readItems } from './tables/items.ts';
-import type { ShopReadResult } from './tables/shops.ts';
-import { readShops } from './tables/shops.ts';
-import type { ChapterObjects, MapObject } from './tables/mapObjects.ts';
-import { readAllObjects } from './tables/mapObjects.ts';
+} from "./tables/chapters.ts";
+import type { ChapterEdges, PlayOrder } from "./tables/storyPath.ts";
+import { buildPlayOrder, isRealMap, readAllTransitions } from "./tables/storyPath.ts";
+import type { ForceSortieTable } from "./tables/forceSortie.ts";
+import { readForceSortie } from "./tables/forceSortie.ts";
+import type { Item, ItemReadResult } from "./tables/items.ts";
+import { buildItemMap, readItems } from "./tables/items.ts";
+import type { ShopReadResult } from "./tables/shops.ts";
+import { readShops } from "./tables/shops.ts";
+import type { ChapterObjects, MapObject } from "./tables/mapObjects.ts";
+import { readAllObjects } from "./tables/mapObjects.ts";
 
 /**
  * One ROM, parsed as far as the caller has asked for.
@@ -173,7 +173,7 @@ export interface LoadedRom {
 }
 
 /** Fields computed on load. Cheap by construction - nothing here walks a table. */
-export type EagerRom = Pick<LoadedRom, 'path' | 'rom' | 'identity' | 'layout' | 'text'>;
+export type EagerRom = Pick<LoadedRom, "path" | "rom" | "identity" | "layout" | "text">;
 
 /** Fields installed as memoised getters. One builder each - see `FieldSpecs`. */
 export type LazyRom = Omit<LoadedRom, keyof EagerRom>;
@@ -191,7 +191,7 @@ export type LazyRom = Omit<LoadedRom, keyof EagerRom>;
  * `--timings` prints the measured number alongside this label, so a label that
  * has drifted from reality shows up instead of quietly misleading.
  */
-export type FieldCost = 'cheap' | 'moderate' | 'expensive';
+export type FieldCost = "cheap" | "moderate" | "expensive";
 
 interface FieldSpec<T> {
   readonly cost: FieldCost;
@@ -341,7 +341,7 @@ const MS_WIDTH = 8;
  */
 export function formatLoadTrace(stats: LoadStats): string {
   const roots = stats.rootsRead();
-  if (roots.length === 0) return 'timings: no lazy table was read';
+  if (roots.length === 0) return "timings: no lazy table was read";
 
   const ms = (value: number): string => `${value.toFixed(1)}ms`.padStart(MS_WIDTH);
   const rows = roots
@@ -353,12 +353,12 @@ export function formatLoadTrace(stats: LoadStats): string {
    *  about the field itself or - far more often - about what it drags in. */
   const SLOW_MS = 100;
   const tag = (key: string, total: number): string => {
-    const cost = stats.costOf(key) ?? 'cheap';
-    if (cost !== 'cheap') return ` [${cost}]`;
-    return total >= SLOW_MS ? ' [declared cheap]' : '';
+    const cost = stats.costOf(key) ?? "cheap";
+    if (cost !== "cheap") return ` [${cost}]`;
+    return total >= SLOW_MS ? " [declared cheap]" : "";
   };
 
-  const lines = ['timings: tables read by this command'];
+  const lines = ["timings: tables read by this command"];
   for (const { key, total } of rows) {
     const deps = stats
       .depsOf(key)
@@ -369,20 +369,20 @@ export function formatLoadTrace(stats: LoadStats): string {
     const shown = deps.filter((d) => d.own >= 1).slice(0, 3);
     const tail =
       shown.length === 0
-        ? ''
+        ? ""
         : `  <- ${shown
             .map((d) => `${d.dep} ${d.own.toFixed(1)}ms${tag(d.dep, d.own)}`)
-            .join(', ')}`;
+            .join(", ")}`;
     lines.push(`  ${ms(total)}  ${key}${tag(key, total)}${tail}`);
   }
   lines.push(`  ${ms(stats.spentMs())}  total across every table read once`);
-  return lines.join('\n');
+  return lines.join("\n");
 }
 
 export class UnsupportedRomError extends Error {
   constructor(message: string) {
     super(message);
-    this.name = 'UnsupportedRomError';
+    this.name = "UnsupportedRomError";
   }
 }
 
@@ -400,7 +400,7 @@ export class RomNotFoundError extends Error {
 
   constructor(path: string, reason: string) {
     super(`cannot read ROM file: ${reason}`);
-    this.name = 'RomNotFoundError';
+    this.name = "RomNotFoundError";
     this.path = path;
     this.reason = reason;
   }
@@ -419,11 +419,7 @@ export function titleFragment(version: string): string {
  * computing all of them. Every read is attributed to `stats`, which is what
  * makes the cost model observable rather than documented.
  */
-function memo<T>(
-  stats: LoadStats,
-  key: string,
-  compute: () => T,
-): PropertyDescriptor {
+function memo<T>(stats: LoadStats, key: string, compute: () => T): PropertyDescriptor {
   let done = false;
   let value: T;
   return {
@@ -451,7 +447,11 @@ function installLazyFields(self: LoadedRom, specs: FieldSpecs, stats: LoadStats)
   for (const key of Object.keys(specs) as (keyof LazyRom)[]) {
     const spec = specs[key] as FieldSpec<unknown>;
     stats.declareCost(key, spec.cost);
-    Object.defineProperty(self, key, memo(stats, key, () => spec.build(self)));
+    Object.defineProperty(
+      self,
+      key,
+      memo(stats, key, () => spec.build(self)),
+    );
   }
 }
 
@@ -485,9 +485,9 @@ export function loadRom(path: string, options: LoadOptions = {}): LoadedRom {
     bytes = readFileSync(path);
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code;
-    if (code === 'ENOENT') throw new RomNotFoundError(path, 'no such file');
-    if (code === 'EISDIR') throw new RomNotFoundError(path, 'is a directory');
-    if (code === 'EACCES') throw new RomNotFoundError(path, 'permission denied');
+    if (code === "ENOENT") throw new RomNotFoundError(path, "no such file");
+    if (code === "EISDIR") throw new RomNotFoundError(path, "is a directory");
+    if (code === "EACCES") throw new RomNotFoundError(path, "permission denied");
     throw new RomNotFoundError(path, (error as Error).message);
   }
   const buffer = new RomBuffer(bytes);
@@ -496,9 +496,9 @@ export function loadRom(path: string, options: LoadOptions = {}): LoadedRom {
   if (!identity.version) {
     // `detectVersion` already explains why (too small, or an unknown code).
     throw new UnsupportedRomError(
-      `${identity.notes.join(' ')} ` +
-        'Supported game codes: AFEJ01 (FE6J), AE7J01 (FE7J), AE7E01 (FE7U), ' +
-        'BE8J01 (FE8J), BE8E01 (FE8U).',
+      `${identity.notes.join(" ")} ` +
+        "Supported game codes: AFEJ01 (FE6J), AE7J01 (FE7J), AE7E01 (FE7U), " +
+        "BE8J01 (FE8J), BE8E01 (FE8U).",
     );
   }
 
@@ -511,14 +511,14 @@ export function loadRom(path: string, options: LoadOptions = {}): LoadedRom {
     throw new UnsupportedRomError(
       `ROM is ${identity.size} bytes but ${identity.version} needs at least ` +
         `${min} (0x${min.toString(16).toUpperCase()}). The file is truncated or ` +
-        'was patched onto a trimmed base; no table in it can be read safely.',
+        "was patched onto a trimmed base; no table in it can be read safely.",
     );
   }
 
   const layout = getLayout(identity.version);
   if (!layout.supported) {
     throw new UnsupportedRomError(
-      `${layout.displayName} is not supported yet. ${layout.unsupportedReason ?? ''}`.trim(),
+      `${layout.displayName} is not supported yet. ${layout.unsupportedReason ?? ""}`.trim(),
     );
   }
 
@@ -542,11 +542,11 @@ export function loadRom(path: string, options: LoadOptions = {}): LoadedRom {
     if (dir === null && !warnedNoConfig) {
       warnedNoConfig = true;
       warn(
-        'config/data not found - class ability names, the event-script opcode ' +
-          'table and the chapter-condition names are all unavailable, so ' +
-          '`chapters`, `roles` mobility and `units` availability will be empty ' +
-          'or fall back to heuristics. Set FEBUILDERGBA_CONFIG or pass ' +
-          'configDir to fix this.',
+        "config/data not found - class ability names, the event-script opcode " +
+          "table and the chapter-condition names are all unavailable, so " +
+          "`chapters`, `roles` mobility and `units` availability will be empty " +
+          "or fall back to heuristics. Set FEBUILDERGBA_CONFIG or pass " +
+          "configDir to fix this.",
       );
     }
     return dir;
@@ -559,19 +559,19 @@ export function loadRom(path: string, options: LoadOptions = {}): LoadedRom {
     // `config/data` supplies the names of class ability bits and the opcode
     // table. Without it we can still parse, but roles lose the mounted/armour
     // distinction and the chapters lose their script walks.
-    configDir: { cost: 'cheap', build: () => findConfigDataDir(options.configDir) },
-    configLanguage: { cost: 'cheap', build: () => options.language ?? null },
+    configDir: { cost: "cheap", build: () => findConfigDataDir(options.configDir) },
+    configLanguage: { cost: "cheap", build: () => options.language ?? null },
     classFlagDefs: {
-      cost: 'cheap',
+      cost: "cheap",
       build: (rom) => {
         const dir = requireConfigDir(rom);
         return dir === null ? [] : loadClassFlags(dir, game, language);
       },
     },
 
-    classTable: { cost: 'cheap', build: () => resolveTable(buffer, layout.unitClass) },
+    classTable: { cost: "cheap", build: () => resolveTable(buffer, layout.unitClass) },
     classes: {
-      cost: 'moderate',
+      cost: "moderate",
       build: (rom) =>
         readAllClasses({
           rom: buffer,
@@ -580,12 +580,12 @@ export function loadRom(path: string, options: LoadOptions = {}): LoadedRom {
           abilityFlagDefs: rom.classFlagDefs,
         }),
     },
-    classNames: { cost: 'cheap', build: (rom) => buildClassNameMap(rom.classes) },
-    classRoles: { cost: 'cheap', build: (rom) => deriveClassRoles(rom.classes) },
+    classNames: { cost: "cheap", build: (rom) => buildClassNameMap(rom.classes) },
+    classRoles: { cost: "cheap", build: (rom) => deriveClassRoles(rom.classes) },
 
-    unitTable: { cost: 'cheap', build: () => resolveTable(buffer, layout.unit) },
+    unitTable: { cost: "cheap", build: () => resolveTable(buffer, layout.unit) },
     units: {
-      cost: 'moderate',
+      cost: "moderate",
       build: (rom) => {
         // Class base stats turn a unit's per-unit deltas into the stats it
         // actually starts with (`startingStat = class base + unit base`).
@@ -600,50 +600,50 @@ export function loadRom(path: string, options: LoadOptions = {}): LoadedRom {
         });
       },
     },
-    unitNames: { cost: 'cheap', build: (rom) => buildUnitNameMap(rom.units) },
+    unitNames: { cost: "cheap", build: (rom) => buildUnitNameMap(rom.units) },
 
     supports: {
-      cost: 'moderate',
+      cost: "moderate",
       build: (rom) => readSupports(buffer, rom.units, rom.unitNames),
     },
     supportGraph: {
-      cost: 'cheap',
+      cost: "cheap",
       build: (rom) => buildSupportGraph(rom.supports.entries, rom.unitNames),
     },
     supportBonuses: {
-      cost: 'cheap',
+      cost: "cheap",
       build: () =>
         layout.support ? readSupportBonuses(buffer, layout.support.attributePointer) : [],
     },
     // Affinity names straight from the ROM's text table, via the text ids the
     // game's own `GetAffinityName` uses. Falls back per-entry to the hardcoded
     // table when a text id does not decode.
-    affinityNames: { cost: 'cheap', build: () => readAffinityNames(buffer, text) },
+    affinityNames: { cost: "cheap", build: () => readAffinityNames(buffer, text) },
 
     terrainNames: {
-      cost: 'cheap',
+      cost: "cheap",
       build: () => readTerrainNames(buffer, layout.terrainNames, text),
     },
 
     eventScripts: {
-      cost: 'moderate',
+      cost: "moderate",
       build: (rom) => {
         const dir = requireConfigDir(rom);
         return dir === null ? { scripts: [], source: null } : loadEventScripts(dir, game, language);
       },
     },
     rawCondSlots: {
-      cost: 'cheap',
+      cost: "cheap",
       build: (rom) => {
         const dir = requireConfigDir(rom);
         return dir === null ? [] : loadConditionSlots(dir, game, language);
       },
     },
-    condSlots: { cost: 'cheap', build: (rom) => describeCondSlots(rom.rawCondSlots) },
+    condSlots: { cost: "cheap", build: (rom) => describeCondSlots(rom.rawCondSlots) },
 
-    mapSettings: { cost: 'cheap', build: () => readMapSettingTable(buffer, layout) },
+    mapSettings: { cost: "cheap", build: () => readMapSettingTable(buffer, layout) },
     chapters: {
-      cost: 'moderate',
+      cost: "moderate",
       build: (rom) => {
         const settings = rom.mapSettings;
         const slots = rom.condSlots;
@@ -654,25 +654,23 @@ export function loadRom(path: string, options: LoadOptions = {}): LoadedRom {
     },
 
     mapTransitions: {
-      cost: 'moderate',
+      cost: "moderate",
       build: (rom) =>
         rom.eventScripts.scripts.length === 0
           ? []
           : readAllTransitions(buffer, rom.eventScripts, rom.chapters),
     },
     playOrder: {
-      cost: 'cheap',
+      cost: "cheap",
       build: (rom) => {
-        const real = new Set(
-          rom.chapters.filter((c) => isRealMap(buffer, c)).map((c) => c.index),
-        );
+        const real = new Set(rom.chapters.filter((c) => isRealMap(buffer, c)).map((c) => c.index));
         return buildPlayOrder(rom.mapTransitions, (m) => real.has(m));
       },
     },
 
     // The expensive one: every chapter's scripts, walked once per chapter.
     chapterScans: {
-      cost: 'expensive',
+      cost: "expensive",
       build: (rom) =>
         rom.eventScripts.scripts.length === 0
           ? []
@@ -684,35 +682,40 @@ export function loadRom(path: string, options: LoadOptions = {}): LoadedRom {
       // Cheap in itself, but it reads `chapterScans`, so touching `joins`
       // costs the whole event-script walk. This is the field that makes the
       // declared cost worth checking against `--timings` rather than trusting.
-      cost: 'cheap',
+      cost: "cheap",
       build: (rom) => {
         const ownClassOf = new Map<number, number>();
         for (const unit of rom.units) {
           if (unit.classId !== undefined) ownClassOf.set(unit.id, unit.classId);
         }
         const position = rom.playOrder.position;
-        return deriveJoins(rom.chapters, rom.chapterScans, ownClassOf, (m) => position.get(m) ?? null);
+        return deriveJoins(
+          rom.chapters,
+          rom.chapterScans,
+          ownClassOf,
+          (m) => position.get(m) ?? null,
+        );
       },
     },
 
-    forceSortie: { cost: 'cheap', build: () => readForceSortie(buffer, layout) },
+    forceSortie: { cost: "cheap", build: () => readForceSortie(buffer, layout) },
 
     // Items come first: shop entries are priced through them, and map objects
     // only need the chapter list.
     itemData: {
-      cost: 'moderate',
+      cost: "moderate",
       build: () => (layout.item === null ? null : readItems(buffer, layout.item, text)),
     },
-    items: { cost: 'cheap', build: (rom) => rom.itemData?.items ?? [] },
-    itemMap: { cost: 'cheap', build: (rom) => buildItemMap(rom.items) },
+    items: { cost: "cheap", build: (rom) => rom.itemData?.items ?? [] },
+    itemMap: { cost: "cheap", build: (rom) => buildItemMap(rom.items) },
 
     chapterObjects: {
-      cost: 'moderate',
+      cost: "moderate",
       build: (rom) => readAllObjects(buffer, layout, rom.chapters),
     },
-    mapObjects: { cost: 'cheap', build: (rom) => rom.chapterObjects.flatMap((c) => c.objects) },
+    mapObjects: { cost: "cheap", build: (rom) => rom.chapterObjects.flatMap((c) => c.objects) },
     shopData: {
-      cost: 'cheap',
+      cost: "cheap",
       build: (rom) =>
         layout.shop === null || rom.items.length === 0
           ? null

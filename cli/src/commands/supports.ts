@@ -2,23 +2,23 @@ import {
   SUPPORT_CONVERSATION_CAPS,
   SUPPORT_RANK_THRESHOLDS,
   supportRankPlan,
-} from '../tables/supports.ts';
+} from "../tables/supports.ts";
 import {
   MAX_SIMULTANEOUS_SUPPORT_LEVELS,
   SUPPORT_BONUSES_MAX_DISTANCE,
   SUPPORT_EXP_DISTANCE,
   rankedBonus,
-} from '../tables/supportBonus.ts';
-import type { Command } from './types.ts';
+} from "../tables/supportBonus.ts";
+import type { Command } from "./types.ts";
 
 export const supports: Command = {
-  name: 'supports',
-  summary: 'Support relationships as a deduplicated edge list',
+  name: "supports",
+  summary: "Support relationships as a deduplicated edge list",
   description:
-    'Every support pair once, as an edge list ordered `a < b`, with the rank ' +
-    'plan for reaching each level. `byUnit` indexes the same pairs by unit id, ' +
-    'which is often the easier shape to work with; it carries ids and names ' +
-    'only, so take the numbers from `edges`.',
+    "Every support pair once, as an edge list ordered `a < b`, with the rank " +
+    "plan for reaching each level. `byUnit` indexes the same pairs by unit id, " +
+    "which is often the easier shape to work with; it carries ids and names " +
+    "only, so take the numbers from `edges`.",
   run: ({ rom }) => ({
     limit: 7,
     /**
@@ -92,19 +92,19 @@ export const supports: Command = {
       partners: entry.partners.map((p) => ({ id: p.unitId, name: p.unitName })),
     })),
     limitations: [
-      'A support bonus is the sum of BOTH units\' affinity rows, each scaled by ' +
-        'its own rank, then halved once at the end: ' +
-        'floor((row[mine]*L(mine) + row[theirs]*L(theirs)) / 2) with L = 1/2/3 ' +
-        'for C/B/A. The table stores HALF-points, which is why every row shows ' +
-        'atk=1 and critAvoid=5 - read the `byRank` view instead of the raw bytes.',
-      'Only adjacent pairs (|dx| + |dy| <= 1, or one carrying the other) gain ' +
-        'support points, but the bonus applies out to 3 tiles. The asymmetry is ' +
-        'in the game code, not a parse artefact.',
-      'One support level per pair per chapter, and a unit may hold at most 5 ' +
-        'support levels in total (A=3, B=2, C=1).',
-      'turnsTo assumes every conversation is taken the instant it unlocks and ' +
-        'ignores the one-level-per-chapter cap, so it is a lower bound on the ' +
-        'number of chapters needed.',
+      "A support bonus is the sum of BOTH units' affinity rows, each scaled by " +
+        "its own rank, then halved once at the end: " +
+        "floor((row[mine]*L(mine) + row[theirs]*L(theirs)) / 2) with L = 1/2/3 " +
+        "for C/B/A. The table stores HALF-points, which is why every row shows " +
+        "atk=1 and critAvoid=5 - read the `byRank` view instead of the raw bytes.",
+      "Only adjacent pairs (|dx| + |dy| <= 1, or one carrying the other) gain " +
+        "support points, but the bonus applies out to 3 tiles. The asymmetry is " +
+        "in the game code, not a parse artefact.",
+      "One support level per pair per chapter, and a unit may hold at most 5 " +
+        "support levels in total (A=3, B=2, C=1).",
+      "turnsTo assumes every conversation is taken the instant it unlocks and " +
+        "ignores the one-level-per-chapter cap, so it is a lower bound on the " +
+        "number of chapters needed.",
     ],
   }),
 };

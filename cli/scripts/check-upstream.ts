@@ -25,35 +25,31 @@
  * checkout is still valid, it just cannot be verified here.
  */
 
-import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { execFileSync } from 'node:child_process';
-import { join, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 
-import { LAYOUTS } from '../src/data/layouts.ts';
-import type { GameVersion } from '../src/rom/detect.ts';
-import type { SlotRef } from '../src/data/layouts.ts';
+import { LAYOUTS } from "../src/data/layouts.ts";
+import type { GameVersion } from "../src/rom/detect.ts";
+import type { SlotRef } from "../src/data/layouts.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const CLI_ROOT = join(HERE, '..');
-const REPO = join(CLI_ROOT, '..');
-const VENDORED_DATA = join(CLI_ROOT, 'data');
-const STAMP_FILE = join(VENDORED_DATA, 'UPSTREAM.txt');
+const CLI_ROOT = join(HERE, "..");
+const REPO = join(CLI_ROOT, "..");
+const VENDORED_DATA = join(CLI_ROOT, "data");
+const STAMP_FILE = join(VENDORED_DATA, "UPSTREAM.txt");
 
 /** The `config/data` families `cli/data/` vendors - see `src/config/data.ts`. */
-const VENDORED_PREFIXES: readonly string[] = [
-  'unitclass_checkbox_',
-  'event_',
-  'eventcond_',
-];
+const VENDORED_PREFIXES: readonly string[] = ["unitclass_checkbox_", "event_", "eventcond_"];
 
 /** `ROMFE8U.cs` and friends. The C# file each game's constants live in. */
 const CS_FILE: Readonly<Record<GameVersion, string>> = {
-  FE6J: 'ROMFE6JP.cs',
-  FE7J: 'ROMFE7JP.cs',
-  FE7U: 'ROMFE7U.cs',
-  FE8J: 'ROMFE8JP.cs',
-  FE8U: 'ROMFE8U.cs',
+  FE6J: "ROMFE6JP.cs",
+  FE7J: "ROMFE7JP.cs",
+  FE7U: "ROMFE7U.cs",
+  FE8J: "ROMFE8JP.cs",
+  FE8U: "ROMFE8U.cs",
 };
 
 const hex = (n: number): string => `0x${n.toString(16).toUpperCase()}`;
@@ -64,9 +60,9 @@ const hex = (n: number): string => `0x${n.toString(16).toUpperCase()}`;
 
 /** A value assigned in a `ROMFE*.cs` constructor. */
 type CsValue =
-  | { kind: 'number'; value: number }
+  | { kind: "number"; value: number }
   | {
-      kind: 'find';
+      kind: "find";
       checkPointer: number;
       checkBelow?: number;
       checkEqual?: number;
@@ -93,9 +89,9 @@ function assignments(source: string): Map<string, string> {
     let depth = 0;
     while (i < source.length) {
       const ch = source[i] as string;
-      if (ch === '(' || ch === '{' || ch === '[') depth++;
-      else if (ch === ')' || ch === '}' || ch === ']') depth--;
-      else if (ch === ';' && depth === 0) break;
+      if (ch === "(" || ch === "{" || ch === "[") depth++;
+      else if (ch === ")" || ch === "}" || ch === "]") depth--;
+      else if (ch === ";" && depth === 0) break;
       i++;
     }
     if (!out.has(name)) out.set(name, source.slice(from, i).trim());
@@ -120,8 +116,8 @@ const NUMBER = /(0x[0-9A-Fa-f]+|\d+)/;
  */
 function parseValue(raw: string): CsValue | null {
   const text = raw.trim();
-  if (/^(0[xX][0-9A-Fa-f]+|\d+)$/.test(text)) return { kind: 'number', value: Number(text) };
-  if (!text.startsWith('U.FindROMPointer')) return null;
+  if (/^(0[xX][0-9A-Fa-f]+|\d+)$/.test(text)) return { kind: "number", value: Number(text) };
+  if (!text.startsWith("U.FindROMPointer")) return null;
 
   const find =
     /^U\.FindROMPointer\s*\(\s*rom\s*,\s*([\s\S]*?)\s*,\s*new\s+uint\s*\[\s*\]\s*\{([\s\S]*?)\}\s*\)$/.exec(
@@ -130,24 +126,24 @@ function parseValue(raw: string): CsValue | null {
   if (find === null) return null;
 
   const probe = find[1] as string;
-  const candidates = [...(find[2] as string).matchAll(new RegExp(NUMBER.source, 'g'))].map((m) =>
+  const candidates = [...(find[2] as string).matchAll(new RegExp(NUMBER.source, "g"))].map((m) =>
     Number(m[1]),
   );
 
   const bare = probe.trim();
   const checkPointer = /^0[xX][0-9A-Fa-f]+$|^\d+$/.test(bare)
     ? Number(bare)
-    : Number(/u32\(\s*(0x[0-9A-Fa-f]+|\d+)\s*\)/.exec(probe)?.[1] ?? '0');
+    : Number(/u32\(\s*(0x[0-9A-Fa-f]+|\d+)\s*\)/.exec(probe)?.[1] ?? "0");
   const below = /<\s*(0x[0-9A-Fa-f]+|\d+)/.exec(probe);
   const equal = /==\s*(0x[0-9A-Fa-f]+|\d+)/.exec(probe);
 
   const value: {
-    kind: 'find';
+    kind: "find";
     checkPointer: number;
     checkBelow?: number;
     checkEqual?: number;
     candidates: readonly number[];
-  } = { kind: 'find', checkPointer, candidates };
+  } = { kind: "find", checkPointer, candidates };
   if (below !== null) value.checkBelow = Number(below[1]);
   if (equal !== null) value.checkEqual = Number(equal[1]);
   return value;
@@ -165,26 +161,26 @@ interface Drift {
  * `slot` covers the pointer slots, which upstream may express either as a
  * constant or as a `U.FindROMPointer` search.
  */
-type Ours = { kind: 'num'; value: number } | { kind: 'slot'; slot: SlotRef };
+type Ours = { kind: "num"; value: number } | { kind: "slot"; slot: SlotRef };
 
 /** Numbers are shown both ways: one side is written in hex, the other in decimal. */
 const showNum = (n: number): string => `${n} / ${hex(n)}`;
 
 function showOurs(ours: Ours): string {
-  return ours.kind === 'num' ? showNum(ours.value) : describeSlot(ours.slot);
+  return ours.kind === "num" ? showNum(ours.value) : describeSlot(ours.slot);
 }
 
 function showTheirs(value: CsValue): string {
-  return value.kind === 'number' ? showNum(value.value) : describeValue(value);
+  return value.kind === "number" ? showNum(value.value) : describeValue(value);
 }
 
 /** Same value, not same text - the two files do not agree on notation. */
 function agree(ours: Ours, theirs: CsValue): boolean {
-  if (ours.kind === 'num') return theirs.kind === 'number' && ours.value === theirs.value;
-  if (ours.slot.kind === 'fixed') {
-    return theirs.kind === 'number' && ours.slot.slot === theirs.value;
+  if (ours.kind === "num") return theirs.kind === "number" && ours.value === theirs.value;
+  if (ours.slot.kind === "fixed") {
+    return theirs.kind === "number" && ours.slot.slot === theirs.value;
   }
-  if (theirs.kind !== 'find') return false;
+  if (theirs.kind !== "find") return false;
 
   const slot = ours.slot;
   return (
@@ -197,25 +193,25 @@ function agree(ours: Ours, theirs: CsValue): boolean {
 }
 
 function describeSlot(slot: SlotRef): string {
-  if (slot.kind === 'fixed') return hex(slot.slot);
+  if (slot.kind === "fixed") return hex(slot.slot);
   const probe =
     slot.checkEqual !== undefined
       ? `== ${hex(slot.checkEqual)}`
       : slot.checkBelow !== undefined
         ? `< ${hex(slot.checkBelow)}`
-        : 'pointer';
-  return `search(+${hex(slot.checkPointer)} ${probe}; ${slot.candidates.map(hex).join(',')})`;
+        : "pointer";
+  return `search(+${hex(slot.checkPointer)} ${probe}; ${slot.candidates.map(hex).join(",")})`;
 }
 
 function describeValue(value: CsValue): string {
-  if (value.kind === 'number') return hex(value.value);
+  if (value.kind === "number") return hex(value.value);
   const probe =
     value.checkEqual !== undefined
       ? `== ${hex(value.checkEqual)}`
       : value.checkBelow !== undefined
         ? `< ${hex(value.checkBelow)}`
-        : 'pointer';
-  return `search(+${hex(value.checkPointer)} ${probe}; ${value.candidates.map(hex).join(',')})`;
+        : "pointer";
+  return `search(+${hex(value.checkPointer)} ${probe}; ${value.candidates.map(hex).join(",")})`;
 }
 
 /**
@@ -228,8 +224,8 @@ function layoutDrift(version: GameVersion, cs: ReadonlyMap<string, string>): Dri
   const layout = LAYOUTS[version];
   const drift: Drift[] = [];
 
-  const num = (value: number): Ours => ({ kind: 'num', value });
-  const slot = (ref: SlotRef): Ours => ({ kind: 'slot', slot: ref });
+  const num = (value: number): Ours => ({ kind: "num", value });
+  const slot = (ref: SlotRef): Ours => ({ kind: "slot", slot: ref });
 
   const expect = (label: string, ours: Ours, key: string): void => {
     const raw = cs.get(key);
@@ -247,53 +243,53 @@ function layoutDrift(version: GameVersion, cs: ReadonlyMap<string, string>): Dri
     }
   };
 
-  expect('unit.slot', slot(layout.unit.slot), 'unit_pointer');
-  expect('unit.recordSize', num(layout.unit.recordSize), 'unit_datasize');
-  expect('unit.maxCount', num(layout.unit.maxCount), 'unit_maxcount');
-  expect('unitClass.slot', slot(layout.unitClass.slot), 'class_pointer');
-  expect('unitClass.recordSize', num(layout.unitClass.recordSize), 'class_datasize');
+  expect("unit.slot", slot(layout.unit.slot), "unit_pointer");
+  expect("unit.recordSize", num(layout.unit.recordSize), "unit_datasize");
+  expect("unit.maxCount", num(layout.unit.maxCount), "unit_maxcount");
+  expect("unitClass.slot", slot(layout.unitClass.slot), "class_pointer");
+  expect("unitClass.recordSize", num(layout.unitClass.recordSize), "class_datasize");
 
-  expect('text.maskPointer', num(layout.text.maskPointer), 'mask_pointer');
+  expect("text.maskPointer", num(layout.text.maskPointer), "mask_pointer");
   expect(
-    'text.maskPointBasePointer',
+    "text.maskPointBasePointer",
     num(layout.text.maskPointBasePointer),
-    'mask_point_base_pointer',
+    "mask_point_base_pointer",
   );
-  expect('text.textPointer', num(layout.text.textPointer), 'text_pointer');
-  expect('text.textRecoverAddress', num(layout.text.textRecoverAddress), 'text_recover_address');
+  expect("text.textPointer", num(layout.text.textPointer), "text_pointer");
+  expect("text.textRecoverAddress", num(layout.text.textRecoverAddress), "text_recover_address");
 
   if (layout.support !== null) {
-    expect('support.unitPointer', num(layout.support.unitPointer), 'support_unit_pointer');
-    expect('support.talkPointer', num(layout.support.talkPointer), 'support_talk_pointer');
+    expect("support.unitPointer", num(layout.support.unitPointer), "support_unit_pointer");
+    expect("support.talkPointer", num(layout.support.talkPointer), "support_talk_pointer");
     expect(
-      'support.attributePointer',
+      "support.attributePointer",
       num(layout.support.attributePointer),
-      'support_attribute_pointer',
+      "support_attribute_pointer",
     );
   }
 
-  expect('terrainNames.slot', num(layout.terrainNames.slot), 'map_terrain_name_pointer');
+  expect("terrainNames.slot", num(layout.terrainNames.slot), "map_terrain_name_pointer");
 
   if (layout.map !== null) {
-    expect('map.settingSlot', slot(layout.map.settingSlot), 'map_setting_pointer');
-    expect('map.settingRecordSize', num(layout.map.settingRecordSize), 'map_setting_datasize');
-    expect('map.eventPlistPos', num(layout.map.eventPlistPos), 'map_setting_event_plist_pos');
-    expect('map.eventSlot', num(layout.map.eventSlot), 'map_event_pointer');
-    expect('map.plistLimit', num(layout.map.plistLimit), 'map_map_pointer_list_default_size');
-    expect('map.turnCondSize', num(layout.map.turnCondSize), 'eventcond_tern_size');
-    expect('map.talkCondSize', num(layout.map.talkCondSize), 'eventcond_talk_size');
-    expect('map.unitDataSize', num(layout.map.unitDataSize), 'eventunit_data_size');
+    expect("map.settingSlot", slot(layout.map.settingSlot), "map_setting_pointer");
+    expect("map.settingRecordSize", num(layout.map.settingRecordSize), "map_setting_datasize");
+    expect("map.eventPlistPos", num(layout.map.eventPlistPos), "map_setting_event_plist_pos");
+    expect("map.eventSlot", num(layout.map.eventSlot), "map_event_pointer");
+    expect("map.plistLimit", num(layout.map.plistLimit), "map_map_pointer_list_default_size");
+    expect("map.turnCondSize", num(layout.map.turnCondSize), "eventcond_tern_size");
+    expect("map.talkCondSize", num(layout.map.talkCondSize), "eventcond_talk_size");
+    expect("map.unitDataSize", num(layout.map.unitDataSize), "eventunit_data_size");
   }
 
   if (layout.forceSortie !== null) {
-    expect('forceSortie.slot', num(layout.forceSortie.slot), 'event_force_sortie_pointer');
+    expect("forceSortie.slot", num(layout.forceSortie.slot), "event_force_sortie_pointer");
   }
   if (layout.item !== null) {
-    expect('item.slot', slot(layout.item.slot), 'item_pointer');
-    expect('item.recordSize', num(layout.item.recordSize), 'item_datasize');
+    expect("item.slot", slot(layout.item.slot), "item_pointer");
+    expect("item.recordSize", num(layout.item.recordSize), "item_datasize");
   }
   if (layout.shop !== null) {
-    expect('shop.prepShopSlot', num(layout.shop.prepShopSlot), 'item_shop_hensei_pointer');
+    expect("shop.prepShopSlot", num(layout.shop.prepShopSlot), "item_shop_hensei_pointer");
   }
 
   return drift;
@@ -316,7 +312,7 @@ function checkLayouts(csDir: string): Problem[] {
       problems.push({ where: `layouts ${version}`, detail: `${CS_FILE[version]} is missing` });
       continue;
     }
-    const drift = layoutDrift(version, assignments(readFileSync(path, 'utf8')));
+    const drift = layoutDrift(version, assignments(readFileSync(path, "utf8")));
     for (const d of drift) {
       problems.push({
         where: `layouts ${version}: ${d.label}`,
@@ -332,17 +328,17 @@ function checkConfigData(upstreamData: string): Problem[] {
   // Exactly the three prefixes `config/data.ts` documents, so the provenance
   // stamp sitting alongside them is not mistaken for a vendored resource.
   const files = readdirSync(VENDORED_DATA).filter(
-    (f) => f.endsWith('.txt') && VENDORED_PREFIXES.some((p) => f.startsWith(p)),
+    (f) => f.endsWith(".txt") && VENDORED_PREFIXES.some((p) => f.startsWith(p)),
   );
 
   for (const file of files) {
     const upstream = join(upstreamData, file);
     if (!existsSync(upstream)) {
-      problems.push({ where: `config/data ${file}`, detail: 'no longer exists upstream' });
+      problems.push({ where: `config/data ${file}`, detail: "no longer exists upstream" });
       continue;
     }
     if (!readFileSync(join(VENDORED_DATA, file)).equals(readFileSync(upstream))) {
-      problems.push({ where: `config/data ${file}`, detail: 'differs from upstream' });
+      problems.push({ where: `config/data ${file}`, detail: "differs from upstream" });
     }
   }
   console.log(`config/data: ${files.length} vendored files compared`);
@@ -355,9 +351,9 @@ function checkConfigData(upstreamData: string): Problem[] {
 
 function submoduleCommit(submodule: string): string | null {
   try {
-    return execFileSync('git', ['-C', submodule, 'rev-parse', 'HEAD'], {
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'],
+    return execFileSync("git", ["-C", submodule, "rev-parse", "HEAD"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
     }).trim();
   } catch {
     return null;
@@ -365,27 +361,27 @@ function submoduleCommit(submodule: string): string | null {
 }
 
 function readStamp(): string | null {
-  return existsSync(STAMP_FILE) ? readFileSync(STAMP_FILE, 'utf8').trim() : null;
+  return existsSync(STAMP_FILE) ? readFileSync(STAMP_FILE, "utf8").trim() : null;
 }
 
 // --------------------------------------------------------------------------
 
 function main(): void {
   const argv = process.argv.slice(2);
-  const update = argv.includes('--update');
+  const update = argv.includes("--update");
 
-  const submodule = join(REPO, 'FEBuilderGBA');
-  const csDir = join(submodule, 'FEBuilderGBA');
-  const upstreamData = join(submodule, 'FEBuilderGBA', 'bin', 'Debug', 'config', 'data');
+  const submodule = join(REPO, "FEBuilderGBA");
+  const csDir = join(submodule, "FEBuilderGBA");
+  const upstreamData = join(submodule, "FEBuilderGBA", "bin", "Debug", "config", "data");
 
-  if (!existsSync(join(submodule, 'FEBuilderGBA', 'ROMFE8U.cs'))) {
+  if (!existsSync(join(submodule, "FEBuilderGBA", "ROMFE8U.cs"))) {
     const stamp = readStamp();
     console.log(
-      'FEBuilderGBA submodule is not checked out - nothing to compare against.\n' +
+      "FEBuilderGBA submodule is not checked out - nothing to compare against.\n" +
         (stamp === null
-          ? 'No provenance stamp either: this vendored data has never been verified here.'
+          ? "No provenance stamp either: this vendored data has never been verified here."
           : `Last verified against:\n${stamp}`) +
-        '\nRun `git submodule update --init` to enable this check.',
+        "\nRun `git submodule update --init` to enable this check.",
     );
     return;
   }
@@ -401,28 +397,28 @@ function main(): void {
   }
 
   const stamp = readStamp();
-  const recorded = stamp?.split('\n')[0]?.replace(/^commit\s+/, '') ?? null;
+  const recorded = stamp?.split("\n")[0]?.replace(/^commit\s+/, "") ?? null;
   if (update && commit !== null) {
     const body = [
       `commit ${commit}`,
       `checked ${new Date().toISOString().slice(0, 10)}`,
-      '',
-      'The vendored config/data files and the constants in src/data/layouts.ts were',
-      'last verified against this FEBuilderGBA commit by scripts/check-upstream.ts.',
-    ].join('\n');
-    writeFileSync(STAMP_FILE, `${body}\n`, 'utf8');
+      "",
+      "The vendored config/data files and the constants in src/data/layouts.ts were",
+      "last verified against this FEBuilderGBA commit by scripts/check-upstream.ts.",
+    ].join("\n");
+    writeFileSync(STAMP_FILE, `${body}\n`, "utf8");
     console.log(`stamp: wrote ${STAMP_FILE} (${commit.slice(0, 12)})`);
   } else if (commit !== null && recorded !== commit) {
     console.log(
-      `stamp: upstream moved - recorded ${recorded ?? 'nothing yet'}, now ${commit.slice(0, 12)}. ` +
-        'Re-run with --update once the differences above are understood.',
+      `stamp: upstream moved - recorded ${recorded ?? "nothing yet"}, now ${commit.slice(0, 12)}. ` +
+        "Re-run with --update once the differences above are understood.",
     );
   } else if (commit !== null) {
     console.log(`stamp: up to date with ${commit.slice(0, 12)}`);
   }
 
   if (problems.length > 0) {
-    console.error('\nupstream check failed');
+    console.error("\nupstream check failed");
     process.exitCode = 1;
   }
 }

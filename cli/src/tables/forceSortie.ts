@@ -63,9 +63,9 @@
  *            asmmap_FE8.txt (`IsCharacterForceDeployed` / `@ChapterData@1B`).
  */
 
-import type { ForceSortieLayout, GameLayout } from '../data/layouts.ts';
-import { hex } from '../format.ts';
-import { RomBuffer } from '../rom/RomBuffer.ts';
+import type { ForceSortieLayout, GameLayout } from "../data/layouts.ts";
+import { hex } from "../format.ts";
+import { RomBuffer } from "../rom/RomBuffer.ts";
 
 /** Value of the route filter meaning "this record applies on every route". */
 export const ROUTE_ANY = 0xff;
@@ -84,9 +84,9 @@ export const FORCE_SORTIE_TERMINATOR = 0xffff;
  * `0x01` records cannot actually mean "pre-split".
  */
 export const ROUTE_LABELS: Readonly<Record<number, string>> = {
-  1: '序盤',
-  2: 'A編',
-  3: 'F編',
+  1: "序盤",
+  2: "A編",
+  3: "F編",
 };
 
 export interface ForceSortieRecord {
@@ -110,15 +110,15 @@ export interface ForceSortieTable {
   recordSize: number;
   count: number;
   /** How the end of the table was found. */
-  termination: ForceSortieLayout['termination'];
+  termination: ForceSortieLayout["termination"];
   records: ForceSortieRecord[];
 }
 
 /** Human-readable route filter, e.g. `any` or `0x01 (序盤)`. */
 export function routeLabel(route: number): string {
-  if (route === ROUTE_ANY) return 'any';
+  if (route === ROUTE_ANY) return "any";
   const name = ROUTE_LABELS[route];
-  return `${hex(route, 2)}${name === undefined ? '' : ` (${name})`}`;
+  return `${hex(route, 2)}${name === undefined ? "" : ` (${name})`}`;
 }
 
 /**
@@ -140,21 +140,21 @@ export function readForceSortie(
   if (!rom.isSafeOffset(tableOffset)) return null;
 
   const records: ForceSortieRecord[] = [];
-  const limit = spec.termination === 'fixed' ? (spec.count ?? 0) : maxCount;
+  const limit = spec.termination === "fixed" ? (spec.count ?? 0) : maxCount;
 
   for (let i = 0; i < limit; i++) {
     const addr = tableOffset + i * spec.recordSize;
     if (!rom.isSafeOffset(addr + spec.recordSize)) break;
 
     const unitId = rom.u16(addr);
-    if (spec.termination === 'terminator' && unitId === FORCE_SORTIE_TERMINATOR) break;
+    if (spec.termination === "terminator" && unitId === FORCE_SORTIE_TERMINATOR) break;
 
     records.push({
       index: i,
       addr,
       unitId,
       route: rom.u8(addr + 2),
-      mapIndex: spec.termination === 'fixed' ? (spec.mapIdBase ?? 0) + i : rom.u8(addr + 3),
+      mapIndex: spec.termination === "fixed" ? (spec.mapIdBase ?? 0) + i : rom.u8(addr + 3),
     });
   }
 

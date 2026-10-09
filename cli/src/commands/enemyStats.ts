@@ -1,25 +1,21 @@
-import {
-  attackSpeedFirstWeapon,
-  collectEnemyStats,
-  summarizeAs,
-} from '../analysis/enemyStats.ts';
-import type { AsSummary, AutolevelRoutine, EnemySample } from '../analysis/enemyStats.ts';
-import type { Command } from './types.ts';
+import { attackSpeedFirstWeapon, collectEnemyStats, summarizeAs } from "../analysis/enemyStats.ts";
+import type { AsSummary, AutolevelRoutine, EnemySample } from "../analysis/enemyStats.ts";
+import type { Command } from "./types.ts";
 
 export const enemyStats: Command = {
-  name: 'enemy-stats',
-  summary: 'Enemy attack-speed distribution, projected from placement records',
+  name: "enemy-stats",
+  summary: "Enemy attack-speed distribution, projected from placement records",
   description:
-    'Walks every reachable enemy placement block and projects attack speed, ' +
-    'con and weight. `--hard` re-projects with the hard-mode autolevel round ' +
-    '(19 levels instead of 9).\n\n' +
-    'What is emitted is the **distribution** - overall, per autolevel routine ' +
-    'and per chapter, plus a per-class breakdown inside each chapter. The flat ' +
-    '`samples` array (one row per projected record) is `--all` only: it is the ' +
-    'raw material those summaries are computed from, so a run that reads a ' +
-    'summary was paying for a private copy of it. `--all` adds it back for a ' +
-    'consumer that needs to re-aggregate over an arbitrary chapter range, which ' +
-    'percentile summaries cannot do exactly.',
+    "Walks every reachable enemy placement block and projects attack speed, " +
+    "con and weight. `--hard` re-projects with the hard-mode autolevel round " +
+    "(19 levels instead of 9).\n\n" +
+    "What is emitted is the **distribution** - overall, per autolevel routine " +
+    "and per chapter, plus a per-class breakdown inside each chapter. The flat " +
+    "`samples` array (one row per projected record) is `--all` only: it is the " +
+    "raw material those summaries are computed from, so a run that reads a " +
+    "summary was paying for a private copy of it. `--all` adds it back for a " +
+    "consumer that needs to re-aggregate over an arbitrary chapter range, which " +
+    "percentile summaries cannot do exactly.",
   run: ({ rom, flags }) => {
     const { samples, unresolvedClass } = collectEnemyStats({
       rom: rom.rom,
@@ -121,11 +117,11 @@ export const enemyStats: Command = {
         promoted: samples.filter((s) => s.promoted).length,
         byRoutine: {
           /** `AutolevelUnit`: class growths, `level - 1` rounds. */
-          unit: routine('unit').length,
+          unit: routine("unit").length,
           /** `AutolevelRealistic`: the character's own growths, simulated. */
-          realistic: routine('realistic').length,
+          realistic: routine("realistic").length,
           /** `+3` bit 0 clear: the record keeps its raw stats. */
-          none: routine('none').length,
+          none: routine("none").length,
         },
         /** Records with no weapon in `+12..15`, so no weight penalty. */
         noWeapon: samples.filter((s) => s.weight === 0).length,
@@ -135,9 +131,9 @@ export const enemyStats: Command = {
       },
       overall: summary(summarizeAs(samples)),
       byRoutine: {
-        unit: summary(summarizeAs(routine('unit'))),
-        realistic: summary(summarizeAs(routine('realistic'))),
-        none: summary(summarizeAs(routine('none'))),
+        unit: summary(summarizeAs(routine("unit"))),
+        realistic: summary(summarizeAs(routine("realistic"))),
+        none: summary(summarizeAs(routine("none"))),
       },
       chapters: chapterRows,
       /**
@@ -171,11 +167,11 @@ export const enemyStats: Command = {
       /** Every record whose attack speed came out below zero, with its inputs. */
       negativeSamples: negative,
       limitations: [
-        'Attack speed is `speed - max(0, weapon weight - constitution)`, the same formula `BattleLoadAS @ 0x0802AB74` runs for both sides. It is signed: nothing clamps it at zero, so a Gorgon Egg holding a 10-weight tome really does sit at -4.',
-        'Weapon weight uses the **heaviest** weapon in the record (worst case for the enemy, best case for the player). Which weapon the AI actually picks is the one input this projection cannot read from the ROM; `firstWeaponSummary` prices the other convention, and the two differ by about 0.2 attack speed.',
-        'Autolevel burns random numbers (`NextRN_N` in `GetAutoleveledStat`, `Roll1RN` in `GetStatIncrease`), so `mean` is exact in expectation but no single playthrough reproduces it. `bandLo`/`bandHi` bracket what the RNG can reach.',
-        'Only placement blocks reachable from a condition-slot script are seen. Blocks referenced from TRAP slots or from code the opcode table does not know are invisible, and the walk gives up after ten consecutive unknown instructions - so the sample is a lower bound on the enemy count, not a census.',
-        'The `realistic` routine simulates one level-up per level with the character\'s own growths. Its mean is exact; its band is quoted as `mean +/- 2 standard deviations` of the equivalent binomial, not as the ROM\'s own reachable set.',
+        "Attack speed is `speed - max(0, weapon weight - constitution)`, the same formula `BattleLoadAS @ 0x0802AB74` runs for both sides. It is signed: nothing clamps it at zero, so a Gorgon Egg holding a 10-weight tome really does sit at -4.",
+        "Weapon weight uses the **heaviest** weapon in the record (worst case for the enemy, best case for the player). Which weapon the AI actually picks is the one input this projection cannot read from the ROM; `firstWeaponSummary` prices the other convention, and the two differ by about 0.2 attack speed.",
+        "Autolevel burns random numbers (`NextRN_N` in `GetAutoleveledStat`, `Roll1RN` in `GetStatIncrease`), so `mean` is exact in expectation but no single playthrough reproduces it. `bandLo`/`bandHi` bracket what the RNG can reach.",
+        "Only placement blocks reachable from a condition-slot script are seen. Blocks referenced from TRAP slots or from code the opcode table does not know are invisible, and the walk gives up after ten consecutive unknown instructions - so the sample is a lower bound on the enemy count, not a census.",
+        "The `realistic` routine simulates one level-up per level with the character's own growths. Its mean is exact; its band is quoted as `mean +/- 2 standard deviations` of the equivalent binomial, not as the ROM's own reachable set.",
       ],
     };
   },

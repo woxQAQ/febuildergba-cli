@@ -65,14 +65,14 @@
  * See `docs/battle-math.md` §3.20.
  */
 
-import type { GameLayout } from '../data/layouts.ts';
-import type { RomBuffer } from '../rom/RomBuffer.ts';
-import type { Chapter, CondSlotInfo, PlacedUnit } from '../tables/chapters.ts';
-import { collectPlacementSites } from '../tables/chapters.ts';
-import type { UnitClass } from '../tables/classes.ts';
-import type { EventScriptTable } from '../tables/eventScript.ts';
-import type { Item } from '../tables/items.ts';
-import type { Unit } from '../tables/units.ts';
+import type { GameLayout } from "../data/layouts.ts";
+import type { RomBuffer } from "../rom/RomBuffer.ts";
+import type { Chapter, CondSlotInfo, PlacedUnit } from "../tables/chapters.ts";
+import { collectPlacementSites } from "../tables/chapters.ts";
+import type { UnitClass } from "../tables/classes.ts";
+import type { EventScriptTable } from "../tables/eventScript.ts";
+import type { Item } from "../tables/items.ts";
+import type { Unit } from "../tables/units.ts";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // The formula
@@ -134,7 +134,7 @@ export function autolevelBand(growth: number, count: number): StatBand {
  * class.abilityFlags[1]) & 0x80` forces `realistic`; otherwise a character id
  * above `0x40` gets `unit`, and everything else falls back to `realistic`.
  */
-export type AutolevelRoutine = 'none' | 'unit' | 'realistic';
+export type AutolevelRoutine = "none" | "unit" | "realistic";
 
 export function autolevelRoutine(
   grow: number,
@@ -142,9 +142,9 @@ export function autolevelRoutine(
   classFlags1: number,
   charId: number,
 ): AutolevelRoutine {
-  if ((grow & 1) === 0) return 'none';
-  if (((charFlags1 | classFlags1) & 0x80) !== 0) return 'realistic';
-  return charId > 0x40 ? 'unit' : 'realistic';
+  if ((grow & 1) === 0) return "none";
+  if (((charFlags1 | classFlags1) & 0x80) !== 0) return "realistic";
+  return charId > 0x40 ? "unit" : "realistic";
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -226,7 +226,7 @@ export function projectBlock(
   const out: EnemySample[] = [];
 
   for (const record of units) {
-    if (record.side !== 'enemy') continue;
+    if (record.side !== "enemy") continue;
 
     const unit = unitById.get(record.unitId);
     const classId = record.classId !== 0 ? record.classId : (unit?.classId ?? 0);
@@ -243,7 +243,7 @@ export function projectBlock(
     const unitSpdDelta = unit?.stats.spd ?? 0;
     const base = classBaseSpd + unitSpdDelta;
     let gain: StatBand = { lo: 0, hi: 0, mean: 0 };
-    if (routine === 'unit') {
+    if (routine === "unit") {
       const rounds: StatBand[] = [];
       if (promoted) {
         rounds.push(autolevelBand(cls.enemyGrowths.spd, promotedLevelBonus(ctx.hard)));
@@ -253,7 +253,7 @@ export function projectBlock(
         (acc, b) => ({ lo: acc.lo + b.lo, hi: acc.hi + b.hi, mean: acc.mean + b.mean }),
         { lo: 0, hi: 0, mean: 0 },
       );
-    } else if (routine === 'realistic') {
+    } else if (routine === "realistic") {
       // One simulated level-up per level, with the character's own growths.
       // The mean is the same as `growth x count / 100`; the spread is binomial
       // (`n = count`, `p = growth/100`), so quote ~2 standard deviations.
@@ -328,7 +328,7 @@ export function collectEnemyStats(ctx: EnemyProjectionContext): EnemyStatsCollec
       ctx.condSlots,
     );
     for (const site of sites) {
-      const enemies = site.units.filter((u) => u.side === 'enemy');
+      const enemies = site.units.filter((u) => u.side === "enemy");
       samples.push(
         ...projectBlock(
           ctx,
@@ -417,6 +417,6 @@ export function summarizeAs(
     bandLo: samples.length === 0 ? 0 : Math.min(...samples.map((s) => pick(s).lo)),
     bandHi: samples.length === 0 ? 0 : Math.max(...samples.map((s) => pick(s).hi)),
     negative: values.filter((v) => v < 0).length,
-    noAutolevel: samples.filter((s) => s.routine === 'none').length,
+    noAutolevel: samples.filter((s) => s.routine === "none").length,
   };
 }

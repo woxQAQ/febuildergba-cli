@@ -1,31 +1,31 @@
-import { COMMANDS, commandColumnWidth } from '../commands/registry.ts';
-import { FLAGS, globalFlags, type FlagSpec } from './flags.ts';
-import type { Command, CommandName } from '../commands/types.ts';
+import { COMMANDS, commandColumnWidth } from "../commands/registry.ts";
+import { FLAGS, globalFlags, type FlagSpec } from "./flags.ts";
+import type { Command, CommandName } from "../commands/types.ts";
 
 const TEXT_WIDTH = 78;
 
 function flagLabel(flag: FlagSpec): string {
-  const short = flag.short === undefined ? '    ' : `-${flag.short}, `;
-  const arg = flag.arg === undefined ? '' : ` ${flag.arg}`;
+  const short = flag.short === undefined ? "    " : `-${flag.short}, `;
+  const arg = flag.arg === undefined ? "" : ` ${flag.arg}`;
   return `${short}--${flag.name}${arg}`;
 }
 
 function pad(text: string, width: number): string {
-  return text.length >= width ? text : text + ' '.repeat(width - text.length);
+  return text.length >= width ? text : text + " ".repeat(width - text.length);
 }
 
 /** Naive greedy wrap; these descriptions are plain prose with no markup. */
 function wrap(text: string, width: number): string[] {
   const lines: string[] = [];
-  let line = '';
+  let line = "";
   for (const word of text.split(/\s+/)) {
-    if (line === '') line = word;
+    if (line === "") line = word;
     else if (line.length + 1 + word.length > width) {
       lines.push(line);
       line = word;
     } else line += ` ${word}`;
   }
-  if (line !== '') lines.push(line);
+  if (line !== "") lines.push(line);
   return lines;
 }
 
@@ -46,7 +46,7 @@ function optionLines(
   // One width across every group, so a command's own options and the global
   // ones share a column instead of each lining up to their own.
   const width = flags.reduce((n, f) => Math.max(n, flagLabel(f).length), 0);
-  const indent = ' '.repeat(width + 4);
+  const indent = " ".repeat(width + 4);
 
   return flags.flatMap((flag) => {
     const note = command === null ? undefined : flag.notes?.[command];
@@ -66,36 +66,36 @@ function optionLines(
 export function usage(): string {
   const width = commandColumnWidth();
   return [
-    'fe-rom - parse GBA Fire Emblem ROMs',
-    '',
-    'Usage:',
-    '  fe-rom <command> <rom.gba> [options]',
-    '  fe-rom <command> --help',
-    '',
-    'Commands:',
+    "fe-rom - parse GBA Fire Emblem ROMs",
+    "",
+    "Usage:",
+    "  fe-rom <command> <rom.gba> [options]",
+    "  fe-rom <command> --help",
+    "",
+    "Commands:",
     ...COMMANDS.map((c) => `  ${pad(c.name, width)}  ${c.summary}`),
-    '',
-    'Global options:',
+    "",
+    "Global options:",
     ...optionLines([globalFlags()], null),
-    '',
+    "",
     'Each command documents its own options under "fe-rom <command> --help".',
-    'A command-specific option is rejected by commands that do not read it.',
-    '',
-    'Exit codes: 0 ok, 1 the ROM could not be parsed, 2 bad arguments.',
-    '',
-    'Examples (run from cli/):',
-    '  fe-rom info         ../fixtures/dream-of-five.gba',
-    '  fe-rom roles        ../fixtures/dream-of-five.gba',
-    '  fe-rom chapters     ../fixtures/dream-of-five.gba',
-    '  fe-rom chapters     ../fixtures/dream-of-five.gba --all',
-    '  fe-rom terrain      ../fixtures/dream-of-five.gba',
-    '  fe-rom units        ../fixtures/dream-of-five.gba',
-    '  fe-rom units        ../fixtures/dream-of-five.gba --all',
-    '  fe-rom enemy-stats  ../fixtures/dream-of-five.gba --hard',
-    '  fe-rom enemy-stats  ../fixtures/dream-of-five.gba --all',
-    '  fe-rom text         ../fixtures/dream-of-five.gba 703 704 --range 0x210-0x218',
-    '  fe-rom validate     ../fixtures/dream-of-five.gba',
-  ].join('\n');
+    "A command-specific option is rejected by commands that do not read it.",
+    "",
+    "Exit codes: 0 ok, 1 the ROM could not be parsed, 2 bad arguments.",
+    "",
+    "Examples (run from cli/):",
+    "  fe-rom info         ../fixtures/dream-of-five.gba",
+    "  fe-rom roles        ../fixtures/dream-of-five.gba",
+    "  fe-rom chapters     ../fixtures/dream-of-five.gba",
+    "  fe-rom chapters     ../fixtures/dream-of-five.gba --all",
+    "  fe-rom terrain      ../fixtures/dream-of-five.gba",
+    "  fe-rom units        ../fixtures/dream-of-five.gba",
+    "  fe-rom units        ../fixtures/dream-of-five.gba --all",
+    "  fe-rom enemy-stats  ../fixtures/dream-of-five.gba --hard",
+    "  fe-rom enemy-stats  ../fixtures/dream-of-five.gba --all",
+    "  fe-rom text         ../fixtures/dream-of-five.gba 703 704 --range 0x210-0x218",
+    "  fe-rom validate     ../fixtures/dream-of-five.gba",
+  ].join("\n");
 }
 
 /** `fe-rom <command> --help` */
@@ -103,19 +103,19 @@ export function commandHelp(command: Command): string {
   const local = FLAGS.filter((f) => f.commands?.includes(command.name) === true);
   const lines = [
     `fe-rom ${command.name} - ${command.summary}`,
-    '',
-    'Usage:',
-    `  fe-rom ${command.name} <rom.gba> [options]${command.extraArgs ?? ''}`,
-    '',
+    "",
+    "Usage:",
+    `  fe-rom ${command.name} <rom.gba> [options]${command.extraArgs ?? ""}`,
+    "",
   ];
 
-  if (command.description !== undefined) lines.push(...wrap(command.description, TEXT_WIDTH), '');
+  if (command.description !== undefined) lines.push(...wrap(command.description, TEXT_WIDTH), "");
 
-  lines.push('Options:');
+  lines.push("Options:");
   lines.push(...optionLines([local, globalFlags()], command.name));
 
-  lines.push('', 'Other commands: "fe-rom --help" lists all of them.');
-  return lines.join('\n');
+  lines.push("", 'Other commands: "fe-rom --help" lists all of them.');
+  return lines.join("\n");
 }
 
 /** Levenshtein distance, iterative two-row form. */

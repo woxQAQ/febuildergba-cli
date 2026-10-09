@@ -23,9 +23,9 @@
  * `decodeTextId` throws a clear error for those instead of emitting mojibake.
  */
 
-import { RomBuffer } from '../rom/RomBuffer.ts';
-import { hex } from '../format.ts';
-import type { TextLayout } from '../data/layouts.ts';
+import { RomBuffer } from "../rom/RomBuffer.ts";
+import { hex } from "../format.ts";
+import type { TextLayout } from "../data/layouts.ts";
 
 export interface TextContext {
   treeBase: number;
@@ -57,7 +57,7 @@ function appendString(out: number[], code: number, beforeCode: number): void {
   if (isEscapeCode(code, beforeCode)) {
     // Not `hex()`: this is the on-the-wire escape format, exactly four bare
     // hex digits with no `0x`, and the decoder matches on `@([0-9A-Fa-f]{4})`.
-    const escape = `@${code.toString(16).toUpperCase().padStart(4, '0')}`;
+    const escape = `@${code.toString(16).toUpperCase().padStart(4, "0")}`;
     for (let i = 0; i < escape.length; i++) out.push(escape.charCodeAt(i));
     return;
   }
@@ -95,9 +95,7 @@ export function huffmanDecode(
     throw new Error(`huffmanDecode: broken mask_pointer -> ${hex(ctx.treeBase)}`);
   }
   if (!rom.isSafeOffset(ctx.treeDataBase)) {
-    throw new Error(
-      `huffmanDecode: broken mask_point_base_pointer -> ${hex(ctx.treeDataBase)}`,
-    );
+    throw new Error(`huffmanDecode: broken mask_point_base_pointer -> ${hex(ctx.treeDataBase)}`);
   }
 
   for (;;) {
@@ -217,7 +215,7 @@ function isSjis2ndCode(c: number): boolean {
 function appendAtmarkCode(out: number[], code: number): void {
   out.push(0x40); // '@'
   // Same wire format as above: four bare digits, no `0x`.
-  const digits = (code >>> 0).toString(16).toUpperCase().padStart(4, '0');
+  const digits = (code >>> 0).toString(16).toUpperCase().padStart(4, "0");
   for (let i = 0; i < digits.length; i++) out.push(digits.charCodeAt(i));
 }
 
@@ -344,10 +342,10 @@ export function unHuffmanRawBytes(rom: RomBuffer, addr: number, limit = 0x100): 
  * `@00XX -> String.fromCharCode(0xXX)`.
  */
 const LATIN1_ESCAPE_CODEPOINTS = new Set<number>([
-  0xa1, 0xaa, 0xab, 0xbb, 0xbf, 0xc0, 0xc1, 0xc2, 0xc4, 0xc7, 0xc8, 0xc9, 0xca,
-  0xcb, 0xcc, 0xcd, 0xce, 0xcf, 0xd1, 0xd2, 0xd3, 0xd4, 0xd6, 0xd9, 0xda, 0xdb,
-  0xdc, 0xdf, 0xe0, 0xe1, 0xe2, 0xe4, 0xe7, 0xe8, 0xe9, 0xea, 0xeb, 0xec, 0xed,
-  0xee, 0xef, 0xf1, 0xf2, 0xf3, 0xf4, 0xf6, 0xf9, 0xfa, 0xfb, 0xfc,
+  0xa1, 0xaa, 0xab, 0xbb, 0xbf, 0xc0, 0xc1, 0xc2, 0xc4, 0xc7, 0xc8, 0xc9, 0xca, 0xcb, 0xcc, 0xcd,
+  0xce, 0xcf, 0xd1, 0xd2, 0xd3, 0xd4, 0xd6, 0xd9, 0xda, 0xdb, 0xdc, 0xdf, 0xe0, 0xe1, 0xe2, 0xe4,
+  0xe7, 0xe8, 0xe9, 0xea, 0xeb, 0xec, 0xed, 0xee, 0xef, 0xf1, 0xf2, 0xf3, 0xf4, 0xf6, 0xf9, 0xfa,
+  0xfb, 0xfc,
 ]);
 
 /**
@@ -358,7 +356,7 @@ const LATIN1_ESCAPE_CODEPOINTS = new Set<number>([
 export function applySpecialGlyphs(text: string): string {
   return text.replace(/@([0-9A-Fa-f]{4})/g, (match, hex: string) => {
     const code = parseInt(hex, 16);
-    if (code === 0x0001) return '\n';
+    if (code === 0x0001) return "\n";
     if (code <= 0xff && LATIN1_ESCAPE_CODEPOINTS.has(code)) {
       return String.fromCharCode(code);
     }
@@ -379,16 +377,16 @@ export function applySpecialGlyphs(text: string): string {
  */
 export function sanitizeName(text: string): string {
   return text
-    .replace(/[\u0000-\u001F\u007F]/g, '')
-    .replace(/\s+/g, ' ')
+    .replace(/[\u0000-\u001F\u007F]/g, "")
+    .replace(/\s+/g, " ")
     .trim();
 }
 
 /** Like {@link sanitizeName} but keeps line breaks, for multi-line descriptions. */
 export function sanitizeText(text: string): string {
   return text
-    .replace(/[\u0000-\u0009\u000B-\u001F\u007F]/g, '')
-    .replace(/[ \t]+/g, ' ')
+    .replace(/[\u0000-\u0009\u000B-\u001F\u007F]/g, "")
+    .replace(/[ \t]+/g, " ")
     .trim();
 }
 
@@ -403,8 +401,8 @@ export function sanitizeText(text: string): string {
  */
 export function stripAllCodes(text: string): string {
   return text
-    .replace(/@([0-9A-Fa-f]{4})/g, '')
-    .replace(/^[\s\u001f\u3000]+|[\s\u001f\u3000]+$/g, '');
+    .replace(/@([0-9A-Fa-f]{4})/g, "")
+    .replace(/^[\s\u001f\u3000]+|[\s\u001f\u3000]+$/g, "");
 }
 
 /**
@@ -434,11 +432,11 @@ export function displayName(text: string): string {
 export function bytesToString(bytes: number[], useSjis: boolean): string {
   if (useSjis) {
     throw new Error(
-      'Shift-JIS text decoding is not implemented. Only Latin-1 (English) ROMs ' +
-        'are supported for now.',
+      "Shift-JIS text decoding is not implemented. Only Latin-1 (English) ROMs " +
+        "are supported for now.",
     );
   }
-  return Buffer.from(bytes).toString('latin1');
+  return Buffer.from(bytes).toString("latin1");
 }
 
 /** Build the decoding context for a ROM from its layout. */
@@ -483,10 +481,10 @@ export function decodeTextIdRaw(rom: RomBuffer, id: number, ctx: TextContext): s
     return bytesToString(cString(rom, rom.toOffset(id)), ctx.useSjis);
   }
 
-  if (id >= 0x7fff) return '';
+  if (id >= 0x7fff) return "";
 
   const entry = ctx.textBase + id * 4;
-  if (!rom.isSafeOffset(entry)) return '';
+  if (!rom.isSafeOffset(entry)) return "";
 
   return decodeTextPointerRaw(rom, rom.u32(entry), ctx);
 }
@@ -497,18 +495,14 @@ export function decodeTextIdRaw(rom: RomBuffer, id: number, ctx: TextContext): s
  *
  * Reference: `FETextDecode.DecodeAddr()`.
  */
-export function decodeTextPointerRaw(
-  rom: RomBuffer,
-  pointer: number,
-  ctx: TextContext,
-): string {
+export function decodeTextPointerRaw(rom: RomBuffer, pointer: number, ctx: TextContext): string {
   if (isUnHuffmanPatchPointer(pointer)) {
     const addr = rom.toOffset(convertUnHuffmanPatchToPointer(pointer));
     const { bytes } = unHuffmanPatchDecode(rom, addr);
     return bytesToString(bytes, ctx.useSjis);
   }
 
-  if (!RomBuffer.isPointer(pointer)) return '';
+  if (!RomBuffer.isPointer(pointer)) return "";
 
   const { bytes } = huffmanDecode(rom, rom.toOffset(pointer), ctx);
   return bytesToString(bytes, ctx.useSjis);
@@ -526,13 +520,13 @@ function cString(rom: RomBuffer, addr: number): number[] {
 }
 
 /** Which storage format a text-table entry uses. */
-export type TextPointerKind = 'huffman' | 'unhuffman' | 'direct' | 'invalid';
+export type TextPointerKind = "huffman" | "unhuffman" | "direct" | "invalid";
 
 /** Classify a text-table entry value without decoding it. */
 export function classifyTextPointer(pointer: number): TextPointerKind {
-  if (isUnHuffmanPatchPointer(pointer)) return 'unhuffman';
-  if (RomBuffer.isPointer(pointer)) return 'huffman';
-  return 'invalid';
+  if (isUnHuffmanPatchPointer(pointer)) return "unhuffman";
+  if (RomBuffer.isPointer(pointer)) return "huffman";
+  return "invalid";
 }
 
 export interface DecodedText {
@@ -548,20 +542,16 @@ export interface DecodedText {
  * Hacks mix the two freely, so "why is this name empty?" is usually answered by
  * looking at `kind`.
  */
-export function decodeTextIdDetailed(
-  rom: RomBuffer,
-  id: number,
-  ctx: TextContext,
-): DecodedText {
+export function decodeTextIdDetailed(rom: RomBuffer, id: number, ctx: TextContext): DecodedText {
   if (rom.isSafePointer(id)) {
     const raw = bytesToString(cString(rom, rom.toOffset(id)), ctx.useSjis);
-    return { text: applySpecialGlyphs(raw), raw, kind: 'direct' };
+    return { text: applySpecialGlyphs(raw), raw, kind: "direct" };
   }
 
-  if (id >= 0x7fff) return { text: '', raw: '', kind: 'invalid' };
+  if (id >= 0x7fff) return { text: "", raw: "", kind: "invalid" };
 
   const entry = ctx.textBase + id * 4;
-  if (!rom.isSafeOffset(entry)) return { text: '', raw: '', kind: 'invalid' };
+  if (!rom.isSafeOffset(entry)) return { text: "", raw: "", kind: "invalid" };
 
   const pointer = rom.u32(entry);
   const raw = decodeTextPointerRaw(rom, pointer, ctx);

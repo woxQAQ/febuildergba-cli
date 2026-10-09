@@ -4,9 +4,9 @@
  * Reference: FEBuilderGBA/FEBuilderGBA/Rom.cs -> `ROM.Load()` / `ROM.LoadLow()`.
  */
 
-import { RomBuffer } from './RomBuffer.ts';
-import { hex } from '../format.ts';
-export type GameVersion = 'FE6J' | 'FE7J' | 'FE7U' | 'FE8J' | 'FE8U';
+import { RomBuffer } from "./RomBuffer.ts";
+import { hex } from "../format.ts";
+export type GameVersion = "FE6J" | "FE7J" | "FE7U" | "FE8J" | "FE8U";
 
 /** FEBuilderGBA reads 6 bytes here: 4-byte game code + 2-byte maker code. */
 export const GAME_CODE_OFFSET = 0xac;
@@ -17,11 +17,11 @@ export const TITLE_OFFSET = 0xa0;
 export const TITLE_LENGTH = 12;
 
 const GAME_CODE_TO_VERSION: Readonly<Record<string, GameVersion>> = {
-  AFEJ01: 'FE6J',
-  AE7J01: 'FE7J',
-  AE7E01: 'FE7U',
-  BE8J01: 'FE8J',
-  BE8E01: 'FE8U',
+  AFEJ01: "FE6J",
+  AE7J01: "FE7J",
+  AE7E01: "FE7U",
+  BE8J01: "FE8J",
+  BE8E01: "FE8U",
 };
 
 /**
@@ -55,7 +55,7 @@ export function readGameCode(rom: RomBuffer): string {
 }
 
 export function readTitle(rom: RomBuffer): string {
-  return rom.ascii(TITLE_OFFSET, TITLE_LENGTH).replace(/\0+$/, '').trimEnd();
+  return rom.ascii(TITLE_OFFSET, TITLE_LENGTH).replace(/\0+$/, "").trimEnd();
 }
 
 export function detectVersion(rom: RomBuffer): RomIdentity {
@@ -63,8 +63,8 @@ export function detectVersion(rom: RomBuffer): RomIdentity {
   // readable message instead of a RangeError.
   if (rom.length < MIN_HEADER_SIZE) {
     return {
-      gameCode: '',
-      title: '',
+      gameCode: "",
+      title: "",
       version: null,
       sizeOk: false,
       size: rom.length,
@@ -96,9 +96,7 @@ export function detectVersion(rom: RomBuffer): RomIdentity {
   // Expanded ROMs are normal, but a non-power-of-two length is worth surfacing
   // because it usually means the file was trimmed or repacked.
   if ((rom.length & (rom.length - 1)) !== 0) {
-    notes.push(
-      `ROM length ${hex(rom.length)} is not a power of two (expanded/repacked ROM).`,
-    );
+    notes.push(`ROM length ${hex(rom.length)} is not a power of two (expanded/repacked ROM).`);
   }
 
   return { gameCode, title, version, sizeOk, size: rom.length, notes };

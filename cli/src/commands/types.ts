@@ -1,4 +1,4 @@
-import type { LoadedRom } from '../load.ts';
+import type { LoadedRom } from "../load.ts";
 
 /**
  * Every command word, as a literal union.
@@ -16,19 +16,19 @@ import type { LoadedRom } from '../load.ts';
  * until you have registered it there too.
  */
 export type CommandName =
-  | 'info'
-  | 'units'
-  | 'classes'
-  | 'roles'
-  | 'supports'
-  | 'terrain'
-  | 'chapters'
-  | 'items'
-  | 'shops'
-  | 'objects'
-  | 'enemy-stats'
-  | 'text'
-  | 'validate';
+  | "info"
+  | "units"
+  | "classes"
+  | "roles"
+  | "supports"
+  | "terrain"
+  | "chapters"
+  | "items"
+  | "shops"
+  | "objects"
+  | "enemy-stats"
+  | "text"
+  | "validate";
 
 /**
  * Flags resolved from the command line, after the command's own flag set has
@@ -60,7 +60,7 @@ export interface ResolvedFlags {
 export class UsageError extends Error {
   constructor(message: string) {
     super(message);
-    this.name = 'UsageError';
+    this.name = "UsageError";
   }
 }
 

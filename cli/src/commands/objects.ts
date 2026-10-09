@@ -1,13 +1,13 @@
-import { hex } from '../format.ts';
-import type { Command } from './types.ts';
+import { hex } from "../format.ts";
+import type { Command } from "./types.ts";
 
 export const objects: Command = {
-  name: 'objects',
-  summary: 'Map objects: chests (and their loot), villages, doors, shops',
+  name: "objects",
+  summary: "Map objects: chests (and their loot), villages, doors, shops",
   description:
-    'Every map object grouped by chapter. Chests carry the item inside and what ' +
-    'it would sell for; a gold chest names item 0x77 (price 0) and carries its ' +
-    'value at `+6`, which is why `goldChestTotal` is worth reading separately.',
+    "Every map object grouped by chapter. Chests carry the item inside and what " +
+    "it would sell for; a gold chest names item 0x77 (price 0) and carries its " +
+    "value at `+6`, which is why `goldChestTotal` is worth reading separately.",
   run: ({ rom, flags }) => {
     const byKind: Record<string, number> = {};
     for (const o of rom.mapObjects) byKind[o.kind] = (byKind[o.kind] ?? 0) + 1;
@@ -29,10 +29,10 @@ export const objects: Command = {
             x: o.x,
             y: o.y,
             /** Chests only: the item inside, and what it would sell for. */
-            ...(o.kind === 'chest'
+            ...(o.kind === "chest"
               ? {
                   itemId: o.itemId,
-                  itemName: o.isGoldChest ? 'Gold' : (item?.name ?? `item#${o.itemId}`),
+                  itemName: o.isGoldChest ? "Gold" : (item?.name ?? `item#${o.itemId}`),
                   /** Chests store gold in `+6`, and mark a gold chest with item 0x77. */
                   gold: o.gold,
                   isGoldChest: o.isGoldChest,
@@ -46,7 +46,7 @@ export const objects: Command = {
     const goldChests = chapterRows
       .flatMap((c) =>
         c.objects
-          .filter((o) => 'isGoldChest' in o && o.isGoldChest)
+          .filter((o) => "isGoldChest" in o && o.isGoldChest)
           .map((o) => ({ ...o, title: c.title, mapIndex: c.mapIndex })),
       )
       .map((o) => ({ mapIndex: o.mapIndex, title: o.title, amount: (o as { gold: number }).gold }));
@@ -59,17 +59,17 @@ export const objects: Command = {
       goldChests,
       chapters: chapterRows,
       limitations: [
-        'All five object kinds share one 12-byte record. `+4` is overloaded: a ' +
-          'shop stores a pointer to its entry list there, a chest stores the item ' +
-          'id in the low byte and the gold amount at `+6`, and everything else ' +
-          'stores a pointer to its event script.',
-        'Chest and village contents are the ROM\'s main source of money and free ' +
-          'weapons, and neither is in the item table\'s price column: a gold chest ' +
-          'names item 0x77 (Gold, price 0) and carries its value at `+6`.',
-        'Most chests in this hack have achievement flag 0, which normally means ' +
-          'the object can be triggered repeatedly. That is what the ROM says; it ' +
-          'is reported as-is.',
-        'Doors are listed but carry no loot.',
+        "All five object kinds share one 12-byte record. `+4` is overloaded: a " +
+          "shop stores a pointer to its entry list there, a chest stores the item " +
+          "id in the low byte and the gold amount at `+6`, and everything else " +
+          "stores a pointer to its event script.",
+        "Chest and village contents are the ROM's main source of money and free " +
+          "weapons, and neither is in the item table's price column: a gold chest " +
+          "names item 0x77 (Gold, price 0) and carries its value at `+6`.",
+        "Most chests in this hack have achievement flag 0, which normally means " +
+          "the object can be triggered repeatedly. That is what the ROM says; it " +
+          "is reported as-is.",
+        "Doors are listed but carry no loot.",
       ],
     };
   },

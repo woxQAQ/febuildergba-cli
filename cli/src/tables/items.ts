@@ -63,10 +63,10 @@
  * `text/itemFont.ts`.
  */
 
-import type { RomBuffer } from '../rom/RomBuffer.ts';
-import type { ItemLayout } from '../data/layouts.ts';
-import { resolveTableSlot } from '../data/layouts.ts';
-import type { TextContext } from '../text/huffman.ts';
+import type { RomBuffer } from "../rom/RomBuffer.ts";
+import type { ItemLayout } from "../data/layouts.ts";
+import { resolveTableSlot } from "../data/layouts.ts";
+import type { TextContext } from "../text/huffman.ts";
 import {
   classifyTextPointer,
   decodeTextId,
@@ -75,8 +75,8 @@ import {
   sanitizeText,
   stripAllCodes,
   unHuffmanRawBytes,
-} from '../text/huffman.ts';
-import { decodeItemFontBytes } from '../text/itemFont.ts';
+} from "../text/huffman.ts";
+import { decodeItemFontBytes } from "../text/itemFont.ts";
 
 /**
  * `+7` (`種別`), as this ROM stores it. **0-based**, unlike FE6/FE7.
@@ -86,32 +86,32 @@ import { decodeItemFontBytes } from '../text/itemFont.ts';
  * `12` = 踊る用指輪. So the numbers here are decimal 11/12/17/18, not 0x0B/0x0C.
  */
 export const ITEM_TYPES: Readonly<Record<number, string>> = {
-  0: 'sword', // 剣
-  1: 'lance', // 槍
-  2: 'axe', // 斧
-  3: 'bow', // 弓
-  4: 'staff', // 杖
-  5: 'anima', // 理
-  6: 'light', // 光
-  7: 'dark', // 闇
-  8: 'unused8',
-  9: 'item', // 道具
-  10: 'unused10',
-  11: 'monster', // 0x0B 竜石・魔物専用
-  12: 'ring', // 0x0C 指輪
-  17: 'firestone', // 0x11 火竜石
-  18: 'danceRing', // 0x12 踊る用指輪
+  0: "sword", // 剣
+  1: "lance", // 槍
+  2: "axe", // 斧
+  3: "bow", // 弓
+  4: "staff", // 杖
+  5: "anima", // 理
+  6: "light", // 光
+  7: "dark", // 闇
+  8: "unused8",
+  9: "item", // 道具
+  10: "unused10",
+  11: "monster", // 0x0B 竜石・魔物専用
+  12: "ring", // 0x0C 指輪
+  17: "firestone", // 0x11 火竜石
+  18: "danceRing", // 0x12 踊る用指輪
 };
 
 /** Weapon rank field -> letter. Same thresholds the unit weapon levels use. */
 export function weaponRankLetter(rank: number): string {
-  if (rank <= 0) return '-';
-  if (rank <= 30) return 'E';
-  if (rank <= 70) return 'D';
-  if (rank <= 120) return 'C';
-  if (rank <= 180) return 'B';
-  if (rank <= 250) return 'A';
-  return 'S';
+  if (rank <= 0) return "-";
+  if (rank <= 30) return "E";
+  if (rank <= 70) return "D";
+  if (rank <= 120) return "C";
+  if (rank <= 180) return "B";
+  if (rank <= 250) return "A";
+  return "S";
 }
 
 export interface Item {
@@ -176,10 +176,10 @@ function readItemName(
   textId: number,
   text: TextContext,
 ): { name: string; raw: string; kind: string; unknown: number[] } {
-  if (textId === 0) return { name: '', raw: '', kind: 'invalid', unknown: [] };
+  if (textId === 0) return { name: "", raw: "", kind: "invalid", unknown: [] };
 
   const entry = text.textBase + textId * 4;
-  if (!rom.isSafeOffset(entry)) return { name: '', raw: '', kind: 'invalid', unknown: [] };
+  if (!rom.isSafeOffset(entry)) return { name: "", raw: "", kind: "invalid", unknown: [] };
 
   const pointer = rom.u32(entry);
   const kind = classifyTextPointer(pointer);
@@ -188,7 +188,7 @@ function readItemName(
     const addr = rom.toOffset(convertUnHuffmanPatchToPointer(pointer));
     const bytes = unHuffmanRawBytes(rom, addr);
     const { text: name, unknown } = decodeItemFontBytes(bytes);
-    const raw = bytes.map((b) => b.toString(16).padStart(2, '0')).join(' ');
+    const raw = bytes.map((b) => b.toString(16).padStart(2, "0")).join(" ");
     return { name: name.trim(), raw, kind, unknown };
   }
 
@@ -198,11 +198,7 @@ function readItemName(
   return { name, raw: decoded, kind, unknown: [] };
 }
 
-export function readItems(
-  rom: RomBuffer,
-  layout: ItemLayout,
-  text: TextContext,
-): ItemReadResult {
+export function readItems(rom: RomBuffer, layout: ItemLayout, text: TextContext): ItemReadResult {
   const slotOffset = resolveTableSlot(rom, layout.slot);
   const tableOffset = rom.p32(slotOffset);
   if (!rom.isSafeOffset(tableOffset)) return { table: null, items: [] };
@@ -230,7 +226,7 @@ export function readItems(
 
     const nm = readItemName(rom, nameTextId, text);
     const desc =
-      descTextId === 0 ? '' : stripAllCodes(sanitizeText(decodeTextId(rom, descTextId, text)));
+      descTextId === 0 ? "" : stripAllCodes(sanitizeText(decodeTextId(rom, descTextId, text)));
 
     items.push({
       id,

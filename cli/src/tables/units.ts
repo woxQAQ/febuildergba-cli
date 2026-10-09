@@ -24,13 +24,13 @@
  * (`UnitForm.cs:271`).
  */
 
-import { RomBuffer } from '../rom/RomBuffer.ts';
-import { hex } from '../format.ts';
-import type { TextContext } from '../text/huffman.ts';
-import { decodeTextId, displayName, sanitizeName, sanitizeText } from '../text/huffman.ts';
-import type { ClassBases } from './classes.ts';
-import type { ResolvedTable, WeaponLevels } from './common.ts';
-import { readWeaponLevels } from './common.ts';
+import { RomBuffer } from "../rom/RomBuffer.ts";
+import { hex } from "../format.ts";
+import type { TextContext } from "../text/huffman.ts";
+import { decodeTextId, displayName, sanitizeName, sanitizeText } from "../text/huffman.ts";
+import type { ClassBases } from "./classes.ts";
+import type { ResolvedTable, WeaponLevels } from "./common.ts";
+import { readWeaponLevels } from "./common.ts";
 
 export const UNIT_RECORD_SIZE = 52;
 
@@ -209,15 +209,15 @@ export function combineStartingStats(
 ): UnitStartingStats {
   const base = (key: keyof ClassBases): number => classBases?.[key] ?? 0;
   return {
-    hp: base('hp') + unit.hp,
-    str: base('str') + unit.str,
-    skl: base('skl') + unit.skl,
-    spd: base('spd') + unit.spd,
-    def: base('def') + unit.def,
-    res: base('res') + unit.res,
+    hp: base("hp") + unit.hp,
+    str: base("str") + unit.str,
+    skl: base("skl") + unit.skl,
+    spd: base("spd") + unit.spd,
+    def: base("def") + unit.def,
+    res: base("res") + unit.res,
     // No class luck base exists in FE: luck is purely per-unit.
     lck: unit.lck,
-    con: base('con') + unit.con,
+    con: base("con") + unit.con,
   };
 }
 
@@ -258,9 +258,7 @@ export function readUnit(ctx: UnitTableContext, index: number): Unit | null {
   const growths = readGrowths(rom, addr);
 
   const supportPointer = rom.u32(addr + UNIT_OFFSET.supportPointer);
-  const supportAddress = RomBuffer.isPointer(supportPointer)
-    ? rom.toOffset(supportPointer)
-    : 0;
+  const supportAddress = RomBuffer.isPointer(supportPointer) ? rom.toOffset(supportPointer) : 0;
   const hasSupportData = supportAddress !== 0 && rom.isSafeOffset(supportAddress);
 
   return {
@@ -273,7 +271,7 @@ export function readUnit(ctx: UnitTableContext, index: number): Unit | null {
     nameRaw,
     description,
     classId,
-    className: ctx.classNames.get(classId) ?? '',
+    className: ctx.classNames.get(classId) ?? "",
     isPromotedClass: ctx.promotedClassIds?.has(classId) ?? false,
     mapFaceId: rom.u16(addr + UNIT_OFFSET.mapFaceId),
     portraitId: rom.u8(addr + UNIT_OFFSET.portraitId),
@@ -284,7 +282,13 @@ export function readUnit(ctx: UnitTableContext, index: number): Unit | null {
     startingStats: combineStartingStats(stats, ctx.classBases?.get(classId)),
     growths,
     growthTotal:
-      growths.hp + growths.str + growths.skl + growths.spd + growths.def + growths.res + growths.lck,
+      growths.hp +
+      growths.str +
+      growths.skl +
+      growths.spd +
+      growths.def +
+      growths.res +
+      growths.lck,
     weaponLevels: readWeaponLevels(rom, addr + UNIT_OFFSET.weaponLevels),
     abilityFlags: [
       rom.u8(addr + UNIT_OFFSET.abilityFlags + 0),

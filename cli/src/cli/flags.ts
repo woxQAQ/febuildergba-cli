@@ -10,13 +10,13 @@
  * read `ctx.<camelCase>` in the command. Nothing else - not the usage text, not
  * the option parser, not the dispatcher - needs to know it exists.
  */
-import { LANGUAGE_NAMES } from '../config/data.ts';
-import type { Command, CommandName } from '../commands/types.ts';
+import { LANGUAGE_NAMES } from "../config/data.ts";
+import type { Command, CommandName } from "../commands/types.ts";
 
 export interface FlagSpec {
   /** Canonical name without the leading dashes. */
   readonly name: string;
-  readonly type: 'string' | 'boolean';
+  readonly type: "string" | "boolean";
   /** Single-letter alias, without the leading dash. */
   readonly short?: string;
   /** Metavar for value-taking flags, e.g. `<file>`. */
@@ -36,80 +36,77 @@ export interface FlagSpec {
 
 export const FLAGS: readonly FlagSpec[] = [
   {
-    name: 'lang',
-    type: 'string',
-    arg: `<${LANGUAGE_NAMES.join('|')}>`,
+    name: "lang",
+    type: "string",
+    arg: `<${LANGUAGE_NAMES.join("|")}>`,
     summary:
       `Language for the config/data name tables (chapter conditions, class ` +
       `ability bits); default en, and a missing translation falls back to ` +
       `English then Japanese. "ja" is the bare upstream file`,
   },
   {
-    name: 'out',
-    type: 'string',
-    arg: '<file>',
-    summary: 'Write JSON to a file instead of stdout',
+    name: "out",
+    type: "string",
+    arg: "<file>",
+    summary: "Write JSON to a file instead of stdout",
   },
   {
-    name: 'compact',
-    type: 'boolean',
-    summary: 'Emit compact JSON instead of pretty-printed',
+    name: "compact",
+    type: "boolean",
+    summary: "Emit compact JSON instead of pretty-printed",
   },
   {
-    name: 'timings',
-    type: 'boolean',
+    name: "timings",
+    type: "boolean",
     summary:
-      'Print per-table load times to stderr, with the expensive table a cheap-looking one pulled in',
+      "Print per-table load times to stderr, with the expensive table a cheap-looking one pulled in",
   },
   {
-    name: 'help',
-    type: 'boolean',
-    short: 'h',
-    summary: 'Show usage; with a command, that command\'s options',
+    name: "help",
+    type: "boolean",
+    short: "h",
+    summary: "Show usage; with a command, that command's options",
   },
   {
-    name: 'all',
-    type: 'boolean',
-    summary: 'Include empty/unused table slots',
-    commands: [
-      'units', 'classes', 'terrain', 'items', 'objects', 'chapters', 'enemy-stats',
-    ],
+    name: "all",
+    type: "boolean",
+    summary: "Include empty/unused table slots",
+    commands: ["units", "classes", "terrain", "items", "objects", "chapters", "enemy-stats"],
     notes: {
       units:
-        'emit every slot, including the enemy / generic-template rows and the ' +
-        'empty ones - a plain run is already restricted to the roster',
-      classes: 'also resolve each class\' impassable terrain list',
+        "emit every slot, including the enemy / generic-template rows and the " +
+        "empty ones - a plain run is already restricted to the roster",
+      classes: "also resolve each class' impassable terrain list",
       chapters:
-        'also include padded map rows and the instruction-level transitions ' +
-        'behind each chapter\'s destinations',
-      'enemy-stats':
-        'also emit `samples`, one row per projected enemy record - a plain run ' +
-        'emits only the distributions computed from them',
+        "also include padded map rows and the instruction-level transitions " +
+        "behind each chapter's destinations",
+      "enemy-stats":
+        "also emit `samples`, one row per projected enemy record - a plain run " +
+        "emits only the distributions computed from them",
     },
   },
   {
-    name: 'playable-only',
-    type: 'boolean',
+    name: "playable-only",
+    type: "boolean",
     summary:
-      'Restrict to units that carry support data - the closest thing to a real roster this parse can offer',
-    commands: ['units', 'roles', 'chapters'],
+      "Restrict to units that carry support data - the closest thing to a real roster this parse can offer",
+    commands: ["units", "roles", "chapters"],
     notes: {
-      units: 'the default - a plain run already emits only those units',
+      units: "the default - a plain run already emits only those units",
     },
   },
   {
-    name: 'hard',
-    type: 'boolean',
-    summary:
-      'Project hard-mode stats: the promoted autolevel round is 19 levels instead of 9',
-    commands: ['enemy-stats'],
+    name: "hard",
+    type: "boolean",
+    summary: "Project hard-mode stats: the promoted autolevel round is 19 levels instead of 9",
+    commands: ["enemy-stats"],
   },
   {
-    name: 'range',
-    type: 'string',
-    arg: '<a-b>',
-    summary: 'Decode a contiguous id range, inclusive',
-    commands: ['text'],
+    name: "range",
+    type: "string",
+    arg: "<a-b>",
+    summary: "Decode a contiguous id range, inclusive",
+    commands: ["text"],
   },
 ];
 

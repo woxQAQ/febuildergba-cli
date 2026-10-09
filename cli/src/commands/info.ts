@@ -1,16 +1,16 @@
-import { hex } from '../format.ts';
-import { affinityLabel } from './shared.ts';
-import { SUPPORT_RANK_THRESHOLDS, SUPPORT_CONVERSATION_CAPS } from '../tables/supports.ts';
-import { SUPPORT_BONUS_STATS, rankedBonus } from '../tables/supportBonus.ts';
-import type { Command } from './types.ts';
+import { hex } from "../format.ts";
+import { affinityLabel } from "./shared.ts";
+import { SUPPORT_RANK_THRESHOLDS, SUPPORT_CONVERSATION_CAPS } from "../tables/supports.ts";
+import { SUPPORT_BONUS_STATS, rankedBonus } from "../tables/supportBonus.ts";
+import type { Command } from "./types.ts";
 
 export const info: Command = {
-  name: 'info',
-  summary: 'ROM identity, resolved table addresses, quick sanity counters',
+  name: "info",
+  summary: "ROM identity, resolved table addresses, quick sanity counters",
   description:
-    'What this ROM is and where every table was found. Start here when a later ' +
-    'command reports a suspicious count: the addresses in this output are the ' +
-    'ones the rest of the run read from.',
+    "What this ROM is and where every table was found. Start here when a later " +
+    "command reports a suspicious count: the addresses in this output are the " +
+    "ones the rest of the run read from.",
   run: ({ rom }) => {
     const playable = rom.units.filter((u) => !u.isEmpty);
     const classes = rom.classes.filter((c) => !c.isEmpty);
@@ -61,9 +61,7 @@ export const info: Command = {
         bonusTable: rom.supportBonuses.map((b) => ({
           affinity: b.affinity,
           name: affinityLabel(rom, b.affinity),
-          storedHalfPoints: Object.fromEntries(
-            SUPPORT_BONUS_STATS.map((s) => [s, b.bonuses[s]]),
-          ),
+          storedHalfPoints: Object.fromEntries(SUPPORT_BONUS_STATS.map((s) => [s, b.bonuses[s]])),
           byRank: rankedBonus(b),
         })),
       },

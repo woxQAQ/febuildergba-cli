@@ -34,52 +34,58 @@
  * Reference: FEBuilderGBA/FEBuilderGBA/EventScript.cs.
  */
 
-import { parseTwoColumnTable, readTextFile, resolveDataFile, splitTab, isComment } from '../config/data.ts';
-import type { RomBuffer } from '../rom/RomBuffer.ts';
+import {
+  parseTwoColumnTable,
+  readTextFile,
+  resolveDataFile,
+  splitTab,
+  isComment,
+} from "../config/data.ts";
+import type { RomBuffer } from "../rom/RomBuffer.ts";
 
 /** Argument type names, matching `EventScript.ArgType` by string. */
-export const ARG_TYPE_FIXED = 'FIXED';
+export const ARG_TYPE_FIXED = "FIXED";
 
 /** Types where the value must be a valid GBA pointer for the pattern to match. */
 const POINTER_ARG_TYPES: ReadonlySet<string> = new Set([
-  'POINTER',
-  'POINTER_ASM',
-  'POINTER_PROCS',
-  'POINTER_EVENT',
-  'POINTER_UNIT',
-  'POINTER_EVENTBATTLEDATA',
-  'POINTER_EVENTMOVEDATA',
-  'POINTER_TALKGROUP',
-  'POINTER_MENUEXTENDS',
-  'POINTER_AICOORDINATE',
-  'POINTER_AIUNIT',
-  'POINTER_AITILE',
-  'POINTER_AIRANGE',
-  'POINTER_AICALLTALK',
-  'POINTER_UNITSSHORTTEXT',
+  "POINTER",
+  "POINTER_ASM",
+  "POINTER_PROCS",
+  "POINTER_EVENT",
+  "POINTER_UNIT",
+  "POINTER_EVENTBATTLEDATA",
+  "POINTER_EVENTMOVEDATA",
+  "POINTER_TALKGROUP",
+  "POINTER_MENUEXTENDS",
+  "POINTER_AICOORDINATE",
+  "POINTER_AIUNIT",
+  "POINTER_AITILE",
+  "POINTER_AIRANGE",
+  "POINTER_AICALLTALK",
+  "POINTER_UNITSSHORTTEXT",
 ]);
 
 /**
  * Types that may also be zero. `IsPointerArgsOrNULL` (EventScript.cs:1283)
  * lists only this one.
  */
-const POINTER_OR_NULL_ARG_TYPES: ReadonlySet<string> = new Set(['POINTER_UNITSSHORTTEXT']);
+const POINTER_OR_NULL_ARG_TYPES: ReadonlySet<string> = new Set(["POINTER_UNITSSHORTTEXT"]);
 
 /** `ScriptHas` values we act on. */
 export type ScriptHas =
-  | 'NOTHING'
-  | 'UNKNOWN'
-  | 'POINTER_UNIT_OR_EVENT'
-  | 'POINTER_OTHER'
-  | 'IF_CONDITIONAL'
-  | 'LABEL_CONDITIONAL'
-  | 'GOTO_CONDITIONAL'
-  | 'MAP'
-  | 'TEXT'
-  | 'TERM'
-  | 'MAPTERM'
-  | 'PATCH_EXTENDS'
-  | 'GIVE_ITEM';
+  | "NOTHING"
+  | "UNKNOWN"
+  | "POINTER_UNIT_OR_EVENT"
+  | "POINTER_OTHER"
+  | "IF_CONDITIONAL"
+  | "LABEL_CONDITIONAL"
+  | "GOTO_CONDITIONAL"
+  | "MAP"
+  | "TEXT"
+  | "TERM"
+  | "MAPTERM"
+  | "PATCH_EXTENDS"
+  | "GIVE_ITEM";
 
 export interface EventArg {
   /** Byte offset of the argument within the instruction. */
@@ -120,25 +126,22 @@ export const UNKNOWN_SIZE = 4;
 
 function cut(source: string, start: string, end: string): string {
   const i = source.indexOf(start);
-  if (i < 0) return '';
+  if (i < 0) return "";
   const j = source.indexOf(end, i + start.length);
-  if (j < 0) return '';
+  if (j < 0) return "";
   return source.slice(i + start.length, j);
 }
 
 /** Port of `EventScript.ParseInfoString` (EventScript.cs:513). */
-function parseInfoString(
-  info: string,
-  symbol: string,
-): { type: string; name: string } {
+function parseInfoString(info: string, symbol: string): { type: string; name: string } {
   const name = symbol;
-  const sym = cut(info, `[${name}`, ']');
-  if (sym.length <= 0) return { type: 'None', name };
+  const sym = cut(info, `[${name}`, "]");
+  if (sym.length <= 0) return { type: "None", name };
 
-  const sp = sym.split(':');
-  if (sp.length < 2) return { type: 'None', name: sp[0] ?? symbol };
+  const sp = sym.split(":");
+  if (sp.length < 2) return { type: "None", name: sp[0] ?? symbol };
 
-  return { type: (sp[1] ?? '').toUpperCase(), name: sp[2] ?? symbol };
+  return { type: (sp[1] ?? "").toUpperCase(), name: sp[2] ?? symbol };
 }
 
 /** Port of `EventScript.SelectAlias`. */
@@ -150,45 +153,49 @@ function selectAlias(args: readonly EventArg[], symbol: string): number {
 }
 
 /** Port of `EventScript.MakeScriptHas`. */
-function makeScriptHas(args: readonly EventArg[], info: readonly string[], sourceLine: string): ScriptHas {
+function makeScriptHas(
+  args: readonly EventArg[],
+  info: readonly string[],
+  sourceLine: string,
+): ScriptHas {
   for (const token of info) {
-    if (token === '[TERM]') return 'TERM';
-    if (token === '[MAPTERM]') return 'MAPTERM';
+    if (token === "[TERM]") return "TERM";
+    if (token === "[MAPTERM]") return "MAPTERM";
   }
 
   for (const arg of args) {
-    if (arg.type === 'IF_CONDITIONAL') return 'IF_CONDITIONAL';
-    if (arg.type === 'LABEL_CONDITIONAL') return 'LABEL_CONDITIONAL';
-    if (arg.type === 'GOTO_CONDITIONAL') return 'GOTO_CONDITIONAL';
-    if (arg.type === 'POINTER_UNIT' || arg.type === 'POINTER_EVENT') {
-      return 'POINTER_UNIT_OR_EVENT';
+    if (arg.type === "IF_CONDITIONAL") return "IF_CONDITIONAL";
+    if (arg.type === "LABEL_CONDITIONAL") return "LABEL_CONDITIONAL";
+    if (arg.type === "GOTO_CONDITIONAL") return "GOTO_CONDITIONAL";
+    if (arg.type === "POINTER_UNIT" || arg.type === "POINTER_EVENT") {
+      return "POINTER_UNIT_OR_EVENT";
     }
-    if (POINTER_ARG_TYPES.has(arg.type)) return 'POINTER_OTHER';
-    if (arg.type === 'MAPCHAPTER') return 'MAP';
+    if (POINTER_ARG_TYPES.has(arg.type)) return "POINTER_OTHER";
+    if (arg.type === "MAPCHAPTER") return "MAP";
     if (
-      arg.type === 'TEXT' ||
-      arg.type === 'CONVERSATION_TEXT' ||
-      arg.type === 'SYSTEM_TEXT' ||
-      arg.type === 'ONELINE_TEXT'
+      arg.type === "TEXT" ||
+      arg.type === "CONVERSATION_TEXT" ||
+      arg.type === "SYSTEM_TEXT" ||
+      arg.type === "ONELINE_TEXT"
     ) {
-      return 'TEXT';
+      return "TEXT";
     }
   }
 
-  if (sourceLine.includes('{ITEM}')) {
+  if (sourceLine.includes("{ITEM}")) {
     for (const arg of args) {
-      if (arg.type === 'ITEM') return 'GIVE_ITEM';
+      if (arg.type === "ITEM") return "GIVE_ITEM";
     }
   }
 
-  return 'NOTHING';
+  return "NOTHING";
 }
 
 /** True when both nibbles of the byte at `i` are non-hex letters. */
 function isVariableByte(pattern: string, i: number): boolean {
   const a = pattern[i];
   const b = pattern[i + 1];
-  return a !== undefined && b !== undefined && a > 'F' && b > 'F';
+  return a !== undefined && b !== undefined && a > "F" && b > "F";
 }
 
 /**
@@ -206,12 +213,12 @@ export function splitInfo(info: string): string[] {
   const list: string[] = [];
   let pos = 0;
   while (pos < info.length) {
-    const start = info.indexOf('[', pos);
+    const start = info.indexOf("[", pos);
     if (start < 0) {
       list.push(info.slice(pos));
       return list;
     }
-    const end = info.indexOf(']', pos + 1);
+    const end = info.indexOf("]", pos + 1);
     if (end < 0) {
       list.push(info.slice(pos));
       return list;
@@ -230,11 +237,11 @@ export function splitInfo(info: string): string[] {
  * multiple of 8 hex characters, or with no info column.
  */
 export function parseScriptLine(line: string): EventScriptDef | null {
-  const sp = line.split('\t');
+  const sp = line.split("\t");
   if (sp.length <= 1) return null;
 
-  const pattern = sp[0] ?? '';
-  const info = sp[1] ?? '';
+  const pattern = sp[0] ?? "";
+  const info = sp[1] ?? "";
   if (pattern.length < 8) return null;
   if (pattern.length % 8 !== 0) return null;
 
@@ -275,9 +282,9 @@ export function parseScriptLine(line: string): EventScriptDef | null {
       args.push({
         position: start / 2,
         size: (i - start) / 2,
-        symbol: '',
+        symbol: "",
         type: ARG_TYPE_FIXED,
-        name: '',
+        name: "",
         alias: -1,
       });
     }
@@ -291,10 +298,10 @@ export function parseScriptLine(line: string): EventScriptDef | null {
   // (`EventScript.ParsePopupHintAndCategory`, EventScript.cs:436). Reading them
   // out of the info column finds nothing, which is what made `{ITEM}` and
   // `{GOLD}` invisible to earlier versions of this port.
-  let category = '';
+  let category = "";
   for (let c = 2; c < sp.length; c++) {
-    const token = sp[c] ?? '';
-    if (token.length > 0 && token.startsWith('{')) category += token;
+    const token = sp[c] ?? "";
+    if (token.length > 0 && token.startsWith("{")) category += token;
   }
 
   return {
@@ -324,13 +331,13 @@ function sortScripts(scripts: EventScriptDef[]): EventScriptDef[] {
 }
 
 const UNKNOWN_SCRIPT: EventScriptDef = {
-  pattern: '',
+  pattern: "",
   size: UNKNOWN_SIZE,
   data: Buffer.alloc(UNKNOWN_SIZE),
   args: [],
-  category: '',
-  has: 'UNKNOWN',
-  description: 'unknown',
+  category: "",
+  has: "UNKNOWN",
+  description: "unknown",
 };
 
 export interface EventScriptTable {
@@ -345,7 +352,7 @@ export function loadEventScripts(
   game: string,
   language?: string,
 ): EventScriptTable {
-  const path = resolveDataFile(configDir, 'event_', game, language);
+  const path = resolveDataFile(configDir, "event_", game, language);
   if (path === null) return { scripts: [], source: null };
 
   const scripts: EventScriptDef[] = [];
@@ -358,11 +365,7 @@ export function loadEventScripts(
 }
 
 /** Port of `EventScript.DisAseemble` (EventScript.cs:622). First match wins. */
-export function disassemble(
-  rom: RomBuffer,
-  addr: number,
-  table: EventScriptTable,
-): EventCode {
+export function disassemble(rom: RomBuffer, addr: number, table: EventScriptTable): EventCode {
   const left = rom.length - addr;
 
   for (const script of table.scripts) {
@@ -437,12 +440,8 @@ export function argValue(rom: RomBuffer, code: EventCode, symbol: string): numbe
  * Port of `EventScript.IsExitCode` (EventScript.cs), with the FE8 dummy-end
  * check. `lastBranchAddr` is 0 when we have not seen an `IF_CONDITIONAL` yet.
  */
-export function isExitCode(
-  rom: RomBuffer,
-  code: EventCode,
-  lastBranchAddr: number,
-): boolean {
-  if (code.script.has !== 'TERM' && code.script.has !== 'MAPTERM') return false;
+export function isExitCode(rom: RomBuffer, code: EventCode, lastBranchAddr: number): boolean {
+  if (code.script.has !== "TERM" && code.script.has !== "MAPTERM") return false;
 
   if (lastBranchAddr === 0) {
     return !isFe8DummyEnd(rom, code);
@@ -453,7 +452,7 @@ export function isExitCode(
 
 /** Port of `EventScript.IsFE8DummyEnd`. */
 function isFe8DummyEnd(rom: RomBuffer, code: EventCode): boolean {
-  if (code.script.has !== 'TERM') return false;
+  if (code.script.has !== "TERM") return false;
   const next = code.addr + code.script.size;
   if (next + 4 >= rom.length) return false;
 
@@ -469,7 +468,7 @@ export interface CondSlot {
 }
 
 export function loadConditionSlots(configDir: string, game: string, language?: string): CondSlot[] {
-  const path = resolveDataFile(configDir, 'eventcond_', game, language);
+  const path = resolveDataFile(configDir, "eventcond_", game, language);
   if (path === null) return [];
   return parseTwoColumnTable(readTextFile(path));
 }

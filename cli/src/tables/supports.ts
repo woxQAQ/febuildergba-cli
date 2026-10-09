@@ -40,9 +40,9 @@
  * Reference: FEBuilderGBA/FEBuilderGBA/SupportUnitForm.cs
  */
 
-import { RomBuffer } from '../rom/RomBuffer.ts';
-import type { Unit } from './units.ts';
-import { unitNameOrId } from './units.ts';
+import { RomBuffer } from "../rom/RomBuffer.ts";
+import type { Unit } from "./units.ts";
+import { unitNameOrId } from "./units.ts";
 
 export const SUPPORT_RECORD_SIZE = 24;
 
@@ -78,14 +78,14 @@ export const SUPPORT_LIMIT = 7;
  */
 export const SUPPORT_RANK_THRESHOLDS = { C: 81, B: 161, A: 241 } as const;
 
-export type SupportRank = 'none' | 'C' | 'B' | 'A';
+export type SupportRank = "none" | "C" | "B" | "A";
 
 /** Highest rank whose threshold `points` already meets. */
 export function supportRankFor(points: number): SupportRank {
-  if (points >= SUPPORT_RANK_THRESHOLDS.A) return 'A';
-  if (points >= SUPPORT_RANK_THRESHOLDS.B) return 'B';
-  if (points >= SUPPORT_RANK_THRESHOLDS.C) return 'C';
-  return 'none';
+  if (points >= SUPPORT_RANK_THRESHOLDS.A) return "A";
+  if (points >= SUPPORT_RANK_THRESHOLDS.B) return "B";
+  if (points >= SUPPORT_RANK_THRESHOLDS.C) return "C";
+  return "none";
 }
 
 /**
@@ -123,14 +123,14 @@ export interface SupportRankPlan {
    * they appeared*. `null` when the growth rate is 0 and the cap is not yet
    * reached. Talking costs no turns, so these are also the marginal turn costs.
    */
-  turnsToConversation: Record<Exclude<SupportRank, 'none'>, number | null>;
+  turnsToConversation: Record<Exclude<SupportRank, "none">, number | null>;
   /**
    * Cumulative turns spent adjacent before the pair's support value *reaches*
    * each rank - i.e. the sum of the conversation waits up to and including that
    * rank. This is a lower bound: it assumes every conversation is triggered the
    * moment it unlocks.
    */
-  turnsTo: Record<Exclude<SupportRank, 'none'>, number | null>;
+  turnsTo: Record<Exclude<SupportRank, "none">, number | null>;
 }
 
 /** Turns of adjacency needed to accumulate `target` points from `initial`. */
@@ -140,7 +140,7 @@ function turnsFor(initial: number, growth: number, target: number): number | nul
   return Math.ceil((target - initial) / growth);
 }
 
-const RANKS = ['C', 'B', 'A'] as const;
+const RANKS = ["C", "B", "A"] as const;
 
 /**
  * Plan how long a pair needs to spend adjacent to reach each rank.
@@ -159,11 +159,8 @@ export function supportRankPlan(initial: number, growth: number): SupportRankPla
   let total = initial;
   let rank: SupportRank = startingRank;
 
-  const turnsToConversation = {} as Record<
-    Exclude<SupportRank, 'none'>,
-    number | null
-  >;
-  const turnsTo = {} as Record<Exclude<SupportRank, 'none'>, number | null>;
+  const turnsToConversation = {} as Record<Exclude<SupportRank, "none">, number | null>;
+  const turnsTo = {} as Record<Exclude<SupportRank, "none">, number | null>;
 
   let cumulative: number | null = 0;
 
@@ -280,7 +277,7 @@ function readRecord(
 
   return {
     unitId: 0, // filled in by the caller, which knows the unit
-    unitName: '',
+    unitName: "",
     address,
     declaredCount,
     actualCount,
@@ -301,7 +298,7 @@ export function readSupports(
   nameMap: ReadonlyMap<number, string>,
 ): SupportReadResult {
   const entries: SupportEntry[] = [];
-  const missing: SupportReadResult['missing'] = [];
+  const missing: SupportReadResult["missing"] = [];
 
   for (const unit of units) {
     if (unit.isEmpty) continue;
@@ -377,10 +374,7 @@ export function buildSupportGraph(
         reciprocal: reverse !== undefined,
       };
 
-      if (
-        reverse &&
-        (reverse.initial !== source.initial || reverse.growth !== source.growth)
-      ) {
+      if (reverse && (reverse.initial !== source.initial || reverse.growth !== source.growth)) {
         edge.mismatch = { initial: reverse.initial, growth: reverse.growth };
       }
 
@@ -399,7 +393,7 @@ export interface SupportValidation {
   /** A->B exists without B->A. */
   oneWayEdges: SupportGraphEdge[];
   /** Units with a non-zero support pointer that could not be followed. */
-  unreadablePointers: SupportReadResult['missing'];
+  unreadablePointers: SupportReadResult["missing"];
   /** Units listing more than seven partners (impossible in the data model). */
   overLimit: { unitId: number; unitName: string; declared: number }[];
   ok: boolean;

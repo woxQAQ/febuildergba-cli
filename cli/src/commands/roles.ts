@@ -1,12 +1,12 @@
-import { affinityLabel } from './shared.ts';
-import type { Command } from './types.ts';
+import { affinityLabel } from "./shared.ts";
+import type { Command } from "./types.ts";
 
 export const roles: Command = {
-  name: 'roles',
-  summary: 'Team composition: weapon coverage, mobility, healers, affinities',
+  name: "roles",
+  summary: "Team composition: weapon coverage, mobility, healers, affinities",
   description:
-    'What the roster can actually field: which units cover each weapon type, ' +
-    'who can heal or cast, and how many of them move at each speed.',
+    "What the roster can actually field: which units cover each weapon type, " +
+    "who can heal or cast, and how many of them move at each speed.",
   run: ({ rom, flags }) => {
     // Every non-empty unit slot, independent of any flag. Counting `playable`
     // here made the field mean two different things depending on argv, and its
@@ -56,12 +56,12 @@ export const roles: Command = {
         filteredToPlayableOnly: flags.playableOnly,
         classesInUse: new Set(playable.map((u) => u.classId)).size,
         note: flags.playableOnly
-          ? 'populatedUnitSlots counts every non-empty record, including enemies ' +
-            'and generic templates; it is not narrowed by --playable-only. Only ' +
-            'coverage / healers / magicUsers below are.'
-          : 'populatedUnitSlots counts every non-empty record, including enemies ' +
-            'and generic templates. Use --playable-only to narrow to units that ' +
-            'carry support data.',
+          ? "populatedUnitSlots counts every non-empty record, including enemies " +
+            "and generic templates; it is not narrowed by --playable-only. Only " +
+            "coverage / healers / magicUsers below are."
+          : "populatedUnitSlots counts every non-empty record, including enemies " +
+            "and generic templates. Use --playable-only to narrow to units that " +
+            "carry support data.",
       },
       coverage: {
         weaponTypes: Object.fromEntries(
@@ -84,16 +84,14 @@ export const roles: Command = {
         mobility: {
           ...Object.fromEntries(mobilityCounts),
           note:
-            'Labels come from the class ability flags when the ROM sets them; ' +
-            'otherwise they are inferred from the terrain movement-cost table.',
+            "Labels come from the class ability flags when the ROM sets them; " +
+            "otherwise they are inferred from the terrain movement-cost table.",
         },
         specialActionClasses: allRoles
           .filter((r) => r.specialAction !== null)
           .map((r) => ({ classId: r.classId, className: r.className, role: r.specialAction })),
       },
-      affinities: Object.fromEntries(
-        [...affinityCounts.entries()].sort((x, y) => y[1] - x[1]),
-      ),
+      affinities: Object.fromEntries([...affinityCounts.entries()].sort((x, y) => y[1] - x[1])),
       classRoles: allRoles
         .sort((x, y) => x.classId - y.classId)
         .map((r) => ({

@@ -23,16 +23,16 @@
  * undefined 拼出一张半空的 Lua 表。改动 `units` 命令的输出时，这里会立刻响。
  */
 
-import { readFileSync, writeFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
+import { readFileSync, writeFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const OUT = join(HERE, '..', 'out');
-const REPO = join(HERE, '..', '..');
+const OUT = join(HERE, "..", "out");
+const REPO = join(HERE, "..", "..");
 
 const argv = process.argv.slice(2);
-const stem = argv.find((a) => a.startsWith('--stem='))?.slice(7) ?? 'dream-of-five';
+const stem = argv.find((a) => a.startsWith("--stem="))?.slice(7) ?? "dream-of-five";
 
 /**
  * The fields of a `units` row this script actually reads - deliberately not
@@ -45,17 +45,17 @@ interface UnitRow {
 }
 
 function isUnitRow(value: unknown): value is UnitRow {
-  if (typeof value !== 'object' || value === null) return false;
+  if (typeof value !== "object" || value === null) return false;
   const row = value as Record<string, unknown>;
-  return typeof row['id'] === 'number' && typeof row['name'] === 'string';
+  return typeof row["id"] === "number" && typeof row["name"] === "string";
 }
 
-const parsed: unknown = JSON.parse(readFileSync(join(OUT, `${stem}.units.json`), 'utf8'));
+const parsed: unknown = JSON.parse(readFileSync(join(OUT, `${stem}.units.json`), "utf8"));
 if (!Array.isArray(parsed) || !parsed.every(isUnitRow)) {
   throw new Error(
     `${join(OUT, `${stem}.units.json`)} is not an array of {id, name} rows - ` +
-      'the `units` payload changed shape. Regenerate it with ' +
-      '`node src/index.ts units <rom.gba> --out out/<stem>.units.json`.',
+      "the `units` payload changed shape. Regenerate it with " +
+      "`node src/index.ts units <rom.gba> --out out/<stem>.units.json`.",
   );
 }
 const units: readonly UnitRow[] = parsed;
@@ -63,9 +63,9 @@ const units: readonly UnitRow[] = parsed;
 /** Lua 长字符串里的名字不需要转义引号，但换行和控制字符要挡掉。 */
 function luaString(s: string): string {
   return s
-    .replace(/\\/g, '\\\\')
+    .replace(/\\/g, "\\\\")
     .replace(/"/g, '\\"')
-    .replace(/[\r\n\t]/g, ' ');
+    .replace(/[\r\n\t]/g, " ");
 }
 
 const rows: string[] = [];
@@ -84,10 +84,10 @@ const lua = `-- 由 cli/scripts/emit-mgba-units.ts 生成，不要手改。
 -- 数据来源：cli/out/${stem}.units.json（${rows.length} 条）
 -- 用途：mgba/fe-aodian.lua 显示单位名字。读不到这张表时脚本会退化显示 "#<id>"。
 return {
-${rows.join('\n')}
+${rows.join("\n")}
 }
 `;
 
-const target = join(REPO, 'mgba', 'units.lua');
-writeFileSync(target, lua, 'utf8');
+const target = join(REPO, "mgba", "units.lua");
+writeFileSync(target, lua, "utf8");
 console.log(`wrote ${target} (${rows.length} units)`);

@@ -22,26 +22,26 @@
  * per-block detail for one map-setting index instead of the summary.
  */
 
-import { loadRom } from '../src/load.ts';
+import { loadRom } from "../src/load.ts";
 import {
   collectPlacementSites,
   classifyUnitArg,
   type PlacedUnit,
   type UnitPointerHit,
-} from '../src/tables/chapters.ts';
+} from "../src/tables/chapters.ts";
 
 const argv = process.argv.slice(2);
 const romPath =
-  argv.find((a) => a.endsWith('.gba')) ??
-  new URL('../../fixtures/dream-of-five.gba', import.meta.url).pathname;
-const chapterFlag = argv.indexOf('--chapter');
+  argv.find((a) => a.endsWith(".gba")) ??
+  new URL("../../fixtures/dream-of-five.gba", import.meta.url).pathname;
+const chapterFlag = argv.indexOf("--chapter");
 const onlyChapter = chapterFlag >= 0 ? Number(argv[chapterFlag + 1]) : null;
 
 const loaded = loadRom(romPath);
 const { rom, layout, chapters, condSlots, eventScripts } = loaded;
 
-const hex = (n: number): string => '0x' + n.toString(16).padStart(7, '0');
-const SIDE = ['player', 'ally', 'enemy', 'removed'] as const;
+const hex = (n: number): string => "0x" + n.toString(16).padStart(7, "0");
+const SIDE = ["player", "ally", "enemy", "removed"] as const;
 
 interface Block {
   hit: UnitPointerHit;
@@ -94,7 +94,7 @@ if (onlyChapter !== null) {
       console.log(
         `    +${String(u.addr - b.hit.blockAddr).padStart(3)}  unit ${String(u.unitId).padStart(3)} class ${String(u.classId).padStart(3)} ` +
           `lv ${String(u.level).padStart(2)} ${u.side.padEnd(7)} auto ${u.autolevel} ` +
-          `pos (${u.prePlacementCoord.x},${u.prePlacementCoord.y}) items [${u.items.join(',')}]`,
+          `pos (${u.prePlacementCoord.x},${u.prePlacementCoord.y}) items [${u.items.join(",")}]`,
       );
     }
     if (b.units.length > 12) console.log(`    ... ${b.units.length - 12} more`);
@@ -107,7 +107,7 @@ if (onlyChapter !== null) {
 console.log(`rom: ${romPath}`);
 console.log(`blocks: ${blocks.length}`);
 
-console.log('\n-- by instruction (leading 8 bytes) --');
+console.log("\n-- by instruction (leading 8 bytes) --");
 const byInsn = new Map<string, number>();
 for (const b of blocks) {
   const k = b.hit.instruction.slice(0, 8);
@@ -115,10 +115,12 @@ for (const b of blocks) {
 }
 for (const [k, n] of [...byInsn].sort((a, b) => b[1] - a[1])) {
   const s = blocks.find((b) => b.hit.instruction.startsWith(k))!;
-  console.log(`  ${k}  ${String(n).padStart(4)}  kind=${s.hit.kind.padEnd(8)} ${s.hit.instruction.slice(0, 44)}`);
+  console.log(
+    `  ${k}  ${String(n).padStart(4)}  kind=${s.hit.kind.padEnd(8)} ${s.hit.instruction.slice(0, 44)}`,
+  );
 }
 
-console.log('\n-- blocks by instruction x allegiance --');
+console.log("\n-- blocks by instruction x allegiance --");
 const bySide = new Map<string, Map<string, number>>();
 for (const b of blocks) {
   const k = b.hit.instruction.slice(0, 8);
@@ -127,10 +129,15 @@ for (const b of blocks) {
   bySide.set(k, m);
 }
 for (const [k, m] of [...bySide].sort()) {
-  console.log(`  ${k}  ${[...m].sort().map(([s, n]) => `${s}:${n}`).join('  ')}`);
+  console.log(
+    `  ${k}  ${[...m]
+      .sort()
+      .map(([s, n]) => `${s}:${n}`)
+      .join("  ")}`,
+  );
 }
 
-console.log('\n-- blocks by condition slot --');
+console.log("\n-- blocks by condition slot --");
 const bySlot = new Map<string, number>();
 for (const b of blocks) bySlot.set(b.slot, (bySlot.get(b.slot) ?? 0) + 1);
 for (const [k, n] of [...bySlot].sort()) console.log(`  ${k.padEnd(22)} ${n}`);
@@ -138,7 +145,7 @@ for (const [k, n] of [...bySlot].sort()) console.log(`  ${k.padEnd(22)} ${n}`);
 // ---------------------------------------------------------------- records
 
 const all = blocks.flatMap((b) => b.units.map((u) => ({ u, ch: b.chapterIndex })));
-console.log('\n-- records by allegiance --');
+console.log("\n-- records by allegiance --");
 for (const side of SIDE) {
   const rows = all.filter((x) => x.u.side === side);
   if (rows.length === 0) continue;
@@ -150,17 +157,21 @@ for (const side of SIDE) {
   );
 }
 
-const enemies = all.filter((x) => x.u.side === 'enemy');
-console.log('\n-- enemy records --');
+const enemies = all.filter((x) => x.u.side === "enemy");
+console.log("\n-- enemy records --");
 const hist = new Map<number, number>();
 for (const x of enemies) hist.set(x.u.unitId, (hist.get(x.u.unitId) ?? 0) + 1);
 console.log(
-  `  top unit ids: ${[...hist].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([u, n]) => `${u}(${n})`).join(' ')}`,
+  `  top unit ids: ${[...hist]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 8)
+    .map(([u, n]) => `${u}(${n})`)
+    .join(" ")}`,
 );
 
 // ---------------------------------------------------------------- validity
 
-console.log('\n-- validity --');
+console.log("\n-- validity --");
 const classIds = new Set(loaded.classes.map((c) => c.id));
 let zeroLen = 0;
 let badClass = 0;
@@ -172,11 +183,11 @@ for (const b of blocks) {
   for (const u of b.units) {
     if (u.classId !== 0 && !classIds.has(u.classId)) badClass++;
     if (u.unitId === 0) badUnit++;
-    if (u.side !== 'enemy' && u.level > 20) badLevel++;
+    if (u.side !== "enemy" && u.level > 20) badLevel++;
   }
 }
 for (const ch of chapters) {
-  for (const u of ch.placements) if (u.side !== 'player') nonPlayerInSlot10++;
+  for (const u of ch.placements) if (u.side !== "player") nonPlayerInSlot10++;
 }
 console.log(`  blocks with 0 records          : ${zeroLen}`);
 console.log(`  classId outside the class table: ${badClass}`);
@@ -184,7 +195,7 @@ console.log(`  unitId == 0                    : ${badUnit}`);
 console.log(`  non-enemy record with lv > 20  : ${badLevel}`);
 console.log(`  slot 10 records that are not player: ${nonPlayerInSlot10}`);
 
-console.log('\n-- condition slot 11 vs 10 --');
+console.log("\n-- condition slot 11 vs 10 --");
 const differ = chapters.filter(
   (c) => c.condTableAddr !== 0 && c.hardPlacementAddr !== c.playerPlacementAddr,
 );
@@ -192,11 +203,11 @@ console.log(`  chapters where slot 11 != slot 10: ${differ.length}`);
 for (const c of differ) {
   console.log(
     `    map${c.index} ch${c.chapterNumber} "${c.title}"  slot10 ${c.placements.length} rec, slot11 ${c.hardPlacements.length} rec ` +
-      `[${[...new Set(c.hardPlacements.map((u) => u.side))].join(',')}]`,
+      `[${[...new Set(c.hardPlacements.map((u) => u.side))].join(",")}]`,
   );
 }
 
-console.log('\n-- FREEMAP slots 12-17 --');
+console.log("\n-- FREEMAP slots 12-17 --");
 let freemap = 0;
 for (const c of chapters) {
   const p = c.condPointers;
@@ -204,4 +215,6 @@ for (const c of chapters) {
 }
 console.log(`  chapters with any of slot 12-17 set: ${freemap}`);
 
-console.log(`\nclassifyUnitArg on a reinforcement pattern = ${classifyUnitArg('40050200XXXXXXXX400A000074E29E08', 4)}`);
+console.log(
+  `\nclassifyUnitArg on a reinforcement pattern = ${classifyUnitArg("40050200XXXXXXXX400A000074E29E08", 4)}`,
+);

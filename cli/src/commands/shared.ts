@@ -1,5 +1,5 @@
-import { affinityLabel as affinityLabelForId } from '../tables/supportBonus.ts';
-import type { LoadedRom } from '../load.ts';
+import { affinityLabel as affinityLabelForId } from "../tables/supportBonus.ts";
+import type { LoadedRom } from "../load.ts";
 
 /**
  * Affinity name preferring the ROM's own text table, falling back to the

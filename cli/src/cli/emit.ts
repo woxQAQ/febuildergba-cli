@@ -1,6 +1,6 @@
-import { writeFileSync } from 'node:fs';
+import { writeFileSync } from "node:fs";
 
-import type { ResolvedFlags } from '../commands/types.ts';
+import type { ResolvedFlags } from "../commands/types.ts";
 
 /**
  * Write a command's payload as JSON, to `--out` when given and to stdout
@@ -9,7 +9,7 @@ import type { ResolvedFlags } from '../commands/types.ts';
 export function emit(payload: unknown, flags: ResolvedFlags): void {
   const json = flags.compact ? JSON.stringify(payload) : JSON.stringify(payload, null, 2);
   if (flags.out !== undefined) {
-    writeFileSync(flags.out, `${json}\n`, 'utf8');
+    writeFileSync(flags.out, `${json}\n`, "utf8");
     console.error(`Wrote ${flags.out}`);
   } else {
     console.log(json);

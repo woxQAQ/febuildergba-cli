@@ -28,7 +28,7 @@
  * movement-cost table, but the flags are now the primary source.
  */
 
-import { parseKeyedTable, readTextFile, resolveDataFile } from '../config/data.ts';
+import { parseKeyedTable, readTextFile, resolveDataFile } from "../config/data.ts";
 
 /** Byte offset of the first ability byte within a class record. */
 export const CLASS_ABILITY_BASE_OFFSET = 40;
@@ -43,38 +43,38 @@ export const CLASS_ABILITY_BYTE_COUNT = 4;
  * the file.
  */
 export const CLASS_FLAG_KEYS: Readonly<Record<string, string>> = {
-  '01': 'mountedAid', // Mounted Aid Calc
-  '02': 'canto',
-  '03': 'steal',
-  '04': 'thiefSkill',
-  '05': 'dance',
-  '06': 'play',
-  '07': 'critBoost',
-  '08': 'ballista',
-  '11': 'promoted',
-  '12': 'supply',
-  '13': 'mountHorse',
-  '14': 'mountWyvern',
-  '15': 'mountPegasus',
-  '16': 'lord',
-  '17': 'female',
-  '18': 'boss',
-  '21': 'weaponLock1',
-  '22': 'weaponLockMyrmidon',
-  '23': 'monsterWeapon',
-  '24': 'maxLevel10',
-  '25': 'unselectable',
-  '26': 'trianglePegasus',
-  '27': 'triangleArmour',
-  '28': 'npc',
-  '31': 'noExp',
-  '32': 'lethality',
-  '33': 'magicSeal',
-  '34': 'summon',
-  '35': 'weaponLockEirika',
-  '36': 'weaponLockEphraim',
-  '37': 'weaponLockLyn',
-  '38': 'weaponLockAthos',
+  "01": "mountedAid", // Mounted Aid Calc
+  "02": "canto",
+  "03": "steal",
+  "04": "thiefSkill",
+  "05": "dance",
+  "06": "play",
+  "07": "critBoost",
+  "08": "ballista",
+  "11": "promoted",
+  "12": "supply",
+  "13": "mountHorse",
+  "14": "mountWyvern",
+  "15": "mountPegasus",
+  "16": "lord",
+  "17": "female",
+  "18": "boss",
+  "21": "weaponLock1",
+  "22": "weaponLockMyrmidon",
+  "23": "monsterWeapon",
+  "24": "maxLevel10",
+  "25": "unselectable",
+  "26": "trianglePegasus",
+  "27": "triangleArmour",
+  "28": "npc",
+  "31": "noExp",
+  "32": "lethality",
+  "33": "magicSeal",
+  "34": "summon",
+  "35": "weaponLockEirika",
+  "36": "weaponLockEphraim",
+  "37": "weaponLockLyn",
+  "38": "weaponLockAthos",
 };
 
 export interface ClassFlagDef {
@@ -123,12 +123,8 @@ export function decodeFlagKey(key: string): { offset: number; mask: number } | n
  * empty array when `config/data` is unavailable - callers must then fall back
  * to deriving roles from movement costs alone.
  */
-export function loadClassFlags(
-  configDir: string,
-  game: string,
-  language?: string,
-): ClassFlagDef[] {
-  const path = resolveDataFile(configDir, 'unitclass_checkbox_', game, language);
+export function loadClassFlags(configDir: string, game: string, language?: string): ClassFlagDef[] {
+  const path = resolveDataFile(configDir, "unitclass_checkbox_", game, language);
   if (path === null) return [];
 
   const out: ClassFlagDef[] = [];
@@ -142,10 +138,7 @@ export function loadClassFlags(
 }
 
 /** Read the raw ability bytes from a class record. */
-export function readAbilityBytes(
-  read: (offset: number) => number,
-  recordOffset: number,
-): number[] {
+export function readAbilityBytes(read: (offset: number) => number, recordOffset: number): number[] {
   const out: number[] = [];
   for (let i = 0; i < CLASS_ABILITY_BYTE_COUNT; i++) {
     out.push(read(recordOffset + CLASS_ABILITY_BASE_OFFSET + i));
@@ -159,7 +152,10 @@ export function readAbilityBytes(
  * Returns stable ids (`mountHorse`, `canto`, ...) in table order. Unknown bits
  * are reported as `flag<key>` so nothing is silently dropped.
  */
-export function decodeAbilityFlags(bytes: readonly number[], defs: readonly ClassFlagDef[]): string[] {
+export function decodeAbilityFlags(
+  bytes: readonly number[],
+  defs: readonly ClassFlagDef[],
+): string[] {
   const set = new Set<number>();
   for (let i = 0; i < bytes.length; i++) {
     set.add((bytes[i] as number) << 0);
@@ -182,16 +178,16 @@ export function decodeAbilityFlags(bytes: readonly number[], defs: readonly Clas
  * several we report the first in wyvern > pegasus > horse order, because
  * wyvern and pegasus both imply flying and are the more specific claim.
  */
-export type MountKind = 'wyvern' | 'pegasus' | 'horse' | 'armour' | null;
+export type MountKind = "wyvern" | "pegasus" | "horse" | "armour" | null;
 
 export function classifyMount(flags: readonly string[]): MountKind {
   const has = (f: string): boolean => flags.includes(f);
-  if (has('mountWyvern')) return 'wyvern';
-  if (has('mountPegasus')) return 'pegasus';
-  if (has('mountHorse')) return 'horse';
+  if (has("mountWyvern")) return "wyvern";
+  if (has("mountPegasus")) return "pegasus";
+  if (has("mountHorse")) return "horse";
   // Triangle Attack 2 is the armour-knight membership flag; FE8 sets it on
   // Armor Knight / Knight / General and nothing else.
-  if (has('triangleArmour')) return 'armour';
+  if (has("triangleArmour")) return "armour";
   return null;
 }
 
@@ -199,10 +195,10 @@ export function classifyMount(flags: readonly string[]): MountKind {
  * Whether the class is a "special action" class whose role is utility rather
  * than combat: dancers, bards, thieves.
  */
-export function specialActionRole(flags: readonly string[]): 'dancer' | 'bard' | 'thief' | null {
+export function specialActionRole(flags: readonly string[]): "dancer" | "bard" | "thief" | null {
   const has = (f: string): boolean => flags.includes(f);
-  if (has('dance')) return 'dancer';
-  if (has('play')) return 'bard';
-  if (has('steal') || has('thiefSkill')) return 'thief';
+  if (has("dance")) return "dancer";
+  if (has("play")) return "bard";
+  if (has("steal") || has("thiefSkill")) return "thief";
   return null;
 }

@@ -111,9 +111,9 @@
  * because it is on disk.
  */
 
-import { RomBuffer } from '../rom/RomBuffer.ts';
-import type { TextContext } from '../text/huffman.ts';
-import { decodeTextId, displayName } from '../text/huffman.ts';
+import { RomBuffer } from "../rom/RomBuffer.ts";
+import type { TextContext } from "../text/huffman.ts";
+import { decodeTextId, displayName } from "../text/huffman.ts";
 
 /**
  * `InputFormRef.GetAttributeName()` - hardcoded in the reference.
@@ -127,17 +127,17 @@ import { decodeTextId, displayName } from '../text/huffman.ts';
  * the id itself should print `id` alongside.
  */
 export const AFFINITY_NAMES: Readonly<Record<number, string>> = {
-  1: 'Fire',
-  2: 'Thunder',
-  3: 'Wind',
-  4: 'Ice',
-  5: 'Dark',
-  6: 'Light',
-  7: 'Anima',
+  1: "Fire",
+  2: "Thunder",
+  3: "Wind",
+  4: "Ice",
+  5: "Dark",
+  6: "Light",
+  7: "Anima",
 };
 
 /** The label the reference prints for an affinity it has no name for. */
-export const UNNAMED_AFFINITY = '-';
+export const UNNAMED_AFFINITY = "-";
 
 /** True when the reference (and therefore the game) has a name for this id. */
 export function isNamedAffinity(id: number): boolean {
@@ -227,24 +227,17 @@ export const SUPPORT_BONUS_RECORD_SIZE = 8;
  * stays unnamed here rather than being guessed.
  */
 export const SUPPORT_BONUS_FIELDS = [
-  'atk', // 攻撃
-  'def', // 防御
-  'hit', // 命中
-  'avoid', // 回避
-  'crit', // 必殺
-  'critAvoid', // 必殺回避
-  'unknown7', // J_7, labelled "??" in the reference; never read by the game
+  "atk", // 攻撃
+  "def", // 防御
+  "hit", // 命中
+  "avoid", // 回避
+  "crit", // 必殺
+  "critAvoid", // 必殺回避
+  "unknown7", // J_7, labelled "??" in the reference; never read by the game
 ] as const;
 
 /** The six stats a support actually modifies, in record-offset order. */
-export const SUPPORT_BONUS_STATS = [
-  'atk',
-  'def',
-  'hit',
-  'avoid',
-  'crit',
-  'critAvoid',
-] as const;
+export const SUPPORT_BONUS_STATS = ["atk", "def", "hit", "avoid", "crit", "critAvoid"] as const;
 
 export type SupportBonusStat = (typeof SUPPORT_BONUS_STATS)[number];
 
@@ -309,7 +302,7 @@ export function readAffinityNames(rom: RomBuffer, text: TextContext): Map<number
   for (const [key, textId] of Object.entries(AFFINITY_TEXT_IDS)) {
     const affinity = Number(key);
     const decoded = displayName(decodeTextId(rom, textId, text));
-    out.set(affinity, decoded === '' ? affinityName(affinity) : decoded);
+    out.set(affinity, decoded === "" ? affinityName(affinity) : decoded);
   }
   return out;
 }
@@ -331,17 +324,17 @@ export const SUPPORT_LEVEL_MULTIPLIER: Readonly<Record<string, number>> = {
  * `(stored * multiplier) >> 1`, matching the game's `muls` followed by the
  * final `lsrs #1`.
  */
-export function scaleBonus(stored: number, rank: 'none' | 'C' | 'B' | 'A'): number {
+export function scaleBonus(stored: number, rank: "none" | "C" | "B" | "A"): number {
   return (stored * (SUPPORT_LEVEL_MULTIPLIER[rank] as number)) >> 1;
 }
 
 /** The six real stats at each of the three ranks, derived from the stored bytes. */
-export type RankedBonus = Record<'C' | 'B' | 'A', Record<SupportBonusStat, number>>;
+export type RankedBonus = Record<"C" | "B" | "A", Record<SupportBonusStat, number>>;
 
 /** Derive the C/B/A bonus a unit with this affinity adds to a single support. */
 export function rankedBonus(bonus: SupportBonus): RankedBonus {
   const out = { C: {}, B: {}, A: {} } as RankedBonus;
-  for (const rank of ['C', 'B', 'A'] as const) {
+  for (const rank of ["C", "B", "A"] as const) {
     const row = out[rank] as Record<SupportBonusStat, number>;
     for (const stat of SUPPORT_BONUS_STATS) {
       row[stat] = scaleBonus(bonus.bonuses[stat] as number, rank);
@@ -367,9 +360,9 @@ function pairContribution(
   table: ReadonlyMap<number, SupportBonus>,
   stat: SupportBonusStat,
   selfAffinity: number,
-  selfRank: 'none' | 'C' | 'B' | 'A',
+  selfRank: "none" | "C" | "B" | "A",
   otherAffinity: number,
-  otherRank: 'none' | 'C' | 'B' | 'A',
+  otherRank: "none" | "C" | "B" | "A",
 ): number {
   const mine = table.get(selfAffinity);
   const theirs = table.get(otherAffinity);
@@ -383,11 +376,11 @@ export interface AdjacentSupport {
   /** Affinity id (1..7) of the unit the bonus is being computed for. */
   selfAffinity: number;
   /** That unit's rank toward the partner. */
-  selfRank: 'none' | 'C' | 'B' | 'A';
+  selfRank: "none" | "C" | "B" | "A";
   /** Affinity id (1..7) of the partner. */
   otherAffinity: number;
   /** The partner's rank toward the unit. Usually equal to `selfRank`. */
-  otherRank: 'none' | 'C' | 'B' | 'A';
+  otherRank: "none" | "C" | "B" | "A";
 }
 
 /**

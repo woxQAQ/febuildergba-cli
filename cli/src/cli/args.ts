@@ -1,9 +1,9 @@
-import { parseArgs } from 'node:util';
+import { parseArgs } from "node:util";
 
-import { FLAGS, flagsFor, type FlagSpec } from './flags.ts';
-import { findCommand } from '../commands/registry.ts';
-import { isKnownLanguage, LANGUAGE_NAMES } from '../config/data.ts';
-import type { Command, ResolvedFlags } from '../commands/types.ts';
+import { FLAGS, flagsFor, type FlagSpec } from "./flags.ts";
+import { findCommand } from "../commands/registry.ts";
+import { isKnownLanguage, LANGUAGE_NAMES } from "../config/data.ts";
+import type { Command, ResolvedFlags } from "../commands/types.ts";
 
 export interface ParsedArgv {
   /** Command word exactly as typed, or `null` when the user gave none. */
@@ -18,7 +18,7 @@ export interface ParsedArgv {
   help: boolean;
 }
 
-type OptionConfig = Record<string, { type: 'string' | 'boolean'; short?: string }>;
+type OptionConfig = Record<string, { type: "string" | "boolean"; short?: string }>;
 
 /**
  * `parseArgs` config built from the flags a command accepts.
@@ -59,8 +59,8 @@ function firstUnknownOption(
   const short = new Set(accepted.flatMap((f) => (f.short === undefined ? [] : [f.short])));
 
   for (const token of tokens) {
-    if (token.kind !== 'option') continue;
-    const name = token.name ?? '';
+    if (token.kind !== "option") continue;
+    const name = token.name ?? "";
     if (name.length === 0) continue;
     const known = name.length > 1 ? long.has(name) : short.has(name);
     if (!known) return token.rawName ?? name;
@@ -92,7 +92,7 @@ export function parseArgv(argv: readonly string[]): ParsedArgv {
   });
 
   const command = positionals[0] ?? null;
-  const resolved = command === null ? null : findCommand(command) ?? null;
+  const resolved = command === null ? null : (findCommand(command) ?? null);
   const accepted = flagsFor(resolved);
 
   // Only worth complaining about once we know the command is real: otherwise
@@ -108,7 +108,7 @@ export function parseArgv(argv: readonly string[]): ParsedArgv {
     const extra = positionals.slice(2);
     if (extra.length > 0 && resolved.extraArgs === undefined) {
       throw new Error(
-        `"${resolved.name}" takes no extra arguments, but got: ${extra.join(' ')}\n` +
+        `"${resolved.name}" takes no extra arguments, but got: ${extra.join(" ")}\n` +
           `Usage: fe-rom ${resolved.name} <rom.gba> [options]`,
       );
     }
@@ -116,28 +116,28 @@ export function parseArgv(argv: readonly string[]): ParsedArgv {
 
   const str = (key: string): string | undefined => {
     const value = values[key];
-    return typeof value === 'string' ? value : undefined;
+    return typeof value === "string" ? value : undefined;
   };
 
   // Hoisted so `exactOptionalPropertyTypes` sees a narrowed `string`, not
   // `string | undefined` re-widened by the second call.
-  const out = str('out');
-  const range = str('range');
-  const lang = str('lang');
+  const out = str("out");
+  const range = str("range");
+  const lang = str("lang");
   if (lang !== undefined && !isKnownLanguage(lang)) {
-    throw new Error(`--lang expects one of ${LANGUAGE_NAMES.join(', ')}, got "${lang}"`);
+    throw new Error(`--lang expects one of ${LANGUAGE_NAMES.join(", ")}, got "${lang}"`);
   }
 
   return {
     command,
     resolved,
-    romPath: positionals[1] ?? '',
+    romPath: positionals[1] ?? "",
     args: positionals.slice(2),
     help: values.help === true,
     flags: {
       all: values.all === true,
       compact: values.compact === true,
-      playableOnly: values['playable-only'] === true,
+      playableOnly: values["playable-only"] === true,
       hard: values.hard === true,
       timings: values.timings === true,
       ...(out === undefined ? {} : { out }),

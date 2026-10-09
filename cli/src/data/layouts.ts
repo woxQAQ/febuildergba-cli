@@ -34,16 +34,16 @@
  *            ROMFE6JP.cs, and `U.FindROMPointer` (U.cs).
  */
 
-import type { GameVersion } from '../rom/detect.ts';
-import { RomBuffer } from '../rom/RomBuffer.ts';
+import type { GameVersion } from "../rom/detect.ts";
+import { RomBuffer } from "../rom/RomBuffer.ts";
 
 export interface FixedSlot {
-  kind: 'fixed';
+  kind: "fixed";
   slot: number;
 }
 
 export interface SearchSlot {
-  kind: 'search';
+  kind: "search";
   /** Offset within a record that must itself hold a valid pointer. */
   checkPointer: number;
   candidates: readonly number[];
@@ -234,7 +234,7 @@ export interface ForceSortieLayout {
    * `0xFFFF` (FE8). `'fixed'` - the table holds exactly `count` records, one per
    * map id starting at `mapIdBase` (FE7, whose editor hardcodes `i < 23`).
    */
-  termination: 'terminator' | 'fixed';
+  termination: "terminator" | "fixed";
   /** Only for `'fixed'`. */
   count?: number;
   /** Only for `'fixed'`: record `i` applies to map id `mapIdBase + i`. */
@@ -264,12 +264,12 @@ export interface GameLayout {
 
 /** FE8U unit/class pointer slots moved between revisions, so they are searched. */
 const FE8U: GameLayout = {
-  version: 'FE8U',
-  displayName: 'FE8U (The Sacred Stones, North America)',
+  version: "FE8U",
+  displayName: "FE8U (The Sacred Stones, North America)",
   supported: true,
   unit: {
     slot: {
-      kind: 'search',
+      kind: "search",
       checkPointer: 0x2c,
       candidates: [0x10108, 0x104ec, 0x10538, 0xa0b40, 0xa0bb8, 0xbe954],
     },
@@ -278,7 +278,7 @@ const FE8U: GameLayout = {
   },
   unitClass: {
     slot: {
-      kind: 'search',
+      kind: "search",
       checkPointer: 0x88,
       candidates: [0x17ab8, 0x17dbc, 0x18dac, 0x19458],
     },
@@ -301,7 +301,7 @@ const FE8U: GameLayout = {
   terrainNames: { slot: 0x1a254, recordSize: 2, maxCount: 0x100 },
   map: {
     settingSlot: {
-      kind: 'search',
+      kind: "search",
       checkPointer: 0x12,
       checkBelow: 0x0e,
       candidates: [0x0b5f98, 0x0b61c0, 0x0b6328, 0x0b6500, 0x03462c, 0xb5e68],
@@ -315,18 +315,16 @@ const FE8U: GameLayout = {
     talkCondSize: 16,
     unitDataSize: 20,
   },
-  forceSortie: { slot: 0x8483c, recordSize: 4, termination: 'terminator' },
+  forceSortie: { slot: 0x8483c, recordSize: 4, termination: "terminator" },
   item: {
     // `U.FindROMPointer(rom, addr => rom.u32(0xC) == 0, candidates)`.
     // All eight candidates resolve to the same table in this ROM, but the
     // search is kept so other FE8 revisions still work.
     slot: {
-      kind: 'search',
+      kind: "search",
       checkPointer: 0x0c,
       checkEqual: 0,
-      candidates: [
-        0x177c0, 0x16570, 0x166d0, 0x1671c, 0x167e0, 0x16a10, 0x16b18, 0x16bb4,
-      ],
+      candidates: [0x177c0, 0x16570, 0x166d0, 0x1671c, 0x167e0, 0x16a10, 0x16b18, 0x16bb4],
     },
     recordSize: 36,
     maxCount: 0x100,
@@ -334,7 +332,7 @@ const FE8U: GameLayout = {
   shop: {
     prepShopSlot: 0x99e64,
     // `ROMFE8JP.get_shop_name`.
-    shopObjects: { 0x16: 'weapon', 0x17: 'item', 0x18: 'secret' },
+    shopObjects: { 0x16: "weapon", 0x17: "item", 0x18: "secret" },
     objectCondSlot: 2, // CONDTYPE.OBJECT
     objectRecordSize: 12,
     objectShopPointer: 4,
@@ -344,17 +342,17 @@ const FE8U: GameLayout = {
 };
 
 const FE8J: GameLayout = {
-  version: 'FE8J',
-  displayName: 'FE8J (The Sacred Stones, Japan)',
+  version: "FE8J",
+  displayName: "FE8J (The Sacred Stones, Japan)",
   supported: false,
-  unsupportedReason: 'Shift-JIS text decoding is not implemented yet.',
+  unsupportedReason: "Shift-JIS text decoding is not implemented yet.",
   unit: {
     slot: {
-      kind: 'search',
+      kind: "search",
       checkPointer: 0x2c,
       candidates: [
-        0x010650, 0x010268, 0x1069c, 0xa3b64, 0xa3ce0, 0xa4928, 0xa49a0, 0xa4c3c,
-        0xa5458, 0xa56a8, 0xa5860, 0xa595c, 0xa5bb0, 0xa5d28, 0xa61f8,
+        0x010650, 0x010268, 0x1069c, 0xa3b64, 0xa3ce0, 0xa4928, 0xa49a0, 0xa4c3c, 0xa5458, 0xa56a8,
+        0xa5860, 0xa595c, 0xa5bb0, 0xa5d28, 0xa61f8,
       ],
     },
     recordSize: 52,
@@ -362,7 +360,7 @@ const FE8J: GameLayout = {
   },
   unitClass: {
     slot: {
-      kind: 'search',
+      kind: "search",
       checkPointer: 0x88,
       candidates: [0x017860, 0x17adc, 0x18ac0, 0x19130],
     },
@@ -388,7 +386,7 @@ const FE8J: GameLayout = {
   terrainNames: { slot: 0x19f24, recordSize: 4, maxCount: 0x100 },
   map: {
     settingSlot: {
-      kind: 'search',
+      kind: "search",
       checkPointer: 0x12,
       checkBelow: 0x0e,
       candidates: [0x0bab1c, 0x34534, 0xba9ec, 0xbad44, 0xbaeac],
@@ -402,17 +400,17 @@ const FE8J: GameLayout = {
     talkCondSize: 16,
     unitDataSize: 20,
   },
-  forceSortie: { slot: 0x86b08, recordSize: 4, termination: 'terminator' },
+  forceSortie: { slot: 0x86b08, recordSize: 4, termination: "terminator" },
   item: null,
   shop: null,
 };
 
 const FE7U: GameLayout = {
-  version: 'FE7U',
-  displayName: 'FE7U (The Blazing Blade, North America)',
+  version: "FE7U",
+  displayName: "FE7U (The Blazing Blade, North America)",
   supported: true,
-  unit: { slot: { kind: 'fixed', slot: 0x9a274 }, recordSize: 52, maxCount: 253 },
-  unitClass: { slot: { kind: 'fixed', slot: 0x178f0 }, recordSize: 84, maxCount: 0x100 },
+  unit: { slot: { kind: "fixed", slot: 0x9a274 }, recordSize: 52, maxCount: 253 },
+  unitClass: { slot: { kind: "fixed", slot: 0x178f0 }, recordSize: 84, maxCount: 0x100 },
   text: {
     maskPointer: 0x6bc,
     maskPointBasePointer: 0x6b8,
@@ -421,13 +419,13 @@ const FE7U: GameLayout = {
     isMultibyte: false,
   },
   support: {
-    unitPointer: 0xbdcE78,
+    unitPointer: 0xbdce78,
     talkPointer: 0x78a94,
     attributePointer: 0x26998,
   },
   terrainNames: { slot: 0x19b1c, recordSize: 2, maxCount: 0x100 },
   map: {
-    settingSlot: { kind: 'fixed', slot: 0x31580 },
+    settingSlot: { kind: "fixed", slot: 0x31580 },
     settingRecordSize: 152,
     settingMaxCount: 0x100,
     eventPlistPos: 120,
@@ -440,18 +438,18 @@ const FE7U: GameLayout = {
   // `EventForceSortieFE7Form.Init` hardcodes `i < 23` and labels record `i`
   // with `GetMapName(i + 0x17)`, i.e. the table is a dense array over map ids
   // 0x17..0x2D with no terminator. Not verified against a real FE7 ROM.
-  forceSortie: { slot: 0x8ddcc, recordSize: 4, termination: 'fixed', count: 23, mapIdBase: 0x17 },
+  forceSortie: { slot: 0x8ddcc, recordSize: 4, termination: "fixed", count: 23, mapIdBase: 0x17 },
   item: null,
   shop: null,
 };
 
 const FE7J: GameLayout = {
-  version: 'FE7J',
-  displayName: 'FE7J (The Blazing Blade, Japan)',
+  version: "FE7J",
+  displayName: "FE7J (The Blazing Blade, Japan)",
   supported: false,
-  unsupportedReason: 'Shift-JIS text decoding is not implemented yet.',
-  unit: { slot: { kind: 'fixed', slot: 0x9ac50 }, recordSize: 52, maxCount: 253 },
-  unitClass: { slot: { kind: 'fixed', slot: 0x17ce0 }, recordSize: 84, maxCount: 0x100 },
+  unsupportedReason: "Shift-JIS text decoding is not implemented yet.",
+  unit: { slot: { kind: "fixed", slot: 0x9ac50 }, recordSize: 52, maxCount: 253 },
+  unitClass: { slot: { kind: "fixed", slot: 0x17ce0 }, recordSize: 84, maxCount: 0x100 },
   text: {
     maskPointer: 0x6e0,
     maskPointBasePointer: 0x6dc,
@@ -466,7 +464,7 @@ const FE7J: GameLayout = {
   },
   terrainNames: { slot: 0x19efc, recordSize: 4, maxCount: 0x100 },
   map: {
-    settingSlot: { kind: 'fixed', slot: 0x31a6c },
+    settingSlot: { kind: "fixed", slot: 0x31a6c },
     settingRecordSize: 148,
     settingMaxCount: 0x100,
     eventPlistPos: 116,
@@ -476,7 +474,7 @@ const FE7J: GameLayout = {
     talkCondSize: 16,
     unitDataSize: 16,
   },
-  forceSortie: { slot: 0x8e6f8, recordSize: 4, termination: 'fixed', count: 23, mapIdBase: 0x17 },
+  forceSortie: { slot: 0x8e6f8, recordSize: 4, termination: "fixed", count: 23, mapIdBase: 0x17 },
   item: null,
   shop: null,
 };
@@ -487,14 +485,14 @@ const FE7J: GameLayout = {
  * recorded here for reference but parsing is not wired up.
  */
 const FE6J: GameLayout = {
-  version: 'FE6J',
-  displayName: 'FE6J (The Binding Blade, Japan)',
+  version: "FE6J",
+  displayName: "FE6J (The Binding Blade, Japan)",
   supported: false,
   unsupportedReason:
-    'FE6 uses a different unit record (48 bytes) and class record (72 bytes), ' +
-    'and has no support data. See UnitFE6Form.cs / ClassFE6Form.cs.',
-  unit: { slot: { kind: 'fixed', slot: 0x17680 }, recordSize: 48, maxCount: 226 },
-  unitClass: { slot: { kind: 'fixed', slot: 0x176e0 }, recordSize: 72, maxCount: 0x100 },
+    "FE6 uses a different unit record (48 bytes) and class record (72 bytes), " +
+    "and has no support data. See UnitFE6Form.cs / ClassFE6Form.cs.",
+  unit: { slot: { kind: "fixed", slot: 0x17680 }, recordSize: 48, maxCount: 226 },
+  unitClass: { slot: { kind: "fixed", slot: 0x176e0 }, recordSize: 72, maxCount: 0x100 },
   text: {
     maskPointer: 0x6e0,
     maskPointBasePointer: 0x6dc,
@@ -505,7 +503,7 @@ const FE6J: GameLayout = {
   support: null,
   terrainNames: { slot: 0x192c0, recordSize: 4, maxCount: 0x100 },
   map: {
-    settingSlot: { kind: 'fixed', slot: 0x2bb20 },
+    settingSlot: { kind: "fixed", slot: 0x2bb20 },
     settingRecordSize: 72,
     settingMaxCount: 0x100,
     eventPlistPos: 58,
@@ -546,7 +544,7 @@ export function getLayout(version: GameVersion): GameLayout {
  * `candidates[0]`. All three steps are reproduced here.
  */
 export function resolveTableSlot(rom: RomBuffer, ref: SlotRef): number {
-  if (ref.kind === 'fixed') {
+  if (ref.kind === "fixed") {
     return ref.slot;
   }
 
@@ -579,7 +577,5 @@ export function resolveTableSlot(rom: RomBuffer, ref: SlotRef): number {
     return slot;
   }
 
-  throw new Error(
-    'Could not resolve table pointer: no candidate slot held a valid pointer.',
-  );
+  throw new Error("Could not resolve table pointer: no candidate slot held a valid pointer.");
 }

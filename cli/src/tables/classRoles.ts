@@ -33,11 +33,11 @@
  * | `mobility` | `mount` when known, else movement costs |
  */
 
-import type { UnitClass } from './classes.ts';
-import { IMPASSABLE_COST } from './classes.ts';
-import type { MountKind } from './classFlags.ts';
-import type { WeaponType } from './common.ts';
-import { WEAPON_TYPES } from './common.ts';
+import type { UnitClass } from "./classes.ts";
+import { IMPASSABLE_COST } from "./classes.ts";
+import type { MountKind } from "./classFlags.ts";
+import type { WeaponType } from "./common.ts";
+import { WEAPON_TYPES } from "./common.ts";
 
 /**
  * Terrain mobility, normalised across both sources.
@@ -47,13 +47,13 @@ import { WEAPON_TYPES } from './common.ts';
  * clear on its Armour classes - `'armour'` is inferred from the cost table
  * instead, and {@link ClassRole.mobilitySource} says which happened.
  */
-export type Mobility = 'flying' | 'mounted' | 'armour' | 'normal';
+export type Mobility = "flying" | "mounted" | "armour" | "normal";
 
 /** `Mobility` values in a stable order, for iteration and output. */
-export const MOBILITY_KINDS: readonly Mobility[] = ['flying', 'mounted', 'armour', 'normal'];
+export const MOBILITY_KINDS: readonly Mobility[] = ["flying", "mounted", "armour", "normal"];
 
 /** Where a mobility label came from. `'costs'` means it is inferred, not stated. */
-export type MobilitySource = 'flags' | 'costs';
+export type MobilitySource = "flags" | "costs";
 
 export interface ClassRole {
   classId: number;
@@ -64,7 +64,7 @@ export interface ClassRole {
   /** Mount category from the ability flags; `null` for foot units. */
   mount: MountKind;
   /** Dancer / bard / thief, from the action flags. `null` otherwise. */
-  specialAction: 'dancer' | 'bard' | 'thief' | null;
+  specialAction: "dancer" | "bard" | "thief" | null;
   /** Weapon types this class can use, in ROM order. */
   weapons: WeaponType[];
   /** Can use staves - i.e. can heal and repair. */
@@ -83,12 +83,12 @@ export interface ClassRole {
   mobilityByCosts: Mobility | null;
 }
 
-const STAFF: WeaponType = 'staff';
-const MAGIC_TYPES: readonly WeaponType[] = ['anima', 'light', 'dark'];
+const STAFF: WeaponType = "staff";
+const MAGIC_TYPES: readonly WeaponType[] = ["anima", "light", "dark"];
 
 /** Serialise a cost table so identical tables can be counted. */
 function signature(costs: readonly number[]): string {
-  return costs.join(',');
+  return costs.join(",");
 }
 
 /**
@@ -131,8 +131,8 @@ export function classifyMobilityByCosts(
   if (costs.length === 0) return null;
 
   const passable = costs.filter((v) => v !== IMPASSABLE_COST);
-  if (passable.length > 0 && new Set(passable).size === 1) return 'flying';
-  if (baseline === null || costs.length !== baseline.length) return 'normal';
+  if (passable.length > 0 && new Set(passable).size === 1) return "flying";
+  if (baseline === null || costs.length !== baseline.length) return "normal";
 
   let worse = false;
   let better = false;
@@ -143,7 +143,7 @@ export function classifyMobilityByCosts(
     else if (a < b) better = true;
   }
 
-  return worse && !better ? 'armour' : 'normal';
+  return worse && !better ? "armour" : "normal";
 }
 
 /** Map a mount category onto the normalised mobility label. */
@@ -152,17 +152,17 @@ function mobilityFromMount(
   byCosts: Mobility | null,
 ): { mobility: Mobility; source: MobilitySource } {
   switch (mount) {
-    case 'wyvern':
-    case 'pegasus':
-      return { mobility: 'flying', source: 'flags' };
-    case 'horse':
-      return { mobility: 'mounted', source: 'flags' };
-    case 'armour':
-      return { mobility: 'armour', source: 'flags' };
+    case "wyvern":
+    case "pegasus":
+      return { mobility: "flying", source: "flags" };
+    case "horse":
+      return { mobility: "mounted", source: "flags" };
+    case "armour":
+      return { mobility: "armour", source: "flags" };
     default:
       // No mount flag. Fall back to the cost table - it still separates fliers
       // from armour, and a hack may simply leave the icon flags unset.
-      return { mobility: byCosts ?? 'normal', source: 'costs' };
+      return { mobility: byCosts ?? "normal", source: "costs" };
   }
 }
 
@@ -219,7 +219,8 @@ export function summariseMobility(roles: ReadonlyMap<number, ClassRole>): Record
 export function mobilityDisagreements(
   roles: ReadonlyMap<number, ClassRole>,
 ): { classId: number; className: string; fromFlags: Mobility; fromCosts: Mobility }[] {
-  const out: { classId: number; className: string; fromFlags: Mobility; fromCosts: Mobility }[] = [];
+  const out: { classId: number; className: string; fromFlags: Mobility; fromCosts: Mobility }[] =
+    [];
   for (const role of roles.values()) {
     if (role.mount === null || role.mobilityByCosts === null) continue;
     if (role.mobility === role.mobilityByCosts) continue;
@@ -227,7 +228,8 @@ export function mobilityDisagreements(
     // Both mounted and armour look like the "restricted" cost signature; the
     // costs cannot separate them, so only the flying / not-flying axis and
     // restricted-vs-normal are meaningful comparisons.
-    const coarse = (m: Mobility): string => (m === 'flying' ? 'flying' : m === 'normal' ? 'normal' : 'restricted');
+    const coarse = (m: Mobility): string =>
+      m === "flying" ? "flying" : m === "normal" ? "normal" : "restricted";
     if (coarse(role.mobility) === coarse(role.mobilityByCosts)) continue;
 
     out.push({

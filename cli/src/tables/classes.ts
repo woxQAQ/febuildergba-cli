@@ -14,10 +14,10 @@
  * names, just the item font read as text.
  */
 function readClassName(rom: RomBuffer, textId: number, text: TextContext): string {
-  if (textId === 0) return '';
+  if (textId === 0) return "";
 
   const entry = text.textBase + textId * 4;
-  if (!rom.isSafeOffset(entry)) return '';
+  if (!rom.isSafeOffset(entry)) return "";
 
   const pointer = rom.u32(entry);
   if (isUnHuffmanPatchPointer(pointer)) {
@@ -53,8 +53,8 @@ function readClassName(rom: RomBuffer, textId: number, text: TextContext): strin
  * FEBuilderGBA write-protects.
  */
 
-import { RomBuffer } from '../rom/RomBuffer.ts';
-import type { TextContext } from '../text/huffman.ts';
+import { RomBuffer } from "../rom/RomBuffer.ts";
+import type { TextContext } from "../text/huffman.ts";
 import {
   classifyTextPointer,
   convertUnHuffmanPatchToPointer,
@@ -64,12 +64,12 @@ import {
   sanitizeText,
   stripAllCodes,
   unHuffmanRawBytes,
-} from '../text/huffman.ts';
-import { decodeItemFontBytes } from '../text/itemFont.ts';
-import type { ResolvedTable, WeaponLevels } from './common.ts';
-import { readWeaponLevels } from './common.ts';
-import type { ClassFlagDef, MountKind } from './classFlags.ts';
-import { classifyMount, decodeAbilityFlags, specialActionRole } from './classFlags.ts';
+} from "../text/huffman.ts";
+import { decodeItemFontBytes } from "../text/itemFont.ts";
+import type { ResolvedTable, WeaponLevels } from "./common.ts";
+import { readWeaponLevels } from "./common.ts";
+import type { ClassFlagDef, MountKind } from "./classFlags.ts";
+import { classifyMount, decodeAbilityFlags, specialActionRole } from "./classFlags.ts";
 
 export const CLASS_RECORD_SIZE = 84;
 
@@ -209,7 +209,7 @@ export interface UnitClass {
   /** Mount category from the icon flags. `null` for foot units. */
   mount: MountKind;
   /** Utility role from the action flags, or `null`. */
-  specialAction: 'dancer' | 'bard' | 'thief' | null;
+  specialAction: "dancer" | "bard" | "thief" | null;
   /**
    * Cost to enter each terrain type, indexed by terrain id. `0xFF` means the
    * class cannot enter that terrain. Read from the pointer at `+56`.
@@ -327,9 +327,7 @@ export function readClass(ctx: ClassTableContext, index: number): UnitClass | nu
     rom.u8(addr + CLASS_OFFSET.abilityFlags + 3),
   ];
   const abilityFlagIds =
-    ctx.abilityFlagDefs === undefined
-      ? []
-      : decodeAbilityFlags(abilityFlags, ctx.abilityFlagDefs);
+    ctx.abilityFlagDefs === undefined ? [] : decodeAbilityFlags(abilityFlags, ctx.abilityFlagDefs);
 
   // Terrain avoid / defence / resistance, three pointer tables indexed by the
   // same terrain id the movement-cost table uses.

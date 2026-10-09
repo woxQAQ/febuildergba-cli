@@ -75,31 +75,31 @@
  *            InputFormRef.cs:12097 ("@MAPSETTING_CHAPTOR_ID").
  */
 
-import type { GameLayout, MapLayout } from '../data/layouts.ts';
-import { resolveTableSlot } from '../data/layouts.ts';
-import { RomBuffer } from '../rom/RomBuffer.ts';
-import type { TextContext } from '../text/huffman.ts';
-import { decodeTextId } from '../text/huffman.ts';
-import type { CondSlot, EventCode, EventScriptTable } from './eventScript.ts';
-import { disassemble, isExitCode } from './eventScript.ts';
+import type { GameLayout, MapLayout } from "../data/layouts.ts";
+import { resolveTableSlot } from "../data/layouts.ts";
+import { RomBuffer } from "../rom/RomBuffer.ts";
+import type { TextContext } from "../text/huffman.ts";
+import { decodeTextId } from "../text/huffman.ts";
+import type { CondSlot, EventCode, EventScriptTable } from "./eventScript.ts";
+import { disassemble, isExitCode } from "./eventScript.ts";
 
 // ---------------------------------------------------------------- condition slots
 
 /** Kinds of entry in the event-condition table, matching `CONDTYPE`. */
 export const COND_KINDS = [
-  'TURN',
-  'TALK',
-  'OBJECT',
-  'ALWAYS',
-  'TUTORIAL',
-  'TRAP',
-  'PLAYER_UNIT',
-  'ENEMY_UNIT',
-  'FREEMAP_PLAYER_UNIT',
-  'FREEMAP_ENEMY_UNIT',
-  'START_EVENT',
-  'END_EVENT',
-  'UNKNOWN',
+  "TURN",
+  "TALK",
+  "OBJECT",
+  "ALWAYS",
+  "TUTORIAL",
+  "TRAP",
+  "PLAYER_UNIT",
+  "ENEMY_UNIT",
+  "FREEMAP_PLAYER_UNIT",
+  "FREEMAP_ENEMY_UNIT",
+  "START_EVENT",
+  "END_EVENT",
+  "UNKNOWN",
 ] as const;
 
 export type CondKind = (typeof COND_KINDS)[number];
@@ -115,9 +115,7 @@ export interface CondSlotInfo extends CondSlot {
 
 function toCondKind(flag: string): CondKind {
   const upper = flag.trim().toUpperCase();
-  return (COND_KINDS as readonly string[]).includes(upper)
-    ? (upper as CondKind)
-    : 'UNKNOWN';
+  return (COND_KINDS as readonly string[]).includes(upper) ? (upper as CondKind) : "UNKNOWN";
 }
 
 export function describeCondSlots(slots: readonly CondSlot[]): CondSlotInfo[] {
@@ -147,7 +145,7 @@ export interface MapSettingTable {
   recordSize: number;
   count: number;
   /** How `count` was determined. See the module doc comment. */
-  countSource: 'terminator' | 'structural';
+  countSource: "terminator" | "structural";
   records: MapSettingRecord[];
 }
 
@@ -186,11 +184,7 @@ export function isMapSettingEnd(
  * everything. It checks the fields `MapSettingForm.GetMapPListsWhereAddr`
  * actually reads, plus the weather id.
  */
-export function looksLikeMapSetting(
-  rom: RomBuffer,
-  addr: number,
-  layout: MapLayout,
-): boolean {
+export function looksLikeMapSetting(rom: RomBuffer, addr: number, layout: MapLayout): boolean {
   if (!rom.isSafeOffset(addr + layout.settingRecordSize)) return false;
   if (rom.u8(addr + 12) >= 0x0e) return false;
 
@@ -226,12 +220,12 @@ export function readMapSettingTable(
     count++;
   }
 
-  let countSource: MapSettingTable['countSource'] = 'terminator';
+  let countSource: MapSettingTable["countSource"] = "terminator";
   if (count === 0 && looksLikeMapSetting(rom, tableOffset, map)) {
     // This hack rewrote `+0` on every record, so the reference test fires
     // immediately. Scan on structure instead and stop at the first zeroed
     // record (the table is followed by padding).
-    countSource = 'structural';
+    countSource = "structural";
     let seenBlank = 0;
     while (count < map.settingMaxCount) {
       const addr = recordAt(count);
@@ -313,21 +307,21 @@ export function parseUnitGrowAutolevel(grow: number): number {
  * roster), and its wait icon renders in the "gray" palette
  * (`ImageUnitWaitIconFrom.cs:173-176`).
  */
-export type UnitSide = 'player' | 'ally' | 'enemy' | 'removed';
+export type UnitSide = "player" | "ally" | "enemy" | "removed";
 
-export const UNIT_SIDES: readonly UnitSide[] = ['player', 'ally', 'enemy', 'removed'];
+export const UNIT_SIDES: readonly UnitSide[] = ["player", "ally", "enemy", "removed"];
 
 /** `U.ParseUnitGrowAssign` counterpart, for the allegiance field. */
 export function unitSideOf(grow: number): UnitSide {
-  return UNIT_SIDES[parseUnitGrowAssign(grow)] ?? 'player';
+  return UNIT_SIDES[parseUnitGrowAssign(grow)] ?? "player";
 }
 
 /** `U.MakeFe8UnitPos` (U.cs:1770) decoded. Only FE8 packs the third field. */
 export function decodeUnitPosition(
   packed: number,
-  version: GameLayout['version'],
+  version: GameLayout["version"],
 ): { x: number; y: number; ext: number | null } {
-  if (version === 'FE8U' || version === 'FE8J') {
+  if (version === "FE8U" || version === "FE8J") {
     return { x: packed & 0x3f, y: (packed >> 6) & 0x3f, ext: (packed >> 12) & 0x7 };
   }
   return { x: packed & 0xff, y: (packed >> 8) & 0xff, ext: null };
@@ -535,8 +529,7 @@ export function readChapters(
   const plistTable = rom.p32(map.eventSlot);
   const chapters: Chapter[] = [];
 
-  const slotIndexOf = (kind: CondKind): number =>
-    condSlots.findIndex((s) => s.kind === kind);
+  const slotIndexOf = (kind: CondKind): number => condSlots.findIndex((s) => s.kind === kind);
 
   for (const record of table.records) {
     const titleTextId = rom.u16(record.addr + 0x70);
@@ -547,7 +540,7 @@ export function readChapters(
       chapterNumberRaw,
       chapterNumber: chapterNumberRaw / 2,
       titleTextId,
-      title: text === null ? '' : decodeTextId(rom, titleTextId, text),
+      title: text === null ? "" : decodeTextId(rom, titleTextId, text),
       eventPlist: record.eventPlist,
       condTableAddr: 0,
       condPointers: [],
@@ -576,25 +569,23 @@ export function readChapters(
             return i < 0 ? 0 : (chapter.condPointers[i] ?? 0);
           };
 
-          chapter.playerPlacementAddr = at('PLAYER_UNIT');
+          chapter.playerPlacementAddr = at("PLAYER_UNIT");
           // Slot 11 is the second PLAYER_UNIT entry (hard mode).
           const playerSlots = condSlots
-            .map((s, i) => (s.kind === 'PLAYER_UNIT' ? i : -1))
+            .map((s, i) => (s.kind === "PLAYER_UNIT" ? i : -1))
             .filter((i) => i >= 0);
           if (playerSlots.length > 1) {
             chapter.hardPlacementAddr = chapter.condPointers[playerSlots[1] as number] ?? 0;
           }
-          chapter.startEventAddr = at('START_EVENT');
-          chapter.endEventAddr = at('END_EVENT');
+          chapter.startEventAddr = at("START_EVENT");
+          chapter.endEventAddr = at("END_EVENT");
           chapter.placements = readPlacements(rom, chapter.playerPlacementAddr, layout);
           chapter.hardPlacements = readPlacements(rom, chapter.hardPlacementAddr, layout);
           // The deployment slot count is the size of the player-unit block, the
           // same quantity the game's own `GetChapterAllyUnitCount` returns.
           chapter.deploySlots = chapter.placements.length;
           chapter.deploySlotsHard =
-            chapter.hardPlacements.length > 0
-              ? chapter.hardPlacements.length
-              : chapter.deploySlots;
+            chapter.hardPlacements.length > 0 ? chapter.hardPlacements.length : chapter.deploySlots;
         }
       }
     }
@@ -619,10 +610,10 @@ export function readChapters(
  * because it is drawing an icon overlay; we only want army membership, so we
  * classify each argument by the instruction that owns it.
  */
-export type LoadKind = 'recruit' | 'load' | 'cutscene' | 'other';
+export type LoadKind = "recruit" | "load" | "cutscene" | "other";
 
 /** The subset of `LoadKind` that actually names units to load. */
-export type LoadSiteKind = Exclude<LoadKind, 'other'>;
+export type LoadSiteKind = Exclude<LoadKind, "other">;
 
 /**
  * Classify the `POINTER_UNIT` argument at byte position `position` of an
@@ -633,12 +624,12 @@ export type LoadSiteKind = Exclude<LoadKind, 'other'>;
 export function classifyUnitArg(pattern: string, position: number): LoadKind {
   const at = (position - 3) * 2;
   const opcode = Number.parseInt(pattern.slice(at, at + 2), 16);
-  if (opcode !== 0x2c) return 'other';
+  if (opcode !== 0x2c) return "other";
   const lead = Number.parseInt(pattern.slice(at - 2, at), 16);
-  if (lead === 0x40) return 'recruit';
-  if (lead === 0x41) return 'load';
-  if (lead === 0x42) return 'cutscene';
-  return 'other';
+  if (lead === 0x40) return "recruit";
+  if (lead === 0x41) return "load";
+  if (lead === 0x42) return "cutscene";
+  return "other";
 }
 
 export interface UnitPointerHit {
@@ -691,13 +682,13 @@ export interface ScriptWalkResult {
   /** Instructions visited, for diagnostics. */
   visited: number;
   /** Why the walk stopped. */
-  stopped: 'exit' | 'unknowns' | 'end-of-rom' | 'budget';
+  stopped: "exit" | "unknowns" | "end-of-rom" | "budget";
 }
 
 /** `40050300XXXX000021370000` - "gain gold". */
-export const GOLD_GAIN_PATTERN = '40050300XXXX000021370000';
+export const GOLD_GAIN_PATTERN = "40050300XXXX000021370000";
 /** `40050300XXXX000022370000` - "lose gold". */
-export const GOLD_LOSE_PATTERN = '40050300XXXX000022370000';
+export const GOLD_LOSE_PATTERN = "40050300XXXX000022370000";
 
 /** The 12-byte gold literal, with the amount left as a hole. */
 const GOLD_LITERAL_HEAD = [0x40, 0x05, 0x03, 0x00];
@@ -751,7 +742,7 @@ export function findGoldLiteralsIn(code: EventCode): { offset: number; delta: nu
  */
 export interface WalkOptions {
   /** `'abort'` (default, reference-faithful) or `'continue'`. */
-  innerFailure?: 'abort' | 'continue';
+  innerFailure?: "abort" | "continue";
 }
 
 export function walkScript(
@@ -761,25 +752,25 @@ export function walkScript(
   budget = 20_000,
   options: WalkOptions = {},
 ): ScriptWalkResult {
-  const abortOnInnerFailure = (options.innerFailure ?? 'abort') === 'abort';
+  const abortOnInnerFailure = (options.innerFailure ?? "abort") === "abort";
   const unitPointers: UnitPointerHit[] = [];
   const gold: GoldHit[] = [];
   const itemsGiven: ItemGiveHit[] = [];
   const visited = new Set<number>();
   let instructions = 0;
 
-  const walk = (from: number): ScriptWalkResult['stopped'] => {
+  const walk = (from: number): ScriptWalkResult["stopped"] => {
     let addr = from;
     let lastBranchAddr = 0;
     let unknownCount = 0;
 
     while (true) {
-      if (instructions++ > budget) return 'budget';
-      if (!rom.isSafeOffset(addr)) return 'end-of-rom';
+      if (instructions++ > budget) return "budget";
+      if (!rom.isSafeOffset(addr)) return "end-of-rom";
 
       const code = disassemble(rom, addr, scripts);
 
-      if (isExitCode(rom, code, lastBranchAddr)) return 'exit';
+      if (isExitCode(rom, code, lastBranchAddr)) return "exit";
 
       // Gold writes and item grants are collected before the UNKNOWN check,
       // because neither depends on the opcode table knowing the instruction.
@@ -791,38 +782,38 @@ export function walkScript(
       // An `ITEM`-typed argument also appears in battle instructions ("which
       // weapon is used") and forced class changes ("item id, display only"), so
       // the category token is what separates a grant from those.
-      if (code.script.category.includes('{ITEM}')) {
+      if (code.script.category.includes("{ITEM}")) {
         for (const arg of code.script.args) {
-          if (arg.type !== 'ITEM') continue;
+          if (arg.type !== "ITEM") continue;
           const itemId = readArg(rom, code.addr, arg.position, arg.size);
           // `0xFFFF` in the unit slot means "the visiting/acting unit"; keep it.
-          const unitArg = code.script.args.find((a) => a.type === 'UNIT');
+          const unitArg = code.script.args.find((a) => a.type === "UNIT");
           const unitId = unitArg ? readArg(rom, code.addr, unitArg.position, unitArg.size) : 0;
           itemsGiven.push({ addr, itemId, unitId, instruction: code.script.pattern });
         }
       }
 
-      if (code.script.has === 'UNKNOWN') {
+      if (code.script.has === "UNKNOWN") {
         unknownCount++;
-        if (unknownCount > 10) return 'unknowns';
+        if (unknownCount > 10) return "unknowns";
       } else {
         unknownCount = 0;
 
-        if (code.script.has === 'IF_CONDITIONAL') {
+        if (code.script.has === "IF_CONDITIONAL") {
           lastBranchAddr = addr;
-        } else if (code.script.has === 'LABEL_CONDITIONAL') {
+        } else if (code.script.has === "LABEL_CONDITIONAL") {
           lastBranchAddr = 0;
-        } else if (code.script.has === 'POINTER_UNIT_OR_EVENT') {
+        } else if (code.script.has === "POINTER_UNIT_OR_EVENT") {
           for (const arg of code.script.args) {
-            if (arg.type === 'POINTER_EVENT') {
+            if (arg.type === "POINTER_EVENT") {
               const raw = readArg(rom, code.addr, arg.position, arg.size);
               const target = rom.toOffset(raw);
               if (rom.isSafeOffset(target) && !visited.has(target)) {
                 visited.add(target);
                 const inner = walk(target);
-                if (inner !== 'exit' && abortOnInnerFailure) return inner;
+                if (inner !== "exit" && abortOnInnerFailure) return inner;
               }
-            } else if (arg.type === 'POINTER_UNIT') {
+            } else if (arg.type === "POINTER_UNIT") {
               const raw = readArg(rom, code.addr, arg.position, arg.size);
               if (!rom.isSafePointer(raw)) continue;
               const target = rom.toOffset(raw);
@@ -861,7 +852,7 @@ function readArg(rom: RomBuffer, base: number, position: number, size: number): 
 // ---------------------------------------------------------------- placement scan
 
 /** The condition slots whose payload is a table of 12-byte script records. */
-const SLOT_TABLE_KINDS: readonly CondKind[] = ['TURN', 'TALK', 'OBJECT', 'ALWAYS', 'TUTORIAL'];
+const SLOT_TABLE_KINDS: readonly CondKind[] = ["TURN", "TALK", "OBJECT", "ALWAYS", "TUTORIAL"];
 
 /**
  * One placement block the chapter's scripts point at, with its records read out.
@@ -925,12 +916,12 @@ export function collectPlacementSites(
         const ev = rom.p32(a + 4);
         if (rom.isSafeOffset(ev)) starts.push(ev);
       }
-    } else if (slot.kind === 'START_EVENT' || slot.kind === 'END_EVENT') {
+    } else if (slot.kind === "START_EVENT" || slot.kind === "END_EVENT") {
       starts.push(p);
     }
 
     for (const s of starts) {
-      const result = walkScript(rom, scripts, s, 20_000, { innerFailure: 'continue' });
+      const result = walkScript(rom, scripts, s, 20_000, { innerFailure: "continue" });
       for (const hit of result.unitPointers) {
         const key = `${hit.addr}:${hit.blockAddr}`;
         if (seen.has(key)) continue;
@@ -1005,9 +996,9 @@ export function scanChapter(
   }
 
   const push = (slotIndex: number, slotKind: CondKind, result: ScriptWalkResult): void => {
-    if (result.stopped === 'unknowns') truncatedWalks++;
+    if (result.stopped === "unknowns") truncatedWalks++;
     for (const hit of result.unitPointers) {
-      if (hit.kind === 'other') continue; // reinforcement branch, not a load
+      if (hit.kind === "other") continue; // reinforcement branch, not a load
       if (recruits.some((r) => r.addr === hit.addr && r.blockAddr === hit.blockAddr)) continue;
       recruits.push({
         addr: hit.addr,
@@ -1021,7 +1012,7 @@ export function scanChapter(
     }
   };
 
-  const isFe7 = layout.version === 'FE7U' || layout.version === 'FE7J';
+  const isFe7 = layout.version === "FE7U" || layout.version === "FE7J";
 
   /**
    * Walk one script twice.
@@ -1034,7 +1025,7 @@ export function scanChapter(
    */
   const pushBoth = (slotIndex: number, slotKind: CondKind, scriptAddr: number): void => {
     push(slotIndex, slotKind, walkScript(rom, scripts, scriptAddr));
-    const loose = walkScript(rom, scripts, scriptAddr, 20_000, { innerFailure: 'continue' });
+    const loose = walkScript(rom, scripts, scriptAddr, 20_000, { innerFailure: "continue" });
     for (const hit of loose.gold) {
       if (!gold.some((g) => g.addr === hit.addr)) gold.push(hit);
     }
@@ -1050,7 +1041,7 @@ export function scanChapter(
     if (!rom.isSafeOffset(addr)) continue;
 
     switch (slot.kind) {
-      case 'TURN': {
+      case "TURN": {
         for (let a = addr; ; a += map.turnCondSize) {
           if (!rom.isSafeOffset(a + map.turnCondSize)) break;
           const type = rom.u8(a);
@@ -1062,7 +1053,7 @@ export function scanChapter(
         }
         break;
       }
-      case 'TALK': {
+      case "TALK": {
         for (let a = addr; ; a += map.talkCondSize) {
           if (!rom.isSafeOffset(a + map.talkCondSize)) break;
           if (rom.u8(a) === 0) break;
@@ -1071,9 +1062,9 @@ export function scanChapter(
         }
         break;
       }
-      case 'OBJECT':
-      case 'ALWAYS': {
-        const endOnU32 = slot.kind === 'ALWAYS';
+      case "OBJECT":
+      case "ALWAYS": {
+        const endOnU32 = slot.kind === "ALWAYS";
         for (let a = addr; ; a += 12) {
           if (!rom.isSafeOffset(a + 12)) break;
           if (endOnU32 ? rom.u32(a) === 0 : rom.u8(a) === 0) break;
@@ -1082,7 +1073,7 @@ export function scanChapter(
         }
         break;
       }
-      case 'TUTORIAL': {
+      case "TUTORIAL": {
         for (let a = addr; ; a += 4) {
           if (!rom.isSafeOffset(a + 4)) break;
           if (!RomBuffer.isPointer(rom.u32(a))) break;
@@ -1091,8 +1082,8 @@ export function scanChapter(
         }
         break;
       }
-      case 'START_EVENT':
-      case 'END_EVENT': {
+      case "START_EVENT":
+      case "END_EVENT": {
         pushBoth(slot.index, slot.kind, addr);
         break;
       }
@@ -1107,7 +1098,7 @@ export function scanChapter(
 
 // ---------------------------------------------------------------- join order
 
-export type JoinSource = 'placement' | 'recruit' | 'load' | 'cutscene';
+export type JoinSource = "placement" | "recruit" | "load" | "cutscene";
 
 export interface JoinEvidence {
   unitId: number;
@@ -1187,8 +1178,7 @@ export function deriveJoins(
   let classOverriddenPlacements = 0;
 
   /** Off-path chapters sort after every placed one, then by table order. */
-  const rankOf = (record: JoinEvidence): number =>
-    record.storyOrder ?? Number.MAX_SAFE_INTEGER;
+  const rankOf = (record: JoinEvidence): number => record.storyOrder ?? Number.MAX_SAFE_INTEGER;
 
   const earliest = (into: Map<number, JoinEvidence>, record: JoinEvidence): void => {
     const existing = into.get(record.unitId);
@@ -1215,7 +1205,7 @@ export function deriveJoins(
         unitId: placed.unitId,
         chapterIndex: chapter.index,
         storyOrder: orderOf(chapter.index),
-        source: 'placement',
+        source: "placement",
         evidenceAddr: placed.addr,
         classOverridden: false,
         placedClassId: placed.classId,
@@ -1241,9 +1231,10 @@ export function deriveJoins(
           classOverridden: false,
           placedClassId: unit.classId,
         };
-        if (source === 'recruit') earliest(joins, record);
+        if (source === "recruit") earliest(joins, record);
         earliest(appearances, record);
-      }    }
+      }
+    }
   }
 
   return {

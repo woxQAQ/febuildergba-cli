@@ -20,11 +20,17 @@
  * dispatcher all read from that one registry.
  */
 
-import { formatLoadTrace, loadRom, loadStatsFor, RomNotFoundError, UnsupportedRomError } from './load.ts';
-import { UsageError } from './commands/types.ts';
-import { parseArgv } from './cli/args.ts';
-import { commandHelp, suggestions, usage } from './cli/help.ts';
-import { emit } from './cli/emit.ts';
+import {
+  formatLoadTrace,
+  loadRom,
+  loadStatsFor,
+  RomNotFoundError,
+  UnsupportedRomError,
+} from "./load.ts";
+import { UsageError } from "./commands/types.ts";
+import { parseArgv } from "./cli/args.ts";
+import { commandHelp, suggestions, usage } from "./cli/help.ts";
+import { emit } from "./cli/emit.ts";
 
 /**
  * Bad invocation: the user can fix it by typing something else. Exit 2,
@@ -61,18 +67,18 @@ function main(): void {
   }
 
   if (command === null) {
-    fail('no command given', true);
+    fail("no command given", true);
     return;
   }
 
   if (resolved === null) {
     const near = suggestions(command);
-    const hint = near.length === 0 ? '' : `\nDid you mean: ${near.join(', ')}?`;
+    const hint = near.length === 0 ? "" : `\nDid you mean: ${near.join(", ")}?`;
     fail(`unknown command "${command}"${hint}`);
     return;
   }
 
-  if (romPath === '') {
+  if (romPath === "") {
     fail(`"${command}" needs a ROM path\n\nUsage: fe-rom ${command} <rom.gba> [options]`);
     return;
   }

@@ -7,25 +7,25 @@
  * stride, broken text decoding, off-by-one indexing.
  */
 
-import { hex } from '../format.ts';
-import type { LoadedRom } from '../load.ts';
+import { hex } from "../format.ts";
+import type { LoadedRom } from "../load.ts";
 import {
   validateSupports,
   SUPPORT_CONVERSATION_CAPS,
   SUPPORT_RANK_THRESHOLDS,
-} from '../tables/supports.ts';
-import type { SupportValidation } from '../tables/supports.ts';
-import { CLASS_TERRAIN_COUNT } from '../tables/classes.ts';
+} from "../tables/supports.ts";
+import type { SupportValidation } from "../tables/supports.ts";
+import { CLASS_TERRAIN_COUNT } from "../tables/classes.ts";
 import {
   affinityName,
   isNamedAffinity,
   rankedBonus,
   SUPPORT_BONUS_MAX_RECORDS,
   SUPPORT_BONUS_STATS,
-} from '../tables/supportBonus.ts';
-import { MAP_ANY, forcedUnitsForMap } from '../tables/forceSortie.ts';
-import { duplicateRegistrations, isRealMap, traceStoryPath } from '../tables/storyPath.ts';
-import { collectEnemyStats } from './enemyStats.ts';
+} from "../tables/supportBonus.ts";
+import { MAP_ANY, forcedUnitsForMap } from "../tables/forceSortie.ts";
+import { duplicateRegistrations, isRealMap, traceStoryPath } from "../tables/storyPath.ts";
+import { collectEnemyStats } from "./enemyStats.ts";
 
 export interface CheckResult {
   name: string;
@@ -35,7 +35,7 @@ export interface CheckResult {
    * `ok: false`. `'warn'` failures are informational - they flag unusual but
    * legal data (hacks do things vanilla never does).
    */
-  severity: 'error' | 'warn';
+  severity: "error" | "warn";
   detail: string;
 }
 
@@ -56,7 +56,7 @@ export interface ValidationReport {
   supports: SupportValidation;
 }
 
-const GROWTH_KEYS = ['hp', 'str', 'skl', 'spd', 'def', 'res', 'lck'] as const;
+const GROWTH_KEYS = ["hp", "str", "skl", "spd", "def", "res", "lck"] as const;
 
 /**
  * Growth rates are stored as a `u8`, so the *hard* upper bound is 255. Vanilla
@@ -70,7 +70,7 @@ const GROWTH_KEYS = ['hp', 'str', 'skl', 'spd', 'def', 'res', 'lck'] as const;
 const GROWTH_SOFT_LIMIT = 100;
 
 /** A unit whose name is empty, class is 0 and level is 0 is an unused slot. */
-function isPlayable(u: LoadedRom['units'][number]): boolean {
+function isPlayable(u: LoadedRom["units"][number]): boolean {
   return !u.isEmpty;
 }
 
@@ -81,7 +81,7 @@ export function validateRom(loaded: LoadedRom): ValidationReport {
     name: string,
     passed: boolean,
     detail: string,
-    severity: CheckResult['severity'] = 'error',
+    severity: CheckResult["severity"] = "error",
   ): void => {
     checks.push({ name, passed, severity, detail });
   };
@@ -90,7 +90,7 @@ export function validateRom(loaded: LoadedRom): ValidationReport {
 
   // --- ROM identification -------------------------------------------------
   add(
-    'rom.size',
+    "rom.size",
     loaded.identity.sizeOk,
     loaded.identity.sizeOk
       ? `${loaded.rom.length} bytes (${hex(loaded.rom.length)})`
@@ -103,14 +103,14 @@ export function validateRom(loaded: LoadedRom): ValidationReport {
   const named = playable.filter((u) => u.name.length > 0).length;
   const nameRatio = playable.length === 0 ? 0 : named / playable.length;
   add(
-    'text.names',
+    "text.names",
     named > 0 && nameRatio >= 0.5,
     `${named}/${playable.length} playable units decoded to a non-empty name`,
   );
 
   const printable = playable.filter((u) => /^[\x20-\x7E\u00A0-\u00FF]+$/.test(u.name)).length;
   add(
-    'text.printable',
+    "text.printable",
     playable.length > 0 && printable / playable.length >= 0.5,
     `${printable}/${playable.length} names contain only printable Latin-1 characters`,
   );
@@ -120,18 +120,18 @@ export function validateRom(loaded: LoadedRom): ValidationReport {
   // breaks that, so it is tolerated.
   const sequential = playable.filter((u) => u.id === u.index + 1).length;
   add(
-    'unit.idSequence',
+    "unit.idSequence",
     playable.length > 0 && sequential / playable.length >= 0.9,
     `${sequential}/${playable.length} units have id === index + 1 (the vanilla convention)`,
-    'warn',
+    "warn",
   );
 
   const ids = playable.map((u) => u.id);
   const uniqueIds = new Set(ids).size === ids.length;
   add(
-    'unit.uniqueIds',
+    "unit.uniqueIds",
     uniqueIds,
-    uniqueIds ? 'all unit ids are unique' : 'duplicate unit ids found',
+    uniqueIds ? "all unit ids are unique" : "duplicate unit ids found",
   );
 
   // See GROWTH_SOFT_LIMIT: >100 is unusual but legal, so this is a warning.
@@ -145,13 +145,13 @@ export function validateRom(loaded: LoadedRom): ValidationReport {
     }
   }
   add(
-    'unit.growthRange',
+    "unit.growthRange",
     overLimitGrowths.length === 0,
     overLimitGrowths.length === 0
-      ? 'all growth rates are within 0-100'
+      ? "all growth rates are within 0-100"
       : `${overLimitGrowths.length} growth rates exceed 100 (legal, but only hacks do this): ` +
-        overLimitGrowths.slice(0, 8).join(', '),
-    'warn',
+          overLimitGrowths.slice(0, 8).join(", "),
+    "warn",
   );
 
   // Every unit must point at a class record that exists. Note this is NOT the
@@ -168,69 +168,69 @@ export function validateRom(loaded: LoadedRom): ValidationReport {
     (u) => classRecords.has(u.classId) && !loaded.classNames.has(u.classId),
   );
   add(
-    'unit.classIds',
+    "unit.classIds",
     missingClasses.length === 0,
     missingClasses.length === 0
       ? `every unit class id resolves to an existing class record` +
-        (unnamedClasses.length > 0
-          ? ` (${unnamedClasses.length} of them have an undecodable name)`
-          : '')
+          (unnamedClasses.length > 0
+            ? ` (${unnamedClasses.length} of them have an undecodable name)`
+            : "")
       : `${missingClasses.length} units reference a class id with no record ` +
-        `(e.g. ${missingClasses
-          .slice(0, 5)
-          .map((u) => `${u.name || `#${u.id}`}->${hex(u.classId)}`)
-          .join(', ')})`,
-    missingClasses.length === 0 && unnamedClasses.length > 0 ? 'warn' : 'error',
+          `(e.g. ${missingClasses
+            .slice(0, 5)
+            .map((u) => `${u.name || `#${u.id}`}->${hex(u.classId)}`)
+            .join(", ")})`,
+    missingClasses.length === 0 && unnamedClasses.length > 0 ? "warn" : "error",
   );
 
   // --- Support data -------------------------------------------------------
   const supports = validateSupports(loaded.supports, loaded.unitNames);
 
   add(
-    'support.partnerCount',
+    "support.partnerCount",
     supports.countMismatches.length === 0,
     supports.countMismatches.length === 0
-      ? 'declared partner count matches the actual data everywhere'
+      ? "declared partner count matches the actual data everywhere"
       : `${supports.countMismatches.length} units disagree: ` +
-        supports.countMismatches
-          .slice(0, 5)
-          .map((m) => `${m.unitName || `#${m.unitId}`} ${m.declared}!=${m.actual}`)
-          .join(', '),
+          supports.countMismatches
+            .slice(0, 5)
+            .map((m) => `${m.unitName || `#${m.unitId}`} ${m.declared}!=${m.actual}`)
+            .join(", "),
   );
 
   add(
-    'support.reciprocal',
+    "support.reciprocal",
     supports.valueMismatches.length === 0,
     supports.valueMismatches.length === 0
-      ? 'A->B and B->A agree on initial value and growth'
+      ? "A->B and B->A agree on initial value and growth"
       : `${supports.valueMismatches.length} pairs disagree`,
   );
 
   add(
-    'support.bidirectional',
+    "support.bidirectional",
     supports.oneWayEdges.length === 0,
     supports.oneWayEdges.length === 0
-      ? 'every support is recorded in both directions'
+      ? "every support is recorded in both directions"
       : `${supports.oneWayEdges.length} one-way supports, e.g. ` +
-        supports.oneWayEdges
-          .slice(0, 5)
-          .map((e) => `${e.aName}->${e.bName}`)
-          .join(', '),
+          supports.oneWayEdges
+            .slice(0, 5)
+            .map((e) => `${e.aName}->${e.bName}`)
+            .join(", "),
   );
 
   add(
-    'support.pointers',
+    "support.pointers",
     supports.unreadablePointers.length === 0,
     supports.unreadablePointers.length === 0
-      ? 'every non-zero support pointer resolves inside the ROM'
+      ? "every non-zero support pointer resolves inside the ROM"
       : `${supports.unreadablePointers.length} units have an unusable support pointer`,
   );
 
   add(
-    'support.limit',
+    "support.limit",
     supports.overLimit.length === 0,
     supports.overLimit.length === 0
-      ? 'no unit exceeds the seven-partner limit'
+      ? "no unit exceeds the seven-partner limit"
       : `${supports.overLimit.length} units exceed the limit`,
   );
 
@@ -260,20 +260,18 @@ export function validateRom(loaded: LoadedRom): ValidationReport {
   // surface them as a note rather than an error.
   const unnamed = affinities.filter((a) => !isNamedAffinity(a));
   const affinityNote =
-    unnamed.length === 0
-      ? ''
-      : ` (${unnamed.length} unnamed: the reference names only ids 1..7)`;
+    unnamed.length === 0 ? "" : ` (${unnamed.length} unnamed: the reference names only ids 1..7)`;
   add(
-    'support.affinityTable',
+    "support.affinityTable",
     affinityOk,
     affinityOk
       ? `${affinities.length} affinity bonus records read, ids unique: ` +
-        `${affinities.join(',')}${affinityNote}`
+          `${affinities.join(",")}${affinityNote}`
       : duplicateIds.length > 0
-        ? `duplicate affinity ids ${[...new Set(duplicateIds)].join(',')}; ` +
-          'the 8-byte stride is probably wrong'
+        ? `duplicate affinity ids ${[...new Set(duplicateIds)].join(",")}; ` +
+          "the 8-byte stride is probably wrong"
         : `read stopped at the ${affinities.length}-record cap without a ` +
-          'terminator; the pointer slot or stride is probably wrong',
+          "terminator; the pointer slot or stride is probably wrong",
   );
 
   // The rank thresholds and the conversation caps are two different numbers
@@ -282,16 +280,15 @@ export function validateRom(loaded: LoadedRom): ValidationReport {
   // threshold. `cap + 1 === threshold` is the invariant that ties them.
   const { C, B, A } = SUPPORT_RANK_THRESHOLDS;
   const caps = SUPPORT_CONVERSATION_CAPS;
-  const capsOk =
-    C === caps.none + 1 && B === caps.C + 1 && A === caps.B + 1 && C < B && B < A;
+  const capsOk = C === caps.none + 1 && B === caps.C + 1 && A === caps.B + 1 && C < B && B < A;
   add(
-    'support.rankThresholds',
+    "support.rankThresholds",
     capsOk,
     capsOk
       ? `rank thresholds C>=${C}, B>=${B}, A>=${A} sit one point above the ` +
-        `conversation caps ${caps.none}/${caps.C}/${caps.B}`
+          `conversation caps ${caps.none}/${caps.C}/${caps.B}`
       : `thresholds and caps disagree: thresholds C=${C} B=${B} A=${A}, ` +
-        `caps ${caps.none}/${caps.C}/${caps.B}`,
+          `caps ${caps.none}/${caps.C}/${caps.B}`,
   );
 
   // The bonus table stores HALF-points and the game halves the sum at the end,
@@ -308,7 +305,7 @@ export function validateRom(loaded: LoadedRom): ValidationReport {
   // ship their own bonus values - Vision_Quest's extra affinities use 10 half-
   // points where vanilla uses 5, which is a legal table, not a parse failure.
   const rows = loaded.supportBonuses.map((b) => rankedBonus(b));
-  const rankMult: Record<'C' | 'B' | 'A', number> = { C: 1, B: 2, A: 3 };
+  const rankMult: Record<"C" | "B" | "A", number> = { C: 1, B: 2, A: 3 };
   /**
    * Does this row scale exactly as the game does at every rank?
    *
@@ -320,10 +317,9 @@ export function validateRom(loaded: LoadedRom): ValidationReport {
    * check unable to fail).
    */
   const rowHalves = (row: (typeof rows)[number], stored: Record<string, number>): boolean =>
-    (['C', 'B', 'A'] as const).every((rank) =>
+    (["C", "B", "A"] as const).every((rank) =>
       SUPPORT_BONUS_STATS.every(
-        (stat) =>
-          row[rank][stat] === Math.floor(((stored[stat] as number) * rankMult[rank]) / 2),
+        (stat) => row[rank][stat] === Math.floor(((stored[stat] as number) * rankMult[rank]) / 2),
       ),
     );
   const badRows = rows.filter((row, i) => {
@@ -332,30 +328,28 @@ export function validateRom(loaded: LoadedRom): ValidationReport {
   });
   const halfPointOk = rows.length > 0 && badRows.length === 0;
   add(
-    'support.bonusHalving',
+    "support.bonusHalving",
     halfPointOk,
     halfPointOk
       ? `all ${rows.length} rows halve as the game does ` +
-        `((stored * rank) >> 1 at every rank, every stat)`
+          `((stored * rank) >> 1 at every rank, every stat)`
       : `${badRows.length} of ${rows.length} rows do not match ` +
-        `(stored * rank) >> 1; atk by rank = ${rows
-          .map((r) => `${r.C.atk}/${r.B.atk}/${r.A.atk}`)
-          .join(' ')}`,
+          `(stored * rank) >> 1; atk by rank = ${rows
+            .map((r) => `${r.C.atk}/${r.B.atk}/${r.A.atk}`)
+            .join(" ")}`,
   );
 
   // Byte 7 of a record is never touched by `StoreAddedAffinityBonusesForSupportLevel`
   // (it writes offsets 1..6 only), so it is padding and should be zero. A
   // non-zero value would mean the stride is off by something.
-  const paddingNonZero = loaded.supportBonuses.filter(
-    (b) => (b.bonuses.unknown7 ?? 0) !== 0,
-  );
+  const paddingNonZero = loaded.supportBonuses.filter((b) => (b.bonuses.unknown7 ?? 0) !== 0);
   add(
-    'support.bonusPadding',
+    "support.bonusPadding",
     paddingNonZero.length === 0,
     paddingNonZero.length === 0
-      ? 'byte 7 of every bonus record is zero, as expected for unused padding'
+      ? "byte 7 of every bonus record is zero, as expected for unused padding"
       : `${paddingNonZero.length} bonus records have a non-zero byte 7 ` +
-        `(the game never reads it, so the stride may be wrong)`,
+          `(the game never reads it, so the stride may be wrong)`,
   );
 
   // The affinity names are decoded from the ROM's own text ids, and the
@@ -372,14 +366,14 @@ export function validateRom(loaded: LoadedRom): ValidationReport {
   // the id ordering. Ids past 7 have no reference name to compare against, so
   // they are outside this check by construction.
   add(
-    'support.affinityNames',
+    "support.affinityNames",
     nameMismatch.length === 0,
     nameMismatch.length === 0
       ? `the ROM's text table names all ${loaded.affinityNames.size} ` +
-        `affinities exactly as the reference does`
+          `affinities exactly as the reference does`
       : `affinity names disagree: ${nameMismatch
           .map(([id, name]) => `${id}=${JSON.stringify(name)} vs ${affinityName(id)}`)
-          .join(', ')}`,
+          .join(", ")}`,
   );
 
   // Every support pair should be able to reach at least C. A pair whose growth
@@ -389,16 +383,16 @@ export function validateRom(loaded: LoadedRom): ValidationReport {
     (e) => e.growth <= 0 && e.initial < SUPPORT_RANK_THRESHOLDS.C,
   );
   add(
-    'support.reachable',
+    "support.reachable",
     unreachable.length === 0,
     unreachable.length === 0
       ? `all ${loaded.supportGraph.length} support pairs can reach C rank`
       : `${unreachable.length} pairs can never reach C (growth 0 and initial < ${SUPPORT_RANK_THRESHOLDS.C}) ` +
-        `(e.g. ${unreachable
-          .slice(0, 5)
-          .map((e) => `${e.aName}<->${e.bName}(${e.initial}/+${e.growth})`)
-          .join(', ')})`,
-    'warn',
+          `(e.g. ${unreachable
+            .slice(0, 5)
+            .map((e) => `${e.aName}<->${e.bName}(${e.initial}/+${e.growth})`)
+            .join(", ")})`,
+    "warn",
   );
 
   // --- Terrain names -------------------------------------------------------
@@ -409,10 +403,10 @@ export function validateRom(loaded: LoadedRom): ValidationReport {
   const terrainCount = terrain.names.length;
   const terrainOk = terrain.table !== null && terrainCount >= 0x41;
   add(
-    'terrain.nameTable',
+    "terrain.nameTable",
     terrainOk,
     terrain.table === null
-      ? 'the terrain-name pointer slot did not resolve to a usable table'
+      ? "the terrain-name pointer slot did not resolve to a usable table"
       : terrainOk
         ? `${terrainCount} terrain names read (ids 0..${hex(terrainCount - 1)}), stride ${terrain.table.recordSize}`
         : `only ${terrainCount} terrain names read; the movement-cost tables have ` +
@@ -420,12 +414,12 @@ export function validateRom(loaded: LoadedRom): ValidationReport {
   );
 
   if (terrain.table !== null && !terrain.table.isMultibyte) {
-    const named = terrain.names.filter((n) => n.name !== '').length;
+    const named = terrain.names.filter((n) => n.name !== "").length;
     add(
-      'terrain.namesDecode',
+      "terrain.namesDecode",
       named >= 0x3c,
       `${named}/${terrainCount} terrain names decoded to non-empty text`,
-      'warn',
+      "warn",
     );
   }
 
@@ -440,22 +434,21 @@ export function validateRom(loaded: LoadedRom): ValidationReport {
   const badCosts = classes.filter(
     (c) =>
       c.movementRange > 0 &&
-      (c.movementCosts.length !== CLASS_TERRAIN_COUNT ||
-        c.movementCosts.every((v) => v === 0xff)),
+      (c.movementCosts.length !== CLASS_TERRAIN_COUNT || c.movementCosts.every((v) => v === 0xff)),
   );
   const staticClasses = classes.filter((c) => c.movementRange === 0).length;
   add(
-    'class.movementCosts',
+    "class.movementCosts",
     classes.length > 0 && badCosts.length === 0,
     badCosts.length === 0
       ? `all ${classes.length - staticClasses} mobile classes have a ` +
-        `${CLASS_TERRAIN_COUNT}-entry movement-cost table ` +
-        `(${staticClasses} immobile classes skipped)`
+          `${CLASS_TERRAIN_COUNT}-entry movement-cost table ` +
+          `(${staticClasses} immobile classes skipped)`
       : `${badCosts.length} mobile classes have a missing or all-impassable cost table ` +
-        `(e.g. ${badCosts
-          .slice(0, 5)
-          .map((c) => `${c.name || `#${c.id}`}(${c.movementCosts.length})`)
-          .join(', ')})`,
+          `(e.g. ${badCosts
+            .slice(0, 5)
+            .map((c) => `${c.name || `#${c.id}`}(${c.movementCosts.length})`)
+            .join(", ")})`,
   );
 
   // The point of reading the terrain-name table is that its ids are the *same*
@@ -474,38 +467,38 @@ export function validateRom(loaded: LoadedRom): ValidationReport {
   );
   const canEnterPeak = movable.filter((c) => c.movementCosts[PEAK] !== 0xff);
   const flyingOnPeak = canEnterPeak.filter(
-    (c) => loaded.classRoles.get(c.id)?.mobility === 'flying',
+    (c) => loaded.classRoles.get(c.id)?.mobility === "flying",
   );
   const groundOnPeak = canEnterPeak.filter(
-    (c) => loaded.classRoles.get(c.id)?.mobility !== 'flying',
+    (c) => loaded.classRoles.get(c.id)?.mobility !== "flying",
   );
   add(
-    'terrain.idAlignment',
+    "terrain.idAlignment",
     flyingOnPeak.length > 0 && movable.length > canEnterPeak.length,
     flyingOnPeak.length === 0
-      ? 'no flying class can enter Peak (0x12); the terrain-name ids and the ' +
-        'movement-cost ids are probably offset from each other'
+      ? "no flying class can enter Peak (0x12); the terrain-name ids and the " +
+          "movement-cost ids are probably offset from each other"
       : `${flyingOnPeak.length} flying classes can enter Peak (0x12) and ` +
-        `${movable.length - canEnterPeak.length} ground classes cannot, so the ids ` +
-        `line up. ${groundOnPeak.length} ground classes can also cross Peak ` +
-        `(${[...new Set(groundOnPeak.map((c) => c.name || `#${c.id}`))].join(', ')})`,
-    'warn',
+          `${movable.length - canEnterPeak.length} ground classes cannot, so the ids ` +
+          `line up. ${groundOnPeak.length} ground classes can also cross Peak ` +
+          `(${[...new Set(groundOnPeak.map((c) => c.name || `#${c.id}`))].join(", ")})`,
+    "warn",
   );
 
   // Every playable unit should get a role. Missing roles mean the class id
   // resolved by name but had no role - the two lookups disagreeing is a bug.
   const roleless = playable.filter((u) => !loaded.classRoles.has(u.classId));
   add(
-    'roster.roleCoverage',
+    "roster.roleCoverage",
     roleless.length === 0,
     roleless.length === 0
-      ? 'every playable unit has a derived class role'
+      ? "every playable unit has a derived class role"
       : `${roleless.length} units have no role ` +
-        `(e.g. ${roleless
-          .slice(0, 5)
-          .map((u) => `${u.name || `#${u.id}`}->${u.className || hex(u.classId)}`)
-          .join(', ')})`,
-    'warn',
+          `(e.g. ${roleless
+            .slice(0, 5)
+            .map((u) => `${u.name || `#${u.id}`}->${u.className || hex(u.classId)}`)
+            .join(", ")})`,
+    "warn",
   );
 
   // A roster with no healer or no flier is legal (a hack may field none), but it
@@ -514,58 +507,54 @@ export function validateRom(loaded: LoadedRom): ValidationReport {
     .map((u) => loaded.classRoles.get(u.classId))
     .filter((r): r is NonNullable<typeof r> => r !== undefined);
   const healerCount = playableRoles.filter((r) => r.hasStaff).length;
-  const flyingCount = playableRoles.filter((r) => r.mobility === 'flying').length;
+  const flyingCount = playableRoles.filter((r) => r.mobility === "flying").length;
   add(
-    'roster.hasSupportRoles',
+    "roster.hasSupportRoles",
     healerCount > 0 && flyingCount > 0,
     `derived roles over ${playableRoles.length} populated unit slots: ` +
       `${healerCount} can use staves, ${flyingCount} are flying ` +
-      '(slots include enemies and generic templates)',
-    'warn',
+      "(slots include enemies and generic templates)",
+    "warn",
   );
 
   // A unit's base stats are signed deltas on the class base, and the game
   // wraps any sum of -1 or less to the maximum on load (InputFormRef.cs:12022:
   // 「合算した時に-1以下になると、2の補数により、ロード時に最大数になります」).
   // Such a unit is broken, so this is an error, not a warning.
-  const wrapped = loaded.units.filter((u) =>
-    Object.values(u.startingStats).some((v) => v <= -1),
-  );
+  const wrapped = loaded.units.filter((u) => Object.values(u.startingStats).some((v) => v <= -1));
   add(
-    'unit.statWraps',
+    "unit.statWraps",
     wrapped.length === 0,
     wrapped.length === 0
       ? `no unit's "class base + per-unit delta" reaches -1 across ` +
-        `${loaded.units.length} slots`
+          `${loaded.units.length} slots`
       : `${wrapped.length} units have a starting stat <= -1, which the game ` +
-        `wraps to the maximum on load: ` +
-        wrapped
-          .slice(0, 5)
-          .map(
-            (u) =>
-              `${u.name || `#${u.id}`}[` +
-              Object.entries(u.startingStats)
-                .filter(([, v]) => v <= -1)
-                .map(([k, v]) => `${k}=${v}`)
-                .join(',') +
-              ']',
-          )
-          .join(', '),
+          `wraps to the maximum on load: ` +
+          wrapped
+            .slice(0, 5)
+            .map(
+              (u) =>
+                `${u.name || `#${u.id}`}[` +
+                Object.entries(u.startingStats)
+                  .filter(([, v]) => v <= -1)
+                  .map(([k, v]) => `${k}=${v}`)
+                  .join(",") +
+                "]",
+            )
+            .join(", "),
   );
 
   // Base stats must be read signed. If they were read unsigned, every negative
   // delta would show up as a value >= 128 - which is what the per-unit field
   // looks like only when it is genuinely negative.
-  const negativeDeltas = loaded.units.filter((u) =>
-    Object.values(u.stats).some((v) => v < 0),
-  );
+  const negativeDeltas = loaded.units.filter((u) => Object.values(u.stats).some((v) => v < 0));
   add(
-    'unit.signedBaseStats',
+    "unit.signedBaseStats",
     true,
     `${negativeDeltas.length} units carry at least one negative per-unit base ` +
-      'stat (legal: the field is a signed delta on the class base). ' +
-      'Reading it as unsigned would turn each of those into a value >= 128.',
-    'warn',
+      "stat (legal: the field is a signed delta on the class base). " +
+      "Reading it as unsigned would turn each of those into a value >= 128.",
+    "warn",
   );
 
   // --- Chapter / join-order chain -----------------------------------------
@@ -574,31 +563,31 @@ export function validateRom(loaded: LoadedRom): ValidationReport {
   // pointer, so a wrong layout shows up as a broken link, not as wrong values.
   const mapSettings = loaded.mapSettings;
   add(
-    'chapter.mapSettingTable',
+    "chapter.mapSettingTable",
     mapSettings !== null && mapSettings.count > 0,
     mapSettings === null
-      ? 'this game layout has no map section'
+      ? "this game layout has no map section"
       : `table ${hex(mapSettings.tableOffset)} ` +
-        `(${mapSettings.count} records of ${mapSettings.recordSize} bytes, ` +
-        `counted by ${mapSettings.countSource} scan)`,
+          `(${mapSettings.count} records of ${mapSettings.recordSize} bytes, ` +
+          `counted by ${mapSettings.countSource} scan)`,
   );
 
   // The map-setting table's index is NOT a chapter number: it counts unused
   // slots and non-story maps. Surface that split so nobody reads "index 60" as
   // "chapter 60". `@001F` is the glyph world-map encounter maps decode to.
-  const noTitle = loaded.chapters.filter((c) => c.title === '');
-  const worldMap = loaded.chapters.filter((c) => c.title === '@001F');
-  const story = loaded.chapters.filter((c) => c.title !== '' && c.title !== '@001F');
+  const noTitle = loaded.chapters.filter((c) => c.title === "");
+  const worldMap = loaded.chapters.filter((c) => c.title === "@001F");
+  const story = loaded.chapters.filter((c) => c.title !== "" && c.title !== "@001F");
   const numbered = loaded.chapters.filter((c) => c.chapterNumber > 0);
   const maxChapter = numbered.reduce((n, c) => Math.max(n, c.chapterNumber), 0);
   add(
-    'chapter.storyVsPlaceholder',
+    "chapter.storyVsPlaceholder",
     story.length > 0,
     `${story.length} records have a real chapter title, ${noTitle.length} have none ` +
       `(unused slots), ${worldMap.length} decode to the world-map glyph @001F. ` +
       `The map-setting index counts all of them, so index != chapter number. ` +
       `The game's own chapter number (+0x80/2) tops out at ${maxChapter}.`,
-    'warn',
+    "warn",
   );
 
   // Independent confirmation of the `+0x80` reading. Titles in this hack are
@@ -611,23 +600,23 @@ export function validateRom(loaded: LoadedRom): ValidationReport {
     const m = /^C(\d+)([ABx]?):/.exec(chapter.title);
     if (m === null) return true;
     const n = Number(m[1]);
-    return m[2] === 'x'
+    return m[2] === "x"
       ? chapter.chapterNumber >= n && chapter.chapterNumber <= n + 1
       : chapter.chapterNumber === n;
   };
   const titleMismatch = loaded.chapters.filter((c) => !titleNumber(c));
   const titlesChecked = loaded.chapters.filter((c) => /^C\d/.test(c.title)).length;
   add(
-    'chapter.numberMatchesTitle',
+    "chapter.numberMatchesTitle",
     titleMismatch.length === 0,
     titleMismatch.length === 0
       ? `every "C<n>: ..." title agrees with the decoded chapter number ` +
-        `(${titlesChecked} records checked)`
+          `(${titlesChecked} records checked)`
       : `${titleMismatch.length} titles disagree with +0x80/2: ` +
-        titleMismatch
-          .slice(0, 5)
-          .map((c) => `${c.title} -> ${c.chapterNumber}`)
-          .join(', '),
+          titleMismatch
+            .slice(0, 5)
+            .map((c) => `${c.title} -> ${c.chapterNumber}`)
+            .join(", "),
   );
 
   // Every record that names an event plist must resolve to a readable
@@ -639,21 +628,19 @@ export function validateRom(loaded: LoadedRom): ValidationReport {
   // chapters). Those unused rows can hold leftover bytes, and demanding a
   // condition table of them would report noise. A real chapter always has a
   // chapter number.
-  const withPlist = loaded.chapters.filter(
-    (c) => c.eventPlist !== 0 && c.chapterNumber > 0,
-  );
+  const withPlist = loaded.chapters.filter((c) => c.eventPlist !== 0 && c.chapterNumber > 0);
   const resolvedConds = withPlist.filter((c) => c.condTableAddr !== 0);
   const unnumberedWithPlist = loaded.chapters.filter(
     (c) => c.eventPlist !== 0 && c.chapterNumber <= 0,
   ).length;
   add(
-    'chapter.conditionTables',
+    "chapter.conditionTables",
     withPlist.length === 0 || resolvedConds.length === withPlist.length,
     `${resolvedConds.length}/${withPlist.length} chapters with an event plist ` +
-      'resolve to a condition table' +
+      "resolve to a condition table" +
       (unnumberedWithPlist > 0
         ? ` (${unnumberedWithPlist} unnumbered/unused slots not counted)`
-        : ''),
+        : ""),
   );
 
   // A placement block is a run of `unitDataSize`-byte records terminated by a
@@ -667,15 +654,15 @@ export function validateRom(loaded: LoadedRom): ValidationReport {
     return !loaded.rom.isSafeOffset(end) || loaded.rom.u8(end) !== 0;
   });
   add(
-    'chapter.placementBlocks',
+    "chapter.placementBlocks",
     placementAddrs.length > 0 && unterminated.length === 0,
     unterminated.length === 0
       ? `all ${placementAddrs.length} player placement blocks terminate on a zero unit id`
       : `${unterminated.length} blocks never hit a zero terminator ` +
-        `(map ${unterminated
-          .slice(0, 5)
-          .map((c) => c.index)
-          .join(', ')}) - the record size is probably wrong`,
+          `(map ${unterminated
+            .slice(0, 5)
+            .map((c) => c.index)
+            .join(", ")}) - the record size is probably wrong`,
   );
 
   // --- Forced deployment / deployment slots -------------------------------
@@ -685,16 +672,16 @@ export function validateRom(loaded: LoadedRom): ValidationReport {
   // read at the right offsets. Two independent claims are checked below.
   const force = loaded.forceSortie;
   add(
-    'chapter.forceSortieTable',
+    "chapter.forceSortieTable",
     force === null || (force.count > 0 && force.recordSize === 4),
     force === null
-      ? 'this game layout has no forced-deployment table'
+      ? "this game layout has no forced-deployment table"
       : `table ${hex(force.tableOffset)} ` +
-        `(${force.count} records of ${force.recordSize} bytes, ` +
-        `terminated by 0xFFFF): ` +
-        `${[...new Set(force.records.map((r) => r.unitId))].length} distinct units, ` +
-        `${force.records.filter((r) => r.mapIndex === MAP_ANY).length} with an ` +
-        `"every map" filter`,
+          `(${force.count} records of ${force.recordSize} bytes, ` +
+          `terminated by 0xFFFF): ` +
+          `${[...new Set(force.records.map((r) => r.unitId))].length} distinct units, ` +
+          `${force.records.filter((r) => r.mapIndex === MAP_ANY).length} with an ` +
+          `"every map" filter`,
   );
 
   if (force !== null && force.count > 0) {
@@ -710,9 +697,7 @@ export function validateRom(loaded: LoadedRom): ValidationReport {
     let checkedRecords = 0;
     for (const chapter of perMap) {
       const placed = new Set(chapter.placements.map((p) => p.unitId));
-      const forced = forcedUnitsForMap(force, chapter.index).filter(
-        (r) => r.mapIndex !== MAP_ANY,
-      );
+      const forced = forcedUnitsForMap(force, chapter.index).filter((r) => r.mapIndex !== MAP_ANY);
       checkedRecords += forced.length;
       for (const record of forced) {
         if (!placed.has(record.unitId)) {
@@ -721,15 +706,15 @@ export function validateRom(loaded: LoadedRom): ValidationReport {
       }
     }
     add(
-      'chapter.forcedUnitsArePlaced',
+      "chapter.forcedUnitsArePlaced",
       unplaced.length === 0,
       unplaced.length === 0
         ? `all ${checkedRecords} map-specific force-sortie records name a unit ` +
-          'that is pre-placed on that chapter'
+            "that is pre-placed on that chapter"
         : `${unplaced.length}/${checkedRecords} force-sortie records name a unit the ` +
-          `chapter does not pre-place (they must arrive via the start event): ` +
-          `${unplaced.slice(0, 5).join(', ')}`,
-      'warn',
+            `chapter does not pre-place (they must arrive via the start event): ` +
+            `${unplaced.slice(0, 5).join(", ")}`,
+      "warn",
     );
 
     // The deployment-slot count is the length of the player-unit block, so a
@@ -737,25 +722,25 @@ export function validateRom(loaded: LoadedRom): ValidationReport {
     // Bonus/test maps (unnumbered, e.g. "Castle Frelia", "Act 2 Checkpoint")
     // legitimately have no player block and are excluded.
     const titled = loaded.chapters.filter(
-      (c) => c.title !== '' && c.title !== '@001F' && c.condTableAddr !== 0,
+      (c) => c.title !== "" && c.title !== "@001F" && c.condTableAddr !== 0,
     );
     const story = titled.filter((c) => c.chapterNumber > 0 || /^P:/.test(c.title));
     const slotless = story.filter((c) => c.deploySlots === 0);
     const slots = story.map((c) => c.deploySlots).sort((a, b) => a - b);
     const median = slots.length === 0 ? 0 : slots[Math.floor(slots.length / 2)];
     add(
-      'chapter.deploySlots',
+      "chapter.deploySlots",
       story.length > 0 && slotless.length === 0,
       slotless.length === 0
         ? `${story.length} numbered chapters all have a deployment block: ` +
-          `min ${slots[0]}, median ${median}, max ${slots[slots.length - 1]} ` +
-          `(${titled.length - story.length} unnumbered bonus/test maps skipped)`
+            `min ${slots[0]}, median ${median}, max ${slots[slots.length - 1]} ` +
+            `(${titled.length - story.length} unnumbered bonus/test maps skipped)`
         : `${slotless.length} chapters resolve a condition table but no player ` +
-          `placement block: ${slotless
-            .slice(0, 5)
-            .map((c) => c.title || `#${c.index}`)
-            .join(', ')}`,
-      'warn',
+            `placement block: ${slotless
+              .slice(0, 5)
+              .map((c) => c.title || `#${c.index}`)
+              .join(", ")}`,
+      "warn",
     );
 
     // On hard mode the game swaps in condition slot 11's block, so its length
@@ -764,15 +749,15 @@ export function validateRom(loaded: LoadedRom): ValidationReport {
     // surface - this ROM's C10B drops from 12 to 9.
     const hardDiffers = story.filter((c) => c.deploySlotsHard !== c.deploySlots);
     add(
-      'chapter.hardDeploySlots',
+      "chapter.hardDeploySlots",
       true,
       hardDiffers.length === 0
-        ? 'every chapter deploys the same number of units on both difficulties'
+        ? "every chapter deploys the same number of units on both difficulties"
         : `${hardDiffers.length} chapter(s) differ on hard mode: ` +
-          hardDiffers
-            .map((c) => `${c.title || `#${c.index}`} ${c.deploySlots}->${c.deploySlotsHard}`)
-            .join(', '),
-      'warn',
+            hardDiffers
+              .map((c) => `${c.title || `#${c.index}`} ${c.deploySlots}->${c.deploySlotsHard}`)
+              .join(", "),
+      "warn",
     );
   }
 
@@ -781,12 +766,12 @@ export function validateRom(loaded: LoadedRom): ValidationReport {
   const totalWalks = loaded.chapterScans.reduce((n, s) => n + s.truncatedWalks, 0);
   const totalSites = loaded.joins.sitesByKind.recruit + loaded.joins.sitesByKind.load;
   add(
-    'chapter.scriptWalks',
+    "chapter.scriptWalks",
     totalSites > 0,
     `${totalSites} load instructions found; ${totalWalks} script walks were ` +
-      'abandoned after ten consecutive unknown opcodes (recruits after such a ' +
-      'point are missed)',
-    'warn',
+      "abandoned after ten consecutive unknown opcodes (recruits after such a " +
+      "point are missed)",
+    "warn",
   );
 
   // Every unit that has support data is a real character, so it should appear
@@ -796,12 +781,12 @@ export function validateRom(loaded: LoadedRom): ValidationReport {
     (id) => !loaded.joins.appearances.has(id),
   );
   add(
-    'roster.joinEvidence',
+    "roster.joinEvidence",
     withoutEvidence.length === 0,
     `${supportCharacterIds.size - withoutEvidence.length}/${supportCharacterIds.size} ` +
-      'support characters have chapter evidence' +
-      (withoutEvidence.length > 0 ? `; missing: ${withoutEvidence.join(', ')}` : ''),
-    'warn',
+      "support characters have chapter evidence" +
+      (withoutEvidence.length > 0 ? `; missing: ${withoutEvidence.join(", ")}` : ""),
+    "warn",
   );
 
   // --- Story path --------------------------------------------------------
@@ -816,32 +801,32 @@ export function validateRom(loaded: LoadedRom): ValidationReport {
       loaded.chapters.filter((c) => isRealMap(loaded.rom, c)).map((c) => c.index),
     );
     const truncated = edges.filter(
-      (e) => e.transitions.length === 0 && e.stopReason.startsWith('unrecognised opcode'),
+      (e) => e.transitions.length === 0 && e.stopReason.startsWith("unrecognised opcode"),
     );
     const truncatedReal = truncated.filter((e) => realMaps.has(e.mapIndex));
     add(
-      'story.scriptsDecoded',
+      "story.scriptsDecoded",
       truncatedReal.length === 0,
       `${edges.length} END_EVENT scripts walked; ${truncated.length} stopped on an ` +
         `unrecognised opcode (${truncatedReal.length} of them real maps, whose ` +
-        'transitions are then unknown rather than absent)',
-      'warn',
+        "transitions are then unknown rather than absent)",
+      "warn",
     );
 
     const path = traceStoryPath(edges, (m) => realMaps.has(m));
     add(
-      'story.mainPathFound',
+      "story.mainPathFound",
       path.found && path.chain.length > 1,
       path.found
         ? `chain of ${path.chain.length} chapters starting at map ` +
-          `${path.chain[0]?.mapIndex ?? -1} and ending at map ` +
-          `${path.chain.at(-1)?.mapIndex ?? -1}; ` +
-          `${path.branches.length} chapters offer more than one next chapter` +
-          (path.closedLoop.length > 0
-            ? `; the walk closed a loop at map ${path.closedLoop.join(', ')}`
-            : '')
+            `${path.chain[0]?.mapIndex ?? -1} and ending at map ` +
+            `${path.chain.at(-1)?.mapIndex ?? -1}; ` +
+            `${path.branches.length} chapters offer more than one next chapter` +
+            (path.closedLoop.length > 0
+              ? `; the walk closed a loop at map ${path.closedLoop.join(", ")}`
+              : "")
         : path.startReason,
-      'warn',
+      "warn",
     );
 
     // The play order is what every chapter-keyed list is sorted by, so a walk
@@ -852,28 +837,28 @@ export function validateRom(loaded: LoadedRom): ValidationReport {
     const placed = new Set(play.steps.map((s) => s.mapIndex));
     const playablePlaced = [...placed].filter((m) => realMaps.has(m)).length;
     add(
-      'story.playOrder',
+      "story.playOrder",
       play.steps.length >= path.chain.length && playablePlaced > 0,
       `${play.steps.length} rows in play order (${playablePlaced} of ${realMaps.size} ` +
-        `real maps); ${play.steps.filter((s) => s.role === 'side').length} spliced in ` +
+        `real maps); ${play.steps.filter((s) => s.role === "side").length} spliced in ` +
         `at ${play.branches.length} branch points. ${realMaps.size - playablePlaced} ` +
-        'real maps are off the path',
-      'warn',
+        "real maps are off the path",
+      "warn",
     );
 
     const dupes = duplicateRegistrations(loaded.rom, loaded.chapters);
     const dupRows = dupes.reduce((n, g) => n + g.length, 0);
     add(
-      'story.duplicateRows',
+      "story.duplicateRows",
       dupRows === 0,
       `${loaded.chapters.length} map rows, ${realMaps.size} real maps. ` +
         (dupRows === 0
-          ? 'No row registers an existing battle twice.'
+          ? "No row registers an existing battle twice."
           : `${dupRows} rows duplicate another battle (identical start event, ` +
             `end event and condition table): ${dupes
-              .map((g) => g.join('/'))
-              .join('; ')}. Counting rows as chapters overcounts.`),
-      'warn',
+              .map((g) => g.join("/"))
+              .join("; ")}. Counting rows as chapters overcounts.`),
+      "warn",
     );
   }
 
@@ -885,36 +870,36 @@ export function validateRom(loaded: LoadedRom): ValidationReport {
   const namedItems = loaded.items.filter((i) => i.nameTextId !== 0);
   const unmapped = namedItems.filter((i) => i.nameUnknownCodes.length > 0);
   add(
-    'item.nameFont',
+    "item.nameFont",
     unmapped.length === 0,
     `${namedItems.length - unmapped.length}/${namedItems.length} item names decoded ` +
-      'with no unmapped item-font codes' +
+      "with no unmapped item-font codes" +
       (unmapped.length > 0
         ? `; first offenders: ${unmapped
             .slice(0, 5)
             .map((i) => `#${i.id}=${i.name}`)
-            .join(', ')}`
-        : ''),
-    'error',
+            .join(", ")}`
+        : ""),
+    "error",
   );
 
   const badPrice = namedItems.filter((i) => i.buyPrice !== i.uses * i.unitPrice);
   add(
-    'item.priceRule',
+    "item.priceRule",
     badPrice.length === 0,
-    'every buyPrice equals uses x unitPrice (the field at +26 is a unit price)',
-    'error',
+    "every buyPrice equals uses x unitPrice (the field at +26 is a unit price)",
+    "error",
   );
 
   const typeCounts = new Map<string, number>();
   for (const i of namedItems) typeCounts.set(i.typeName, (typeCounts.get(i.typeName) ?? 0) + 1);
   add(
-    'item.types',
-    !typeCounts.has('type0') && (typeCounts.get('sword') ?? 0) > 0,
+    "item.types",
+    !typeCounts.has("type0") && (typeCounts.get("sword") ?? 0) > 0,
     `type field is 0-based and maps cleanly: ${[...typeCounts.entries()]
       .map(([k, v]) => `${k}=${v}`)
-      .join(' ')}`,
-    'error',
+      .join(" ")}`,
+    "error",
   );
 
   // ---- shops ------------------------------------------------------------
@@ -928,26 +913,26 @@ export function validateRom(loaded: LoadedRom): ValidationReport {
     }
   }
   add(
-    'shop.itemsResolve',
+    "shop.itemsResolve",
     unknownShopItems.length === 0,
     `${shopEntries} shop entries across ${shops.length} shops all resolve to a ` +
-      'named item' +
-      (unknownShopItems.length ? `; missing: ${unknownShopItems.slice(0, 5).join(', ')}` : ''),
-    'error',
+      "named item" +
+      (unknownShopItems.length ? `; missing: ${unknownShopItems.slice(0, 5).join(", ")}` : ""),
+    "error",
   );
 
-  const prep = shops.find((s) => s.kind === 'prep');
+  const prep = shops.find((s) => s.kind === "prep");
   add(
-    'shop.prepShop',
+    "shop.prepShop",
     prep !== undefined && prep.entries.length > 0,
     prep
       ? `prep-screen shop at ${hex(prep.addr)} lists ${prep.entries.length} items`
-      : 'no prep-screen shop was found',
-    'warn',
+      : "no prep-screen shop was found",
+    "warn",
   );
 
   // ---- map objects (chests, villages, doors) ----------------------------
-  const chests = loaded.mapObjects.filter((o) => o.kind === 'chest');
+  const chests = loaded.mapObjects.filter((o) => o.kind === "chest");
   const goldChests = chests.filter((o) => o.isGoldChest);
   const itemChests = chests.filter((o) => !o.isGoldChest);
 
@@ -970,66 +955,62 @@ export function validateRom(loaded: LoadedRom): ValidationReport {
     o.x === 0 &&
     o.y === 0;
   const placeholderChests = chests.filter(isEmptyPlaceholder);
-  const badChestType = chests.filter(
-    (o) => o.objectType !== 0x14 && !isEmptyPlaceholder(o),
-  );
+  const badChestType = chests.filter((o) => o.objectType !== 0x14 && !isEmptyPlaceholder(o));
   const unresolvedChestItems = itemChests.filter(
     (o) => o.itemId === null || !loaded.itemMap.has(o.itemId),
   );
   add(
-    'object.chestType',
+    "object.chestType",
     badChestType.length === 0,
     badChestType.length === 0
       ? `all ${chests.length} chest records carry object type 0x14, as FE8 requires` +
-        (placeholderChests.length > 0
-          ? ` (${placeholderChests.length} all-zero placeholder row` +
-            `${placeholderChests.length === 1 ? '' : 's'} ignored)`
-          : '')
+          (placeholderChests.length > 0
+            ? ` (${placeholderChests.length} all-zero placeholder row` +
+              `${placeholderChests.length === 1 ? "" : "s"} ignored)`
+            : "")
       : `${badChestType.length} chest records carry a non-chest object type: ` +
-        badChestType
-          .slice(0, 5)
-          .map((o) => hex(o.objectType))
-          .join(', '),
-    'warn',
+          badChestType
+            .slice(0, 5)
+            .map((o) => hex(o.objectType))
+            .join(", "),
+    "warn",
   );
 
   add(
-    'object.chestLoot',
+    "object.chestLoot",
     unresolvedChestItems.length === 0,
     `${itemChests.length} item chests all name a real item, plus ${goldChests.length} ` +
-      'gold chests (' +
+      "gold chests (" +
       `${goldChests.reduce((s, o) => s + o.gold, 0)} gold, stored at record +6)` +
       (unresolvedChestItems.length
         ? `; unresolved: ${unresolvedChestItems
             .slice(0, 5)
             .map((o) => hex(o.itemId ?? 0))
-            .join(', ')}`
-        : ''),
-    'error',
+            .join(", ")}`
+        : ""),
+    "error",
   );
 
   // A gold chest is only well-formed when it names the gold item AND carries a
   // non-zero amount; the reference's FELint states this invariant explicitly.
-  const malformedGold = chests.filter(
-    (o) => (o.itemId === 0x77) !== (o.gold > 0),
-  );
+  const malformedGold = chests.filter((o) => (o.itemId === 0x77) !== o.gold > 0);
   add(
-    'object.goldChestRule',
+    "object.goldChestRule",
     malformedGold.length === 0,
     malformedGold.length === 0
-      ? 'every chest either names item 0x77 with a non-zero amount, or names a real item with 0'
+      ? "every chest either names item 0x77 with a non-zero amount, or names a real item with 0"
       : `${malformedGold.length} chests break the "item 0x77 <=> gold > 0" rule`,
-    'error',
+    "error",
   );
 
-  const shopObjects = loaded.mapObjects.filter((o) => o.kind === 'shop');
+  const shopObjects = loaded.mapObjects.filter((o) => o.kind === "shop");
   const shopKinds = new Set(shopObjects.map((o) => o.objectType));
   add(
-    'object.shopObjects',
+    "object.shopObjects",
     shopObjects.length > 0 && [...shopKinds].every((k) => k === 0x16 || k === 0x17 || k === 0x18),
     `${shopObjects.length} shop objects, object types ` +
-      [...shopKinds].map((k) => hex(k)).join(', '),
-    'warn',
+      [...shopKinds].map((k) => hex(k)).join(", "),
+    "warn",
   );
 
   // ---- enemy stat projection (docs/battle-math.md §3.20) ----------------------------
@@ -1054,14 +1035,14 @@ export function validateRom(loaded: LoadedRom): ValidationReport {
   for (const s of enemy.samples) routineCount[s.routine] += 1;
 
   add(
-    'enemy.records',
+    "enemy.records",
     enemy.samples.length > 0 && enemy.unresolvedClass === 0,
     `${enemy.samples.length} enemy records projected from condition-slot scripts ` +
       `(${routineCount.unit} AutolevelUnit / ${routineCount.realistic} AutolevelRealistic / ` +
       `${routineCount.none} no autolevel), ${enemy.unresolvedClass} dropped for an ` +
-      'unresolvable class id. The walk stops after ten consecutive unknown opcodes, ' +
-      'so this is a lower bound, not a census.',
-    'error',
+      "unresolvable class id. The walk stops after ten consecutive unknown opcodes, " +
+      "so this is a lower bound, not a census.",
+    "error",
   );
 
   // `GetAutoleveledStat` burns random numbers, so every stat is a band. A band
@@ -1070,12 +1051,12 @@ export function validateRom(loaded: LoadedRom): ValidationReport {
     (s) => !(s.as.lo <= s.as.mean + 1e-9 && s.as.mean <= s.as.hi + 1e-9),
   );
   add(
-    'enemy.statBand',
+    "enemy.statBand",
     malformedBands.length === 0,
     malformedBands.length === 0
       ? `every projected attack speed satisfies lo <= mean <= hi (${enemy.samples.length} checked)`
       : `${malformedBands.length} records have an attack-speed band that excludes its own mean`,
-    'error',
+    "error",
   );
 
   // Negative attack speed is legal: `BattleLoadAS` subtracts the weight penalty
@@ -1084,17 +1065,17 @@ export function validateRom(loaded: LoadedRom): ValidationReport {
   const negativeAs = enemy.samples.filter((s) => s.as.mean < 0);
   const negativeClasses = [...new Set(negativeAs.map((s) => s.className))].sort();
   add(
-    'enemy.negativeAs',
+    "enemy.negativeAs",
     true,
     `${negativeAs.length} of ${enemy.samples.length} enemy records project below zero attack speed ` +
-      `(${negativeClasses.slice(0, 8).join(', ')}${negativeClasses.length > 8 ? ', ...' : ''}). ` +
-      'Legal: the engine stores attack speed signed and never clamps it.',
-    'warn',
+      `(${negativeClasses.slice(0, 8).join(", ")}${negativeClasses.length > 8 ? ", ..." : ""}). ` +
+      "Legal: the engine stores attack speed signed and never clamps it.",
+    "warn",
   );
 
   const failed = checks.filter((c) => !c.passed);
-  const errors = failed.filter((c) => c.severity === 'error');
-  const warnings = failed.filter((c) => c.severity === 'warn');
+  const errors = failed.filter((c) => c.severity === "error");
+  const warnings = failed.filter((c) => c.severity === "warn");
 
   return {
     ok: errors.length === 0,

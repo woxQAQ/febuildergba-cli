@@ -14,7 +14,7 @@
  * `0x1d7fde8` for the same file.
  */
 export function hex(value: number, pad = 0): string {
-  return `0x${value.toString(16).toUpperCase().padStart(pad, '0')}`;
+  return `0x${value.toString(16).toUpperCase().padStart(pad, "0")}`;
 }
 
 /** An id rendered both ways, for output that has to sort and be read. */
