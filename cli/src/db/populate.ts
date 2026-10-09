@@ -420,12 +420,25 @@ async function insertEventScans(db: ExtractDb, rom: LoadedRom): Promise<number> 
   let truncatedWalks = 0;
   for (const scan of rom.chapterScans) {
     truncatedWalks += scan.truncatedWalks;
-    for (const r of scan.recruits) {
+    for (const [site, r] of scan.recruits.entries()) {
       await db.insert(t.chapterRecruits).values({
         mapIndex: scan.chapterIndex,
+        site,
         kind: r.kind,
-        unitIds: r.units.map((u) => u.unitId),
       });
+      for (const [position, u] of r.units.entries()) {
+        await db.insert(t.chapterRecruitUnits).values({
+          mapIndex: scan.chapterIndex,
+          site,
+          position,
+          unitId: u.unitId,
+          classId: u.classId,
+          level: u.level,
+          side: u.side,
+          x: u.prePlacementCoord.x,
+          y: u.prePlacementCoord.y,
+        });
+      }
     }
     for (const g of scan.gold) {
       await db.insert(t.chapterGold).values({ mapIndex: scan.chapterIndex, delta: g.delta });

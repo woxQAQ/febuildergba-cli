@@ -1201,6 +1201,14 @@ const EMPTY_SITES: Record<JoinSource, number> = {
  * matches the unit's own class. `LOAD*` blocks are always counted, because a
  * load target is by construction "this unit is on the field".
  *
+ * **Allegiance decides what counts as a join.** The `+3` side byte is
+ * authoritative: only `player` records put a unit in the player's army.
+ * Hacks routinely use `LOAD1` ("仲間にする") to place *enemy* units - on
+ * dream-of-five, 1912 of 2338 recruit-site records are enemy-side - so a
+ * recruit instruction alone proves a load, not a recruit. `ally` records
+ * are guests and `removed` (消滅) deletes the unit at map load; both count
+ * as appearances, never as joins.
+ *
  * `orderOf` supplies the play position of a map index and is what "earliest"
  * is decided on; a chapter off every known path has no position and therefore
  * never beats one that has. Pass the map index back when there is no play order
@@ -1254,8 +1262,8 @@ export function deriveJoins(
         placedClassId: placed.classId,
       };
       sitesByKind.placement++;
-      earliest(joins, record);
       earliest(appearances, record);
+      if (placed.side === "player") earliest(joins, record);
     }
 
     const scan = scansByChapter.get(chapter.index);
@@ -1274,7 +1282,7 @@ export function deriveJoins(
           classOverridden: false,
           placedClassId: unit.classId,
         };
-        if (source === "recruit") earliest(joins, record);
+        if (source === "recruit" && unit.side === "player") earliest(joins, record);
         earliest(appearances, record);
       }
     }

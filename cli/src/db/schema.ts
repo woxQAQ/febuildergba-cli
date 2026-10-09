@@ -528,14 +528,54 @@ export const condSlots = sqliteTable("cond_slots", {
   kind: text("kind").notNull(),
 });
 
-/** Units an event script loads or recruits, per chapter. */
-export const chapterRecruits = sqliteTable("chapter_recruits", {
-  mapIndex: integer("map_index").notNull(),
-  /** Which load instruction this is: recruit | load | cutscene. */
-  kind: text("kind", { enum: ["recruit", "load", "cutscene"] }).notNull(),
-  /** Unit ids named in the placement block the instruction points at. */
-  unitIds: text("unit_ids", { mode: "json" }).$type<number[]>().notNull(),
-});
+/**
+ * Load sites found by the event-script walk, per chapter. `site` is the
+ * ordinal of the hit within the chapter. The units each site loads are in
+ * `chapter_recruit_units` - they join to `units` and carry an allegiance,
+ * which a bare id list could not say.
+ */
+export const chapterRecruits = sqliteTable(
+  "chapter_recruits",
+  {
+    mapIndex: integer("map_index").notNull(),
+    /** Ordinal of the load site within the chapter. */
+    site: integer("site").notNull(),
+    /** Which load instruction this is: recruit | load | cutscene. */
+    kind: text("kind", { enum: ["recruit", "load", "cutscene"] }).notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.mapIndex, t.site] })],
+);
+
+/**
+ * One row per unit record in a load site's placement block.
+ *
+ * `side` matters: hacks routinely use LOAD1 to place *enemy* units, so a
+ * `recruit` row in the parent table does not mean these units join the
+ * player's army - only `side = 'player'` ones do.
+ */
+export const chapterRecruitUnits = sqliteTable(
+  "chapter_recruit_units",
+  {
+    mapIndex: integer("map_index").notNull(),
+    site: integer("site").notNull(),
+    /** Row number within the site's block. */
+    position: integer("position").notNull(),
+    unitId: integer("unit_id").notNull(),
+    /** 0 = the unit's own class. */
+    classId: integer("class_id").notNull(),
+    level: integer("level").notNull(),
+    side: text("side", { enum: ["player", "ally", "enemy", "removed"] }).notNull(),
+    x: integer("x").notNull(),
+    y: integer("y").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.mapIndex, t.site, t.position] }),
+    foreignKey({
+      columns: [t.mapIndex, t.site],
+      foreignColumns: [chapterRecruits.mapIndex, chapterRecruits.site],
+    }),
+  ],
+);
 
 /** Direct gold writes reachable from a chapter's scripts. */
 export const chapterGold = sqliteTable("chapter_gold", {
@@ -615,6 +655,7 @@ export const TABLES = [
   forceSortie,
   condSlots,
   chapterRecruits,
+  chapterRecruitUnits,
   chapterGold,
   chapterItemGives,
   enemySamples,
