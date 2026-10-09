@@ -89,6 +89,19 @@ export const LANGUAGES: Readonly<Record<string, readonly string[]>> = {
   zh: ['.zh', '.en', ''],
 };
 
+/**
+ * Whether a `--lang` value is one this CLI knows.
+ *
+ * The single answer to "is this language real", because two places used to
+ * decide it independently and could disagree: the CLI rejects an unknown value
+ * with exit 2, while `loadRom` - also a library entry point, so it cannot
+ * assume the CLI ran - warns and falls back. Same question, two answers; now
+ * one predicate with two callers.
+ */
+export function isKnownLanguage(language: string): boolean {
+  return Object.hasOwn(LANGUAGES, language);
+}
+
 /** Languages `--lang` accepts, in help-text order. */
 export const LANGUAGE_NAMES: readonly string[] = Object.keys(LANGUAGES);
 
@@ -100,8 +113,8 @@ export const DEFAULT_LANGUAGE = 'en';
  * we know. Callers validate the name; this is the second gate.
  */
 export function languageSuffixes(language: string | undefined): readonly string[] | null {
-  if (language === undefined) return LANGUAGES[DEFAULT_LANGUAGE] as readonly string[];
-  return LANGUAGES[language] ?? null;
+  if (language !== undefined && !isKnownLanguage(language)) return null;
+  return LANGUAGES[language ?? DEFAULT_LANGUAGE] as readonly string[];
 }
 
 /**

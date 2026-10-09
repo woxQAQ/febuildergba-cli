@@ -1,13 +1,15 @@
 import { parseArgs } from 'node:util';
 
-import { flagsFor, globalFlags, type FlagSpec } from './flags.ts';
+import { FLAGS, flagsFor, type FlagSpec } from './flags.ts';
 import { findCommand } from '../commands/registry.ts';
-import { LANGUAGE_NAMES } from '../config/data.ts';
-import type { ResolvedFlags } from '../commands/types.ts';
+import { isKnownLanguage, LANGUAGE_NAMES } from '../config/data.ts';
+import type { Command, ResolvedFlags } from '../commands/types.ts';
 
 export interface ParsedArgv {
-  /** Command word, or `null` when the user gave none. */
+  /** Command word exactly as typed, or `null` when the user gave none. */
   command: string | null;
+  /** The registered command, or `null` when the word is not one. */
+  resolved: Command | null;
   romPath: string;
   /** Positionals after the ROM path - `text` takes text ids here. */
   args: string[];
@@ -21,11 +23,11 @@ type OptionConfig = Record<string, { type: 'string' | 'boolean'; short?: string 
 /**
  * `parseArgs` config built from the flags a command accepts.
  *
- * `strict: false` because the command word is itself a positional: the strict
- * flag set depends on which command it is, which we cannot know until argv has
- * been scanned. Unknown options are therefore collected rather than rejected,
- * and reported by `rejectUnknownFlags` below - as an error message instead of
- * an exception, and only when the command itself is real.
+ * Built from **every** flag rather than from one command's set, because
+ * tokenising argv must not depend on which command it turns out to be: whether
+ * `--out` swallows the next token depends only on its type, never on who is
+ * reading it. Which flags the command is *allowed* to use is enforced
+ * separately, from the parse's own token list - see `firstUnknownOption`.
  */
 function optionConfig(flags: readonly FlagSpec[]): OptionConfig {
   const options: OptionConfig = {};
@@ -37,20 +39,31 @@ function optionConfig(flags: readonly FlagSpec[]): OptionConfig {
 }
 
 /**
- * The first option in argv that the accepted set does not cover, as the user
- * typed it (`--foo`, `-x`, `--foo=bar`). `null` when everything is known.
+ * The first option `parseArgs` saw that the command does not accept, as the
+ * user typed it.
+ *
+ * Membership only: the tokens come from `parseArgs`, so `--` (an
+ * `option-terminator`, not an option), `--out -x` (one option token with the
+ * value `-x`) and `--foo=bar` are all already classified the way the standard
+ * says they should be. Nothing here re-scans argv.
  */
-function firstUnknownFlag(argv: readonly string[], accepted: readonly FlagSpec[]): string | null {
+function firstUnknownOption(
+  tokens: readonly {
+    kind: string;
+    name?: string;
+    rawName?: string;
+  }[],
+  accepted: readonly FlagSpec[],
+): string | null {
   const long = new Set(accepted.map((f) => f.name));
   const short = new Set(accepted.flatMap((f) => (f.short === undefined ? [] : [f.short])));
 
-  for (const token of argv) {
-    if (token === '-' || !token.startsWith('-')) continue;
-    const body = token.startsWith('--') ? token.slice(2) : token.slice(1);
-    const eq = body.indexOf('=');
-    const name = eq === -1 ? body : body.slice(0, eq);
-    if (token.startsWith('--') ? long.has(name) : short.has(name)) continue;
-    return token;
+  for (const token of tokens) {
+    if (token.kind !== 'option') continue;
+    const name = token.name ?? '';
+    if (name.length === 0) continue;
+    const known = name.length > 1 ? long.has(name) : short.has(name);
+    if (!known) return token.rawName ?? name;
   }
   return null;
 }
@@ -61,41 +74,42 @@ function firstUnknownFlag(argv: readonly string[], accepted: readonly FlagSpec[]
  * Throws a plain `Error` for input the user got wrong (unknown option, unknown
  * `--lang`, a stray positional); the caller turns that into a message plus
  * exit code 2.
+ *
+ * There is exactly one parse here. The previous version ran `parseArgs` twice
+ * and then hand-scanned argv to restore the strictness the first pass had to
+ * give up, so "what does this argv mean" had two sources that disagreed: the
+ * standard `--` terminator was reported as `unknown option "--"`, and the
+ * value of `--out` was mistaken for a flag. One permissive parse plus a
+ * membership check on its tokens removes the second source.
  */
 export function parseArgv(argv: readonly string[]): ParsedArgv {
-  // First positional is the command word; the flags it accepts depend on it,
-  // so a permissive pass with the global flags finds it.
-  const peek = parseArgs({
+  const { values, positionals, tokens } = parseArgs({
     args: [...argv],
     allowPositionals: true,
     strict: false,
-    options: optionConfig(globalFlags()),
+    tokens: true,
+    options: optionConfig(FLAGS),
   });
-  const command = peek.positionals[0] ?? null;
 
-  const accepted = flagsFor(command);
-  const { values, positionals } = parseArgs({
-    args: [...argv],
-    allowPositionals: true,
-    strict: false,
-    options: optionConfig(accepted),
-  });
+  const command = positionals[0] ?? null;
+  const resolved = command === null ? null : findCommand(command) ?? null;
+  const accepted = flagsFor(resolved);
 
   // Only worth complaining about once we know the command is real: otherwise
   // the "unknown command" message is the more useful one.
-  const known = command === null ? undefined : findCommand(command);
-  if (command !== null && known !== undefined) {
-    const bad = firstUnknownFlag(argv, accepted);
-    if (bad !== null) throw new Error(`unknown option "${bad}" for "${command}"`);
+  if (resolved !== null) {
+    const bad = firstUnknownOption(tokens, accepted);
+    if (bad !== null) throw new Error(`unknown option "${bad}" for "${resolved.name}"`);
 
     // A command that documents no trailing positionals must not quietly accept
     // them: `fe-rom units rom.gba typo` used to run and exit 0, so a mistyped
-    // flag or a forgotten argument was invisible.
+    // flag or a forgotten argument was invisible. Everything after `--` lands
+    // here too, which is what the terminator is for.
     const extra = positionals.slice(2);
-    if (extra.length > 0 && known.extraArgs === undefined) {
+    if (extra.length > 0 && resolved.extraArgs === undefined) {
       throw new Error(
-        `"${command}" takes no extra arguments, but got: ${extra.join(' ')}\n` +
-          `Usage: fe-rom ${command} <rom.gba> [options]`,
+        `"${resolved.name}" takes no extra arguments, but got: ${extra.join(' ')}\n` +
+          `Usage: fe-rom ${resolved.name} <rom.gba> [options]`,
       );
     }
   }
@@ -110,12 +124,13 @@ export function parseArgv(argv: readonly string[]): ParsedArgv {
   const out = str('out');
   const range = str('range');
   const lang = str('lang');
-  if (lang !== undefined && !LANGUAGE_NAMES.includes(lang)) {
+  if (lang !== undefined && !isKnownLanguage(lang)) {
     throw new Error(`--lang expects one of ${LANGUAGE_NAMES.join(', ')}, got "${lang}"`);
   }
 
   return {
     command,
+    resolved,
     romPath: positionals[1] ?? '',
     args: positionals.slice(2),
     help: values.help === true,
@@ -124,6 +139,7 @@ export function parseArgv(argv: readonly string[]): ParsedArgv {
       compact: values.compact === true,
       playableOnly: values['playable-only'] === true,
       hard: values.hard === true,
+      timings: values.timings === true,
       ...(out === undefined ? {} : { out }),
       ...(range === undefined ? {} : { range }),
       ...(lang === undefined ? {} : { lang }),

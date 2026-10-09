@@ -18,5 +18,10 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true
   },
-  "include": ["src/**/*.ts"]
+  // `scripts/` is in here on purpose: it holds the repo's own consumers of
+  // the CLI (the mGBA table emitter, the placement census). Left out, they
+  // were never typechecked, and one of them kept pointing at a `dump` command
+  // that was deleted long ago - a shape change in a command's payload is
+  // invisible to them until something runs and produces garbage.
+  "include": ["src/**/*.ts", "scripts/**/*.ts"]
 }

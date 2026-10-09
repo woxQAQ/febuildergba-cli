@@ -11,6 +11,7 @@
  * the option parser, not the dispatcher - needs to know it exists.
  */
 import { LANGUAGE_NAMES } from '../config/data.ts';
+import type { Command, CommandName } from '../commands/types.ts';
 
 export interface FlagSpec {
   /** Canonical name without the leading dashes. */
@@ -23,11 +24,14 @@ export interface FlagSpec {
   readonly summary: string;
   /**
    * Commands that read this flag, by name. Omitted means "every command".
-   * Order here is the order the flag appears in a command's help.
+   * Typed as `CommandName` so a misspelling is a compile error - as a plain
+   * string it made the flag silently unavailable to the command it was meant
+   * for, and nothing reported it. Order here is the order the flag appears in
+   * a command's help.
    */
-  readonly commands?: readonly string[];
+  readonly commands?: readonly CommandName[];
   /** Per-command clarification appended to `summary`, keyed by command name. */
-  readonly notes?: Readonly<Record<string, string>>;
+  readonly notes?: Readonly<Partial<Record<CommandName, string>>>;
 }
 
 export const FLAGS: readonly FlagSpec[] = [
@@ -50,6 +54,12 @@ export const FLAGS: readonly FlagSpec[] = [
     name: 'compact',
     type: 'boolean',
     summary: 'Emit compact JSON instead of pretty-printed',
+  },
+  {
+    name: 'timings',
+    type: 'boolean',
+    summary:
+      'Print per-table load times to stderr, with the expensive table a cheap-looking one pulled in',
   },
   {
     name: 'help',
@@ -109,12 +119,15 @@ export function globalFlags(): readonly FlagSpec[] {
 }
 
 /**
- * The flags a command accepts: its own plus every global one. `command` may be
- * `null` (no command given yet), in which case only the globals are known and
- * the parse stays permissive - see `src/cli/args.ts`.
+ * Flags accepted by every command, by name.
+ *
+ * `command` is the registered command rather than a bare word: an unknown word
+ * has no flag set of its own, and the caller needs to know that to decide
+ * whether an unrecognised option is worth reporting or whether "unknown
+ * command" is the more useful message.
  */
-export function flagsFor(command: string | null): readonly FlagSpec[] {
+export function flagsFor(command: Command | null): readonly FlagSpec[] {
   if (command === null) return globalFlags();
-  const local = FLAGS.filter((f) => f.commands?.includes(command) === true);
+  const local = FLAGS.filter((f) => f.commands?.includes(command.name) === true);
   return [...globalFlags(), ...local];
 }

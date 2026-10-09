@@ -13,7 +13,9 @@
   "scripts": {
     "info": "node src/index.ts info",
     "validate": "node src/index.ts validate",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "check": "node scripts/check-upstream.ts",
+    "check:update": "node scripts/check-upstream.ts --update"
   },
   "dependencies": {},
   "devDependencies": {

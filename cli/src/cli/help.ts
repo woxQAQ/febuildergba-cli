@@ -1,6 +1,6 @@
 import { COMMANDS, commandColumnWidth } from '../commands/registry.ts';
 import { FLAGS, globalFlags, type FlagSpec } from './flags.ts';
-import type { Command } from '../commands/types.ts';
+import type { Command, CommandName } from '../commands/types.ts';
 
 const TEXT_WIDTH = 78;
 
@@ -38,7 +38,7 @@ function wrap(text: string, width: number): string[] {
  */
 function optionLines(
   groups: readonly (readonly FlagSpec[])[],
-  command: string | null,
+  command: CommandName | null,
 ): string[] {
   const flags = groups.flat();
   if (flags.length === 0) return [];

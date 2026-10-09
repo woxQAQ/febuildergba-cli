@@ -378,8 +378,11 @@ const FE8J: GameLayout = {
   },
   support: {
     unitPointer: 0x8582e8,
-    talkPointer: 0,
-    attributePointer: 0,
+    // Both zero until `scripts/check-upstream.ts` caught it: ROMFE8JP.cs sets
+    // them, the transcription just never carried them over. Nothing reads them
+    // while FE8J is unsupported, which is exactly how it stayed wrong.
+    talkPointer: 0x086a50,
+    attributePointer: 0x284c8,
   },
   // Multibyte: 4-byte records, each a pointer to a raw Shift-JIS string.
   terrainNames: { slot: 0x19f24, recordSize: 4, maxCount: 0x100 },

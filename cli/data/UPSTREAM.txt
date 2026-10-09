@@ -1,0 +1,5 @@
+commit 8e3557912ddab708d11bf85ad311b41bb6630fd1
+checked 2026-10-09
+
+The vendored config/data files and the constants in src/data/layouts.ts were
+last verified against this FEBuilderGBA commit by scripts/check-upstream.ts.

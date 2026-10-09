@@ -20,8 +20,7 @@
  * dispatcher all read from that one registry.
  */
 
-import { loadRom, RomNotFoundError, UnsupportedRomError } from './load.ts';
-import { findCommand } from './commands/registry.ts';
+import { formatLoadTrace, loadRom, loadStatsFor, RomNotFoundError, UnsupportedRomError } from './load.ts';
 import { UsageError } from './commands/types.ts';
 import { parseArgv } from './cli/args.ts';
 import { commandHelp, suggestions, usage } from './cli/help.ts';
@@ -54,11 +53,10 @@ function main(): void {
     return;
   }
 
-  const { command, romPath, args, flags, help } = parsed;
+  const { command, resolved, romPath, args, flags, help } = parsed;
 
   if (help) {
-    const target = command === null ? undefined : findCommand(command);
-    console.log(target === undefined ? usage() : commandHelp(target));
+    console.log(resolved === null ? usage() : commandHelp(resolved));
     return;
   }
 
@@ -67,8 +65,7 @@ function main(): void {
     return;
   }
 
-  const resolved = findCommand(command);
-  if (resolved === undefined) {
+  if (resolved === null) {
     const near = suggestions(command);
     const hint = near.length === 0 ? '' : `\nDid you mean: ${near.join(', ')}?`;
     fail(`unknown command "${command}"${hint}`);
@@ -100,6 +97,12 @@ function main(): void {
   try {
     const payload = resolved.run({ rom, flags, args });
     emit(payload, flags);
+    // After the payload, on stderr, so `--out` stays pipeable and the numbers
+    // describe the run that produced it.
+    if (flags.timings) {
+      const stats = loadStatsFor(rom);
+      if (stats !== undefined) console.error(formatLoadTrace(stats));
+    }
     const code = resolved.exitCode?.(payload) ?? 0;
     if (code !== 0) process.exitCode = code;
   } catch (error) {

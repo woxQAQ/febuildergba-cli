@@ -1,6 +1,36 @@
 import type { LoadedRom } from '../load.ts';
 
 /**
+ * Every command word, as a literal union.
+ *
+ * This is the single source of truth for "which commands exist", and it exists
+ * so two things that used to be free strings become checked ones:
+ *
+ *   - `Command.name` - a command whose name is not in here is a typo, and now
+ *     a compile error rather than a command the registry never matches.
+ *   - `FlagSpec.commands` / `FlagSpec.notes` - a misspelled command name in a
+ *     flag declaration used to make that flag silently unavailable, with
+ *     nothing anywhere reporting it.
+ *
+ * Adding a command: add the word here, then let `registry.ts` fail to compile
+ * until you have registered it there too.
+ */
+export type CommandName =
+  | 'info'
+  | 'units'
+  | 'classes'
+  | 'roles'
+  | 'supports'
+  | 'terrain'
+  | 'chapters'
+  | 'items'
+  | 'shops'
+  | 'objects'
+  | 'enemy-stats'
+  | 'text'
+  | 'validate';
+
+/**
  * Flags resolved from the command line, after the command's own flag set has
  * been applied. `out === undefined` means stdout.
  */
@@ -13,6 +43,8 @@ export interface ResolvedFlags {
   compact: boolean;
   playableOnly: boolean;
   hard: boolean;
+  /** Print per-table load times to stderr - see `load.ts`. */
+  timings: boolean;
 }
 
 /**
@@ -43,7 +75,7 @@ export interface CommandContext {
 
 export interface Command {
   /** Word the user types. Unique across the registry. */
-  readonly name: string;
+  readonly name: CommandName;
   /** One line, shown in the command table. */
   readonly summary: string;
   /**

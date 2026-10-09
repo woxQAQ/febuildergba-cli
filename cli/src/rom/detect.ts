@@ -24,8 +24,12 @@ const GAME_CODE_TO_VERSION: Readonly<Record<string, GameVersion>> = {
   BE8E01: 'FE8U',
 };
 
-/** Minimum ROM size FEBuilderGBA requires before it will trust the game code. */
-const MIN_ROM_SIZE: Readonly<Record<GameVersion, number>> = {
+/**
+ * Minimum ROM size FEBuilderGBA requires before it will trust the game code.
+ * Exported so a too-short file can be rejected with the number it missed by,
+ * instead of failing later as a range error from some table read.
+ */
+export const MIN_ROM_SIZES: Readonly<Record<GameVersion, number>> = {
   FE6J: 0x0080_0000, // 8 MB
   FE7J: 0x0100_0000, // 16 MB
   FE7U: 0x0100_0000,
@@ -78,7 +82,7 @@ export function detectVersion(rom: RomBuffer): RomIdentity {
 
   let sizeOk = true;
   if (version) {
-    const min = MIN_ROM_SIZE[version];
+    const min = MIN_ROM_SIZES[version];
     sizeOk = rom.length >= min;
     if (!sizeOk) {
       notes.push(
