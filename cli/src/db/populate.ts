@@ -212,7 +212,7 @@ async function insertClasses(db: ExtractDb, rom: LoadedRom): Promise<void> {
   }
 
   for (const [classId, role] of rom.classRoles) {
-    await db.insert(t.classRoles).values({
+    await db.insert(t.derivedClassRoles).values({
       classId,
       mobility: role.mobility,
       mobilitySource: role.mobilitySource,
@@ -258,11 +258,7 @@ async function insertSupports(db: ExtractDb, rom: LoadedRom): Promise<void> {
       });
     }
   }
-  for (const e of rom.supportGraph) {
-    await db
-      .insert(t.supportEdges)
-      .values({ a: e.a, b: e.b, initial: e.initial, growth: e.growth });
-  }
+  // support_edges is a VIEW over support_partners now - nothing to insert.
 }
 
 async function insertItemsAndTerrain(db: ExtractDb, rom: LoadedRom): Promise<void> {
@@ -374,7 +370,7 @@ async function insertChapters(db: ExtractDb, rom: LoadedRom): Promise<void> {
 async function insertStory(db: ExtractDb, rom: LoadedRom): Promise<void> {
   for (const e of rom.mapTransitions) {
     for (const tr of e.transitions) {
-      await db.insert(t.chapterTransitions).values({
+      await db.insert(t.derivedChapterTransitions).values({
         mapIndex: e.mapIndex,
         targetMap: tr.targetMap,
         opcode: tr.opcode,
@@ -383,7 +379,7 @@ async function insertStory(db: ExtractDb, rom: LoadedRom): Promise<void> {
     }
   }
   for (const step of rom.playOrder.steps) {
-    await db.insert(t.playOrder).values({
+    await db.insert(t.derivedPlayOrder).values({
       mapIndex: step.mapIndex,
       position: step.order,
       role: step.role,
@@ -396,7 +392,7 @@ async function insertStory(db: ExtractDb, rom: LoadedRom): Promise<void> {
     ["appearance", rom.joins.appearances],
   ] as const) {
     for (const [unitId, ev] of map) {
-      await db.insert(t.unitJoins).values({
+      await db.insert(t.derivedUnitJoins).values({
         unitId,
         kind,
         mapIndex: ev.chapterIndex,
@@ -421,13 +417,13 @@ async function insertEventScans(db: ExtractDb, rom: LoadedRom): Promise<number> 
   for (const scan of rom.chapterScans) {
     truncatedWalks += scan.truncatedWalks;
     for (const [site, r] of scan.recruits.entries()) {
-      await db.insert(t.chapterRecruits).values({
+      await db.insert(t.derivedChapterRecruits).values({
         mapIndex: scan.chapterIndex,
         site,
         kind: r.kind,
       });
       for (const [position, u] of r.units.entries()) {
-        await db.insert(t.chapterRecruitUnits).values({
+        await db.insert(t.derivedChapterRecruitUnits).values({
           mapIndex: scan.chapterIndex,
           site,
           position,
@@ -441,10 +437,10 @@ async function insertEventScans(db: ExtractDb, rom: LoadedRom): Promise<number> 
       }
     }
     for (const g of scan.gold) {
-      await db.insert(t.chapterGold).values({ mapIndex: scan.chapterIndex, delta: g.delta });
+      await db.insert(t.derivedChapterGold).values({ mapIndex: scan.chapterIndex, delta: g.delta });
     }
     for (const g of scan.itemsGiven) {
-      await db.insert(t.chapterItemGives).values({
+      await db.insert(t.derivedChapterItemGives).values({
         mapIndex: scan.chapterIndex,
         itemId: g.itemId,
         unitId: g.unitId,
@@ -523,7 +519,7 @@ async function insertEnemySamples(db: ExtractDb, rom: LoadedRom): Promise<number
     });
     unresolved = unresolvedClass;
     for (const s of samples) {
-      await db.insert(t.enemySamples).values({
+      await db.insert(t.derivedEnemySamples).values({
         mode,
         mapIndex: s.mapIndex,
         chapterNumber: s.chapterNumber,

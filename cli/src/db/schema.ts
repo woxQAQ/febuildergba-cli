@@ -15,9 +15,25 @@
  *     steps) is parsed and modelled instead.
  *   - **Store facts, derive at query time.** Names join by id instead of
  *     being denormalized into rows; prices are `uses * unit_price`; weapon
- *     usability is `wl_* > 0`; the old `units` roster filter is the `roster`
- *     view. Absence is modelled as NULL or a missing child row, never as
- *     the ROM's zero-as-absence convention.
+ *     usability is `wl_* > 0`. Absence is modelled as NULL or a missing
+ *     child row, never as the ROM's zero-as-absence convention.
+ *
+ * The schema has three physical layers, in decreasing order of trust:
+ *
+ *   1. **Raw tables** (plain names): mechanical decodes of ROM bytes or
+ *      config/data files - records, lists, names. No inference.
+ *   2. **Views**: derivations SQL can express, computed per query and never
+ *      stored - `roster` (units carrying support data), `support_edges`
+ *      (pairs deduplicated from the asymmetric `support_partners`). They
+ *      cannot drift from the raw layer because they ARE the raw layer,
+ *      read differently.
+ *   3. **`derived_*` tables**: inference SQL cannot express - event-script
+ *      walks (`derived_chapter_recruits`, `derived_chapter_transitions`,
+ *      ...), graph traversal (`derived_play_order`), RNG projection
+ *      (`derived_enemy_samples`), cross-class heuristics
+ *      (`derived_class_roles`). They are materialized at extract time
+ *      because the consumer cannot recompute them without the ROM and the
+ *      parser. Treat them as conclusions, not evidence.
  *
  * Conventions:
  *
@@ -36,6 +52,8 @@
  * Empty unit slots (no name, class or level) are not extracted: they carry
  * no data and their id 0 is not unique. Their count is in `meta` as
  * `units.emptySlots`.
+ *
+ * (Views live in `ddl.ts`, next to the CREATE VIEW statements.)
  */
 
 import { integer, primaryKey, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
@@ -223,7 +241,7 @@ export const classTerrainBonuses = sqliteTable(
  * usability, staff and magic access derive from `classes.wl_*` and are not
  * repeated here.
  */
-export const classRoles = sqliteTable("class_roles", {
+export const derivedClassRoles = sqliteTable("derived_class_roles", {
   classId: integer("class_id").primaryKey(),
   mobility: text("mobility", { enum: ["flying", "mounted", "armour", "normal"] }).notNull(),
   /** "flags" when the ROM stated it, "costs" when we inferred it. */
@@ -282,17 +300,7 @@ export const supportPartners = sqliteTable(
   (t) => [primaryKey({ columns: [t.unitId, t.partnerId] })],
 );
 
-/** Deduplicated: a < b, one row per pair. */
-export const supportEdges = sqliteTable(
-  "support_edges",
-  {
-    a: integer("a").notNull(),
-    b: integer("b").notNull(),
-    initial: integer("initial").notNull(),
-    growth: integer("growth").notNull(),
-  },
-  (t) => [primaryKey({ columns: [t.a, t.b] })],
-);
+/** Deduplicated support pairs are the `support_edges` VIEW - see ddl.ts. */
 
 export const items = sqliteTable("items", {
   id: integer("id").primaryKey(),
@@ -444,7 +452,7 @@ export const chapterPlacementSteps = sqliteTable(
  * `call_depth` > 0 means the instruction lives in a shared CALL helper, so
  * it fires for every chapter that calls that helper.
  */
-export const chapterTransitions = sqliteTable("chapter_transitions", {
+export const derivedChapterTransitions = sqliteTable("derived_chapter_transitions", {
   mapIndex: integer("map_index").notNull(),
   /** Destination: a map-setting index, not a chapter number. */
   targetMap: integer("target_map").notNull(),
@@ -457,7 +465,7 @@ export const chapterTransitions = sqliteTable("chapter_transitions", {
  * The order chapters are actually played in. THIS, not chapter_number,
  * orders the game; see tables/storyPath.ts.
  */
-export const playOrder = sqliteTable("play_order", {
+export const derivedPlayOrder = sqliteTable("derived_play_order", {
   mapIndex: integer("map_index").primaryKey(),
   /** 1-based position, no gaps. */
   position: integer("position").notNull(),
@@ -470,8 +478,8 @@ export const playOrder = sqliteTable("play_order", {
  * Earliest chapter per unit, from placements and LOAD1 instructions.
  * kind: "join" = in the player's army; "appearance" = any load, incl. guests.
  */
-export const unitJoins = sqliteTable(
-  "unit_joins",
+export const derivedUnitJoins = sqliteTable(
+  "derived_unit_joins",
   {
     unitId: integer("unit_id").notNull(),
     kind: text("kind", { enum: ["join", "appearance"] }).notNull(),
@@ -534,8 +542,8 @@ export const condSlots = sqliteTable("cond_slots", {
  * `chapter_recruit_units` - they join to `units` and carry an allegiance,
  * which a bare id list could not say.
  */
-export const chapterRecruits = sqliteTable(
-  "chapter_recruits",
+export const derivedChapterRecruits = sqliteTable(
+  "derived_chapter_recruits",
   {
     mapIndex: integer("map_index").notNull(),
     /** Ordinal of the load site within the chapter. */
@@ -553,8 +561,8 @@ export const chapterRecruits = sqliteTable(
  * `recruit` row in the parent table does not mean these units join the
  * player's army - only `side = 'player'` ones do.
  */
-export const chapterRecruitUnits = sqliteTable(
-  "chapter_recruit_units",
+export const derivedChapterRecruitUnits = sqliteTable(
+  "derived_chapter_recruit_units",
   {
     mapIndex: integer("map_index").notNull(),
     site: integer("site").notNull(),
@@ -572,20 +580,20 @@ export const chapterRecruitUnits = sqliteTable(
     primaryKey({ columns: [t.mapIndex, t.site, t.position] }),
     foreignKey({
       columns: [t.mapIndex, t.site],
-      foreignColumns: [chapterRecruits.mapIndex, chapterRecruits.site],
+      foreignColumns: [derivedChapterRecruits.mapIndex, derivedChapterRecruits.site],
     }),
   ],
 );
 
 /** Direct gold writes reachable from a chapter's scripts. */
-export const chapterGold = sqliteTable("chapter_gold", {
+export const derivedChapterGold = sqliteTable("derived_chapter_gold", {
   mapIndex: integer("map_index").notNull(),
   /** Signed: gain or lose. */
   delta: integer("delta").notNull(),
 });
 
 /** Item grants reachable from a chapter's scripts. */
-export const chapterItemGives = sqliteTable("chapter_item_gives", {
+export const derivedChapterItemGives = sqliteTable("derived_chapter_item_gives", {
   mapIndex: integer("map_index").notNull(),
   itemId: integer("item_id").notNull(),
   /** 0xFFFF = the unit currently acting. */
@@ -597,7 +605,7 @@ export const chapterItemGives = sqliteTable("chapter_item_gives", {
  * re-projects with the hard-mode autolevel round (19 levels instead of 9);
  * both modes are extracted so the choice is a WHERE clause, not a re-run.
  */
-export const enemySamples = sqliteTable("enemy_samples", {
+export const derivedEnemySamples = sqliteTable("derived_enemy_samples", {
   mode: text("mode", { enum: ["normal", "hard"] }).notNull(),
   mapIndex: integer("map_index").notNull(),
   chapterNumber: real("chapter_number").notNull(),
@@ -634,13 +642,11 @@ export const TABLES = [
   classAbilityFlags,
   classMovementCosts,
   classTerrainBonuses,
-  classRoles,
   terrains,
   affinities,
   supportBonuses,
   supportEntries,
   supportPartners,
-  supportEdges,
   items,
   itemEffectiveness,
   shops,
@@ -648,15 +654,17 @@ export const TABLES = [
   chapters,
   chapterPlacements,
   chapterPlacementSteps,
-  chapterTransitions,
-  playOrder,
-  unitJoins,
   mapObjects,
   forceSortie,
   condSlots,
-  chapterRecruits,
-  chapterRecruitUnits,
-  chapterGold,
-  chapterItemGives,
-  enemySamples,
+  // Materialized inference - see the layer list in the module doc.
+  derivedClassRoles,
+  derivedChapterRecruits,
+  derivedChapterRecruitUnits,
+  derivedChapterTransitions,
+  derivedPlayOrder,
+  derivedUnitJoins,
+  derivedChapterGold,
+  derivedChapterItemGives,
+  derivedEnemySamples,
 ] as const;

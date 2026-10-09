@@ -19,6 +19,34 @@ import type { SQLiteTable } from "drizzle-orm/sqlite-core";
 export const ROSTER_VIEW_SQL =
   "CREATE VIEW roster AS SELECT * FROM units WHERE has_support_data = 1";
 
+/**
+ * Support pairs, deduplicated from the asymmetric `support_partners`.
+ * Mirrors `buildSupportGraph` (tables/supports.ts): the pair is normalized
+ * a < b, the numbers come from the a-side record when it exists, and the
+ * reverse side is exposed so a mismatch is a WHERE clause, not a parse.
+ */
+export const SUPPORT_EDGES_VIEW_SQL = `
+CREATE VIEW support_edges AS
+SELECT
+  pairs.a,
+  pairs.b,
+  COALESCE(f.initial, r.initial) AS initial,
+  COALESCE(f.growth,  r.growth)  AS growth,
+  (r.unit_id IS NOT NULL)        AS reciprocal,
+  r.initial AS reverse_initial,  -- NULL when the pair is one-way
+  r.growth  AS reverse_growth
+FROM (
+  SELECT DISTINCT
+    MIN(unit_id, partner_id) AS a,
+    MAX(unit_id, partner_id) AS b
+  FROM support_partners
+) pairs
+LEFT JOIN support_partners f ON f.unit_id = pairs.a AND f.partner_id = pairs.b
+LEFT JOIN support_partners r ON r.unit_id = pairs.b AND r.partner_id = pairs.a`;
+
+/** Every view, in creation order. */
+export const VIEWS = [ROSTER_VIEW_SQL, SUPPORT_EDGES_VIEW_SQL];
+
 export function createTableSql(table: SQLiteTable): string {
   const config = getTableConfig(table);
 
@@ -54,5 +82,5 @@ export function createTableSql(table: SQLiteTable): string {
 
 /** CREATE TABLE for every data table, plus the views, in dependency order. */
 export function createSchemaSql(tables: readonly SQLiteTable[]): string[] {
-  return [...tables.map(createTableSql), ROSTER_VIEW_SQL];
+  return [...tables.map(createTableSql), ...VIEWS];
 }
