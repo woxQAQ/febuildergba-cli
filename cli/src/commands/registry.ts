@@ -1,16 +1,6 @@
 import type { Command, CommandName } from "./types.ts";
 
-import { info } from "./info.ts";
-import { units } from "./units.ts";
-import { classes } from "./classes.ts";
-import { roles } from "./roles.ts";
-import { supports } from "./supports.ts";
-import { terrain } from "./terrain.ts";
-import { chapters } from "./chapters.ts";
-import { items } from "./items.ts";
-import { shops } from "./shops.ts";
-import { objects } from "./objects.ts";
-import { enemyStats } from "./enemyStats.ts";
+import { extract } from "./extract.ts";
 import { text } from "./text.ts";
 import { validate } from "./validate.ts";
 
@@ -25,19 +15,14 @@ import { validate } from "./validate.ts";
  * This is the only place a command needs to be registered: the usage text,
  * the command table, the dispatcher and the "unknown command" error all read
  * from here. Adding a command is one file plus one line in this table.
+ *
+ * There are deliberately only three commands. Everything analytical used to
+ * be its own command (`units`, `classes`, `chapters`, ...), each with its own
+ * filter flags; those are all SQL queries against the `extract` database now,
+ * and their flags were query filters wearing CLI clothes.
  */
 const REGISTRY: Readonly<Record<CommandName, Command>> = {
-  info,
-  units,
-  classes,
-  roles,
-  supports,
-  terrain,
-  chapters,
-  items,
-  shops,
-  objects,
-  "enemy-stats": enemyStats,
+  extract,
   text,
   validate,
 };

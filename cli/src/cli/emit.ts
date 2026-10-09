@@ -1,17 +1,10 @@
-import { writeFileSync } from "node:fs";
-
-import type { ResolvedFlags } from "../commands/types.ts";
-
 /**
- * Write a command's payload as JSON, to `--out` when given and to stdout
- * otherwise. Progress notes go to stderr so `--out` can be piped safely.
+ * Print a command's payload as pretty-printed JSON on stdout.
+ *
+ * There is no `--out` or `--compact`: the two remaining payload commands
+ * (`text`, `validate`) are diagnostics small enough to read or redirect with
+ * the shell. `extract` writes its database itself.
  */
-export function emit(payload: unknown, flags: ResolvedFlags): void {
-  const json = flags.compact ? JSON.stringify(payload) : JSON.stringify(payload, null, 2);
-  if (flags.out !== undefined) {
-    writeFileSync(flags.out, `${json}\n`, "utf8");
-    console.error(`Wrote ${flags.out}`);
-  } else {
-    console.log(json);
-  }
+export function emit(payload: unknown): void {
+  console.log(JSON.stringify(payload, null, 2));
 }

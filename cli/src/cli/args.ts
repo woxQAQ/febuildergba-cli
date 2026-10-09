@@ -94,7 +94,6 @@ export function parseArgv(argv: readonly string[]): ParsedArgv {
   const command = positionals[0] ?? null;
   const resolved = command === null ? null : (findCommand(command) ?? null);
   const accepted = flagsFor(resolved);
-
   // Only worth complaining about once we know the command is real: otherwise
   // the "unknown command" message is the more useful one.
   if (resolved !== null) {
@@ -135,10 +134,6 @@ export function parseArgv(argv: readonly string[]): ParsedArgv {
     args: positionals.slice(2),
     help: values.help === true,
     flags: {
-      all: values.all === true,
-      compact: values.compact === true,
-      playableOnly: values["playable-only"] === true,
-      hard: values.hard === true,
       timings: values.timings === true,
       ...(out === undefined ? {} : { out }),
       ...(range === undefined ? {} : { range }),

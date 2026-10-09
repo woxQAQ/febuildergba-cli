@@ -342,7 +342,7 @@ export function validateRom(loaded: LoadedRom): ValidationReport {
   // Byte 7 of a record is never touched by `StoreAddedAffinityBonusesForSupportLevel`
   // (it writes offsets 1..6 only), so it is padding and should be zero. A
   // non-zero value would mean the stride is off by something.
-  const paddingNonZero = loaded.supportBonuses.filter((b) => (b.bonuses.unknown7 ?? 0) !== 0);
+  const paddingNonZero = loaded.supportBonuses.filter((b) => (b.raw[7] ?? 0) !== 0);
   add(
     "support.bonusPadding",
     paddingNonZero.length === 0,

@@ -247,8 +247,8 @@ export interface SupportBonus {
   affinityName: string;
   /** Raw 8 bytes, exactly as stored. */
   raw: number[];
-  /** Bytes 1..7 keyed by {@link SUPPORT_BONUS_FIELDS}. */
-  bonuses: Record<string, number>;
+  /** Bytes 1..7 keyed by {@link SUPPORT_BONUS_FIELDS} - always all six. */
+  bonuses: Record<SupportBonusStat, number>;
 }
 
 /**

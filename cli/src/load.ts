@@ -542,11 +542,11 @@ export function loadRom(path: string, options: LoadOptions = {}): LoadedRom {
     if (dir === null && !warnedNoConfig) {
       warnedNoConfig = true;
       warn(
-        "config/data not found - class ability names, the event-script opcode " +
-          "table and the chapter-condition names are all unavailable, so " +
-          "`chapters`, `roles` mobility and `units` availability will be empty " +
-          "or fall back to heuristics. Set FEBUILDERGBA_CONFIG or pass " +
-          "configDir to fix this.",
+        "config/data not found - the vendored cli/data directory is missing, so " +
+          "class ability names, the event-script opcode table and the " +
+          "chapter-condition names are all unavailable. `validate` loses those " +
+          "cross-checks and an extract leaves the related tables empty. Library " +
+          "callers can pass configDir to supply a tree.",
       );
     }
     return dir;

@@ -66,7 +66,7 @@ function optionLines(
 export function usage(): string {
   const width = commandColumnWidth();
   return [
-    "fe-rom - parse GBA Fire Emblem ROMs",
+    "fe-rom - extract GBA Fire Emblem ROMs into SQLite",
     "",
     "Usage:",
     "  fe-rom <command> <rom.gba> [options]",
@@ -81,20 +81,17 @@ export function usage(): string {
     'Each command documents its own options under "fe-rom <command> --help".',
     "A command-specific option is rejected by commands that do not read it.",
     "",
+    "Analysis happens against the extracted database, with SQL. Example:",
+    "  sqlite3 dream-of-five.db 'SELECT id, name FROM roster ORDER BY id'",
+    "The full schema and its conventions are documented in src/db/schema.ts.",
+    "",
     "Exit codes: 0 ok, 1 the ROM could not be parsed, 2 bad arguments.",
     "",
     "Examples (run from cli/):",
-    "  fe-rom info         ../fixtures/dream-of-five.gba",
-    "  fe-rom roles        ../fixtures/dream-of-five.gba",
-    "  fe-rom chapters     ../fixtures/dream-of-five.gba",
-    "  fe-rom chapters     ../fixtures/dream-of-five.gba --all",
-    "  fe-rom terrain      ../fixtures/dream-of-five.gba",
-    "  fe-rom units        ../fixtures/dream-of-five.gba",
-    "  fe-rom units        ../fixtures/dream-of-five.gba --all",
-    "  fe-rom enemy-stats  ../fixtures/dream-of-five.gba --hard",
-    "  fe-rom enemy-stats  ../fixtures/dream-of-five.gba --all",
-    "  fe-rom text         ../fixtures/dream-of-five.gba 703 704 --range 0x210-0x218",
-    "  fe-rom validate     ../fixtures/dream-of-five.gba",
+    "  fe-rom extract  ../fixtures/dream-of-five.gba",
+    "  fe-rom extract  ../fixtures/dream-of-five.gba --out do5.db --lang zh",
+    "  fe-rom text     ../fixtures/dream-of-five.gba 703 704 --range 0x210-0x218",
+    "  fe-rom validate ../fixtures/dream-of-five.gba",
   ].join("\n");
 }
 

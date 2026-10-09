@@ -45,20 +45,15 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 /**
- * Where we look for `config/data`, in order.
- *
- * The vendored `cli/data/` copy is the default source, so the CLI never has to
- * reach into the sibling `FEBuilderGBA/` checkout. `FEBUILDERGBA_CONFIG` lets a
- * caller point at a full upstream `config/data` tree (e.g. a fresh release) and
- * takes precedence when it exists.
+ * The vendored `cli/data/` copy is the only source, so the CLI never has to
+ * reach into the sibling `FEBuilderGBA/` checkout and its behaviour does not
+ * depend on environment variables. Library callers can pass `configDir` to
+ * `loadRom` to point elsewhere (e.g. a fresh upstream tree).
  */
-export function defaultConfigSearchPaths(): string[] {
+function vendoredDataDir(): string {
   const here = dirname(fileURLToPath(import.meta.url));
   // src/config -> src -> cli
-  const cliRoot = resolve(here, "..", "..");
-  return [process.env["FEBUILDERGBA_CONFIG"] ?? "", join(cliRoot, "data")].filter(
-    (p) => p.length > 0,
-  );
+  return resolve(here, "..", "..", "data");
 }
 
 /**
@@ -69,10 +64,8 @@ export function findConfigDataDir(explicit?: string): string | null {
   if (explicit !== undefined) {
     return existsSync(explicit) ? explicit : null;
   }
-  for (const candidate of defaultConfigSearchPaths()) {
-    if (existsSync(candidate)) return candidate;
-  }
-  return null;
+  const vendored = vendoredDataDir();
+  return existsSync(vendored) ? vendored : null;
 }
 
 /**

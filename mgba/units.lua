@@ -1,5 +1,5 @@
 -- 由 cli/scripts/emit-mgba-units.ts 生成，不要手改。
--- 数据来源：cli/out/dream-of-five.units.json（249 条）
+-- 数据来源：/Users/shirakami_yuki/febuildergba-cli/cli/out/dream-of-five.db（units 表，249 条）
 -- 用途：mgba/fe-aodian.lua 显示单位名字。读不到这张表时脚本会退化显示 "#<id>"。
 return {
   [1] = "Rena",

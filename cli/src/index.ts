@@ -1,23 +1,23 @@
 #!/usr/bin/env node
 /**
- * fe-rom - GBA Fire Emblem ROM parser.
+ * fe-rom - GBA Fire Emblem ROM extractor.
  *
- * Extracts unit, class and support data from FE6/FE7/FE8 ROMs so it can be fed
- * to an AI for analysis.
+ * Parses FE6/FE7/FE8 ROMs once into a SQLite database so the data can be
+ * analysed with SQL instead of re-running a parser per question:
+ *
+ *     node src/index.ts extract ../fixtures/dream-of-five.gba
+ *     sqlite3 dream-of-five.db 'SELECT name FROM roster'
  *
  * Runs directly on Node >= 22.18, where TypeScript type stripping is on by
- * default (22.6 - 22.17 need `--experimental-strip-types`):
- *
- *     node src/index.ts units ../fixtures/dream-of-five.gba
- *
- * Zero runtime dependencies.
+ * default (22.6 - 22.17 need `--experimental-strip-types`). Zero runtime
+ * dependencies; the database is Node's built-in `node:sqlite`.
  *
  * This file is only the shell: parse argv, load the ROM, hand both to the
  * registered command, print the result. Everything else lives in `src/cli`
- * (flags, help, output) and `src/commands` (one file per command). To add a
- * command, drop a `Command` into `src/commands/` and list it in
- * `src/commands/registry.ts` - the usage text, the option parser and the
- * dispatcher all read from that one registry.
+ * (flags, help, output), `src/commands` (one file per command) and `src/db`
+ * (the extract schema and inserts). To add a command, drop a `Command` into
+ * `src/commands/` and list it in `src/commands/registry.ts` - the usage text,
+ * the option parser and the dispatcher all read from that one registry.
  */
 
 import {
@@ -33,9 +33,9 @@ import { commandHelp, suggestions, usage } from "./cli/help.ts";
 import { emit } from "./cli/emit.ts";
 
 /**
- * Bad invocation: the user can fix it by typing something else. Exit 2,
- * matching the old CLI. `usage` is suppressed for errors that already carry
- * their own one-line usage (a stray positional, say).
+ * Bad invocation: the user can fix it by typing something else. Exit 2.
+ * `usage` is suppressed for errors that already carry their own one-line
+ * usage (a stray positional, say).
  */
 function fail(message: string, showUsage = true): void {
   console.error(`error: ${message}`);
@@ -102,9 +102,9 @@ function main(): void {
 
   try {
     const payload = resolved.run({ rom, flags, args });
-    emit(payload, flags);
-    // After the payload, on stderr, so `--out` stays pipeable and the numbers
-    // describe the run that produced it.
+    emit(payload);
+    // After the payload, on stderr, so the numbers describe the run that
+    // produced it and stdout stays pipeable.
     if (flags.timings) {
       const stats = loadStatsFor(rom);
       if (stats !== undefined) console.error(formatLoadTrace(stats));

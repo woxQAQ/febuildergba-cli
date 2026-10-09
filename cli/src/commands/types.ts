@@ -15,34 +15,19 @@ import type { LoadedRom } from "../load.ts";
  * Adding a command: add the word here, then let `registry.ts` fail to compile
  * until you have registered it there too.
  */
-export type CommandName =
-  | "info"
-  | "units"
-  | "classes"
-  | "roles"
-  | "supports"
-  | "terrain"
-  | "chapters"
-  | "items"
-  | "shops"
-  | "objects"
-  | "enemy-stats"
-  | "text"
-  | "validate";
+export type CommandName = "extract" | "text" | "validate";
 
 /**
  * Flags resolved from the command line, after the command's own flag set has
- * been applied. `out === undefined` means stdout.
+ * been applied.
  */
 export interface ResolvedFlags {
+  /** `extract`: SQLite output path; absent means `<rom stem>.db`. */
   out?: string;
+  /** `text`: an inclusive id range to decode. */
   range?: string;
-  /** `--lang` value; absent means the default (English). */
+  /** `extract`: language for the config/data name tables baked into the db. */
   lang?: string;
-  all: boolean;
-  compact: boolean;
-  playableOnly: boolean;
-  hard: boolean;
   /** Print per-table load times to stderr - see `load.ts`. */
   timings: boolean;
 }
