@@ -66,7 +66,7 @@
 import type { RomBuffer } from "../rom/RomBuffer.ts";
 import type { ItemLayout } from "../data/layouts.ts";
 import { resolveTableSlot } from "../data/layouts.ts";
-import type { TextContext } from "../text/huffman.ts";
+import type { TextContext, TextPointerKind } from "../text/huffman.ts";
 import {
   classifyTextPointer,
   decodeTextId,
@@ -124,8 +124,8 @@ export interface Item {
   nameTextId: number;
   descTextId: number;
   useDescTextId: number;
-  /** Storage format of the name string: `huffman` | `unhuffman` | `direct`. */
-  nameKind: string;
+  /** Storage format of the name string. */
+  nameKind: TextPointerKind;
   /** Codes the item-font table has no mapping for (should stay empty). */
   nameUnknownCodes: number[];
   desc: string;
@@ -175,7 +175,7 @@ function readItemName(
   rom: RomBuffer,
   textId: number,
   text: TextContext,
-): { name: string; raw: string; kind: string; unknown: number[] } {
+): { name: string; raw: string; kind: TextPointerKind; unknown: number[] } {
   if (textId === 0) return { name: "", raw: "", kind: "invalid", unknown: [] };
 
   const entry = text.textBase + textId * 4;

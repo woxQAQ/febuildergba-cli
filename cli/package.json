@@ -14,7 +14,9 @@
     "check": "node scripts/check-upstream.ts",
     "check:update": "node scripts/check-upstream.ts --update"
   },
-  "dependencies": {},
+  "dependencies": {
+    "drizzle-orm": "^0.45.4"
+  },
   "devDependencies": {
     "@types/node": "^22.10.0",
     "typescript": "^5.7.0"

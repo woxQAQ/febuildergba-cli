@@ -21,7 +21,11 @@
 import { writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join, resolve } from "node:path";
-import { DatabaseSync } from "node:sqlite";
+
+import { and, asc, gt, ne } from "drizzle-orm";
+
+import { openDb } from "../src/db/index.ts";
+import { units } from "../src/db/schema.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = join(HERE, "..", "..");
@@ -29,15 +33,17 @@ const REPO = join(HERE, "..", "..");
 const argv = process.argv.slice(2);
 const dbPath = resolve(argv[0] ?? join(HERE, "..", "out", "dream-of-five.db"));
 
-const db = new DatabaseSync(dbPath, { readOnly: true });
-let rows: { id: number; name: string }[];
-try {
-  rows = db
-    .prepare("SELECT id, name FROM units WHERE id != 0 AND name != '' ORDER BY id")
-    .all() as { id: number; name: string }[];
-} finally {
-  db.close();
-}
+const handle = openDb(dbPath, { readOnly: true });
+// 全量（含敌人和泛用模板 —— Lua 侧要给他们也显示名字，所以不能查 roster
+// 视图）。列名显式写在查询里，schema 变了这里会立刻报错，而不是拼出一张
+// 半空的 Lua 表。
+const rows = await handle.db
+  .select({ id: units.id, name: units.name })
+  .from(units)
+  .where(and(gt(units.id, 0), ne(units.name, "")))
+  .orderBy(asc(units.id))
+  .all();
+handle.close();
 
 /** Lua 长字符串里的名字不需要转义引号，但换行和控制字符要挡掉。 */
 function luaString(s: string): string {
@@ -48,12 +54,8 @@ function luaString(s: string): string {
 }
 
 const lines: string[] = [];
-const seen = new Set<number>();
 
 for (const u of rows) {
-  // 同一个 id 出现两次时以第一条为准（角色表是定长表，理论上不会重复）
-  if (seen.has(u.id)) continue;
-  seen.add(u.id);
   lines.push(`  [${u.id}] = "${luaString(u.name)}",`);
 }
 

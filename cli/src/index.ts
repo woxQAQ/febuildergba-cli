@@ -50,6 +50,10 @@ function failRom(message: string): void {
 }
 
 function main(): void {
+  void run();
+}
+
+async function run(): Promise<void> {
   let parsed;
   try {
     parsed = parseArgv(process.argv.slice(2));
@@ -101,7 +105,7 @@ function main(): void {
   }
 
   try {
-    const payload = resolved.run({ rom, flags, args });
+    const payload = await resolved.run({ rom, flags, args });
     emit(payload);
     // After the payload, on stderr, so the numbers describe the run that
     // produced it and stdout stays pipeable.

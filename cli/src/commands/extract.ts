@@ -1,7 +1,7 @@
 import { unlinkSync } from "node:fs";
 import { basename, extname, resolve } from "node:path";
-import { DatabaseSync } from "node:sqlite";
 
+import { openDb } from "../db/index.ts";
 import { populate } from "../db/populate.ts";
 import type { Command } from "./types.ts";
 
@@ -32,7 +32,7 @@ export const extract: Command = {
     "artifact, not state.\n\n" +
     "Note: this uses Node's built-in node:sqlite, which prints an " +
     "ExperimentalWarning on stderr. It is harmless.",
-  run: ({ rom, flags }) => {
+  run: async ({ rom, flags }) => {
     const out = flags.out ?? defaultOutPath(rom.path);
 
     // Fresh extract: a stale db that half-survives looks like a finished one,
@@ -44,12 +44,12 @@ export const extract: Command = {
     }
 
     const started = performance.now();
-    const db = new DatabaseSync(out);
+    const handle = openDb(out);
     let result;
     try {
-      result = populate(db, rom);
+      result = await populate(handle, rom);
     } finally {
-      db.close();
+      handle.close();
     }
     const elapsed = performance.now() - started;
 

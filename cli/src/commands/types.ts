@@ -74,8 +74,8 @@ export interface Command {
    * `text` and its text ids.
    */
   readonly extraArgs?: string;
-  /** Build the JSON payload. Runs only after the ROM has loaded. */
-  run(context: CommandContext): unknown;
+  /** Build the payload. Runs only after the ROM has loaded. */
+  run(context: CommandContext): unknown | Promise<unknown>;
   /**
    * Exit code the process should use, given what `run` returned. Only
    * `validate` needs this - it reports failures in its payload but still has
