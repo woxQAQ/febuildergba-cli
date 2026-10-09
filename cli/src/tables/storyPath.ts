@@ -111,7 +111,7 @@ const MAX_CALL_DEPTH = 4;
 const MAX_STEPS = 4000;
 
 /** The mnemonic in parentheses at the end of a description, e.g. `(MNC2)`. */
-function mnemonicOf(description: string): string {
+export function mnemonicOf(description: string): string {
   const m = description.match(/\(([A-Z][A-Z0-9_+]*)\)/);
   return m?.[1] ?? "";
 }
@@ -123,7 +123,7 @@ function mnemonicOf(description: string): string {
  * non-fixed one, because the pointer-shaped instructions use different letters
  * again.
  */
-function destinationOf(rom: RomBuffer, code: EventCode): number {
+export function destinationOf(rom: RomBuffer, code: EventCode): number {
   const typed = code.script.args.find((a) => a.type === "MAPCHAPTER");
   if (typed !== undefined) return argValue(rom, code, typed.symbol);
   const vars = code.script.args.filter((a) => a.type !== "FIXED");
@@ -132,7 +132,7 @@ function destinationOf(rom: RomBuffer, code: EventCode): number {
 }
 
 /** The script pointer of a `CALL`, whatever letter the table gave it. */
-function callTargetOf(rom: RomBuffer, code: EventCode): number {
+export function callTargetOf(rom: RomBuffer, code: EventCode): number {
   const typed = code.script.args.find((a) => a.type === "POINTER_EVENT");
   if (typed !== undefined) return argValue(rom, code, typed.symbol);
   const vars = code.script.args.filter((a) => a.type !== "FIXED");

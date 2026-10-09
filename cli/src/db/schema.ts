@@ -27,13 +27,20 @@
  *      (pairs deduplicated from the asymmetric `support_partners`). They
  *      cannot drift from the raw layer because they ARE the raw layer,
  *      read differently.
- *   3. **`derived_*` tables**: inference SQL cannot express - event-script
- *      walks (`derived_chapter_recruits`, `derived_chapter_transitions`,
- *      ...), graph traversal (`derived_play_order`), RNG projection
- *      (`derived_enemy_samples`), cross-class heuristics
- *      (`derived_class_roles`). They are materialized at extract time
- *      because the consumer cannot recompute them without the ROM and the
- *      parser. Treat them as conclusions, not evidence.
+ *   3. **`derived_*` tables**: inference SQL cannot express even over the
+ *      raw event layer - graph traversal with branch splicing
+ *      (`derived_play_order`), RNG projection (`derived_enemy_samples`),
+ *      cross-class heuristics (`derived_class_roles`). They are
+ *      materialized at extract time because the consumer cannot recompute
+ *      them without the ROM and the parser. Treat them as conclusions, not
+ *      evidence.
+ *
+ * The walk-based derivations used to be `derived_*` tables too; with the
+ * raw event layer (`event_scripts` / `event_instructions` /
+ * `chapter_event_slots` / `load_blocks`) they are now views -
+ * `chapter_transitions`, `chapter_recruits`, `chapter_recruit_units`,
+ * `chapter_gold`, `chapter_item_gives`, `unit_joins` - so the evidence and
+ * the conclusions are both inspectable.
  *
  * Conventions:
  *
@@ -448,20 +455,6 @@ export const chapterPlacementSteps = sqliteTable(
 );
 
 /**
- * A story-advancing destination found in a chapter's END_EVENT.
- * `call_depth` > 0 means the instruction lives in a shared CALL helper, so
- * it fires for every chapter that calls that helper.
- */
-export const derivedChapterTransitions = sqliteTable("derived_chapter_transitions", {
-  mapIndex: integer("map_index").notNull(),
-  /** Destination: a map-setting index, not a chapter number. */
-  targetMap: integer("target_map").notNull(),
-  /** The opcode that carried the transition. */
-  opcode: text("opcode").notNull(),
-  callDepth: integer("call_depth").notNull(),
-});
-
-/**
  * The order chapters are actually played in. THIS, not chapter_number,
  * orders the game; see tables/storyPath.ts.
  */
@@ -473,28 +466,6 @@ export const derivedPlayOrder = sqliteTable("derived_play_order", {
   role: text("role", { enum: ["main", "side"] }).notNull(),
   playable: integer("playable", { mode: "boolean" }).notNull(),
 });
-
-/**
- * Earliest chapter per unit, from placements and LOAD1 instructions.
- * kind: "join" = in the player's army; "appearance" = any load, incl. guests.
- */
-export const derivedUnitJoins = sqliteTable(
-  "derived_unit_joins",
-  {
-    unitId: integer("unit_id").notNull(),
-    kind: text("kind", { enum: ["join", "appearance"] }).notNull(),
-    mapIndex: integer("map_index").notNull(),
-    /** play_order.position; NULL when the map is off every known path. */
-    storyOrder: integer("story_order"),
-    source: text("source", { enum: ["placement", "recruit", "load", "cutscene"] }).notNull(),
-    classOverridden: integer("class_overridden", { mode: "boolean" }).notNull(),
-    placedClassId: integer("placed_class_id").notNull(),
-  },
-  (t) => [
-    primaryKey({ columns: [t.unitId, t.kind] }),
-    foreignKey({ columns: [t.mapIndex], foreignColumns: [chapters.mapIndex] }),
-  ],
-);
 
 export const mapObjects = sqliteTable("map_objects", {
   mapIndex: integer("map_index").notNull(),
@@ -536,37 +507,87 @@ export const condSlots = sqliteTable("cond_slots", {
   kind: text("kind").notNull(),
 });
 
+// ---------------------------------------------------------- raw event layer
+// See tables/eventTrace.ts for the extraction rules. Everything walk-based
+// (transitions, recruits, gold, joins) is a VIEW over these tables - ddl.ts.
+
 /**
- * Load sites found by the event-script walk, per chapter. `site` is the
- * ordinal of the hit within the chapter. The units each site loads are in
- * `chapter_recruit_units` - they join to `units` and carry an allegiance,
- * which a bare id list could not say.
+ * One unique event script, decoded once. Helpers shared via CALL appear once
+ * and are referenced by many chapters through `event_instructions`.
  */
-export const derivedChapterRecruits = sqliteTable(
-  "derived_chapter_recruits",
+export const eventScripts = sqliteTable("event_scripts", {
+  id: integer("id").primaryKey(),
+  /** Why the linear decode stopped; "exit" is the clean case. */
+  stopReason: text("stop_reason").notNull(),
+  instructionCount: integer("instruction_count").notNull(),
+});
+
+export const eventInstructions = sqliteTable(
+  "event_instructions",
+  {
+    scriptId: integer("script_id").notNull(),
+    /** Ordinal within the script's linear decode. */
+    seq: integer("seq").notNull(),
+    /** Mnemonic from the opcode table, e.g. MNC2; UNKNOWN when unmatched. */
+    opcode: text("opcode").notNull(),
+    /** The opcode table's {CATEGORY} tokens. */
+    category: text("category").notNull(),
+    /** Raw instruction bytes, hex - the ground truth behind every column here. */
+    bytesHex: text("bytes_hex").notNull(),
+    /** Load classification of a POINTER_UNIT argument; NULL when not a load. */
+    loadKind: text("load_kind", { enum: ["recruit", "load", "cutscene", "other"] }),
+    /** Unit block a POINTER_UNIT argument points at; NULL otherwise. */
+    blockId: integer("block_id"),
+    /** Script a POINTER_EVENT argument (CALL) points at; NULL otherwise. */
+    callScriptId: integer("call_script_id"),
+    /** Destination map of a transition opcode; NULL otherwise. */
+    targetMap: integer("target_map"),
+    /** First gold literal inside the instruction, signed; NULL otherwise. */
+    goldDelta: integer("gold_delta"),
+    /** Item handed over by a {ITEM}-category instruction; NULL otherwise. */
+    itemId: integer("item_id"),
+    /** Unit receiving it; 0xFFFF = the unit currently acting. */
+    giveUnitId: integer("give_unit_id"),
+  },
+  (t) => [
+    primaryKey({ columns: [t.scriptId, t.seq] }),
+    foreignKey({ columns: [t.scriptId], foreignColumns: [eventScripts.id] }),
+  ],
+);
+
+/** One condition-slot entry of one chapter, linked to the script it runs. */
+export const chapterEventSlots = sqliteTable(
+  "chapter_event_slots",
   {
     mapIndex: integer("map_index").notNull(),
-    /** Ordinal of the load site within the chapter. */
-    site: integer("site").notNull(),
-    /** Which load instruction this is: recruit | load | cutscene. */
-    kind: text("kind", { enum: ["recruit", "load", "cutscene"] }).notNull(),
+    slotIndex: integer("slot_index").notNull(),
+    slotKind: text("slot_kind").notNull(),
+    /** Row number within a table-kind slot; 0 for direct (START/END) slots. */
+    position: integer("position").notNull(),
+    /** Raw record bytes, hex; "" for direct slots. */
+    dataHex: text("data_hex").notNull(),
+    scriptId: integer("script_id"),
   },
-  (t) => [primaryKey({ columns: [t.mapIndex, t.site] })],
+  (t) => [
+    primaryKey({ columns: [t.mapIndex, t.slotIndex, t.position] }),
+    foreignKey({ columns: [t.mapIndex], foreignColumns: [chapters.mapIndex] }),
+  ],
 );
 
 /**
- * One row per unit record in a load site's placement block.
- *
- * `side` matters: hacks routinely use LOAD1 to place *enemy* units, so a
- * `recruit` row in the parent table does not mean these units join the
- * player's army - only `side = 'player'` ones do.
+ * Unit blocks that event instructions point at (LOAD* targets). Same record
+ * format as the initial placement blocks; ids are assigned at extract time
+ * because the blocks have no identity of their own besides their offset.
  */
-export const derivedChapterRecruitUnits = sqliteTable(
-  "derived_chapter_recruit_units",
+export const loadBlocks = sqliteTable("load_blocks", {
+  id: integer("id").primaryKey(),
+});
+
+export const loadBlockUnits = sqliteTable(
+  "load_block_units",
   {
-    mapIndex: integer("map_index").notNull(),
-    site: integer("site").notNull(),
-    /** Row number within the site's block. */
+    blockId: integer("block_id").notNull(),
+    /** Row number within the block. */
     position: integer("position").notNull(),
     unitId: integer("unit_id").notNull(),
     /** 0 = the unit's own class. */
@@ -577,28 +598,10 @@ export const derivedChapterRecruitUnits = sqliteTable(
     y: integer("y").notNull(),
   },
   (t) => [
-    primaryKey({ columns: [t.mapIndex, t.site, t.position] }),
-    foreignKey({
-      columns: [t.mapIndex, t.site],
-      foreignColumns: [derivedChapterRecruits.mapIndex, derivedChapterRecruits.site],
-    }),
+    primaryKey({ columns: [t.blockId, t.position] }),
+    foreignKey({ columns: [t.blockId], foreignColumns: [loadBlocks.id] }),
   ],
 );
-
-/** Direct gold writes reachable from a chapter's scripts. */
-export const derivedChapterGold = sqliteTable("derived_chapter_gold", {
-  mapIndex: integer("map_index").notNull(),
-  /** Signed: gain or lose. */
-  delta: integer("delta").notNull(),
-});
-
-/** Item grants reachable from a chapter's scripts. */
-export const derivedChapterItemGives = sqliteTable("derived_chapter_item_gives", {
-  mapIndex: integer("map_index").notNull(),
-  itemId: integer("item_id").notNull(),
-  /** 0xFFFF = the unit currently acting. */
-  unitId: integer("unit_id").notNull(),
-});
 
 /**
  * One row per projected enemy placement record, per autolevel mode. "hard"
@@ -657,14 +660,14 @@ export const TABLES = [
   mapObjects,
   forceSortie,
   condSlots,
-  // Materialized inference - see the layer list in the module doc.
+  // Raw event layer - walk-based derivations are views over these (ddl.ts).
+  eventScripts,
+  eventInstructions,
+  chapterEventSlots,
+  loadBlocks,
+  loadBlockUnits,
+  // Materialized inference SQL cannot express - see the module doc.
   derivedClassRoles,
-  derivedChapterRecruits,
-  derivedChapterRecruitUnits,
-  derivedChapterTransitions,
   derivedPlayOrder,
-  derivedUnitJoins,
-  derivedChapterGold,
-  derivedChapterItemGives,
   derivedEnemySamples,
 ] as const;

@@ -16,6 +16,7 @@ import { getTableConfig } from "drizzle-orm/sqlite-core";
 
 import type { LoadedRom } from "../load.ts";
 import { collectEnemyStats } from "../analysis/enemyStats.ts";
+import { extractEventTrace } from "../tables/eventTrace.ts";
 import { createSchemaSql } from "./ddl.ts";
 import type { ExtractDb, OpenDb } from "./index.ts";
 import * as t from "./schema.ts";
@@ -40,12 +41,12 @@ export async function populate(handle: OpenDb, rom: LoadedRom): Promise<Populate
     await insertItemsAndTerrain(db, rom);
     await insertChapters(db, rom);
     await insertStory(db, rom);
-    const truncatedWalks = await insertEventScans(db, rom);
+    await insertEventTrace(db, rom);
+    await insertWorldData(db, rom);
     const unresolvedEnemyClasses = await insertEnemySamples(db, rom);
-    await db.insert(t.meta).values([
-      { key: "scan.truncatedWalks", value: String(truncatedWalks) },
-      { key: "enemy.unresolvedClasses", value: String(unresolvedEnemyClasses) },
-    ]);
+    await db
+      .insert(t.meta)
+      .values({ key: "enemy.unresolvedClasses", value: String(unresolvedEnemyClasses) });
     sqlite.exec("COMMIT");
 
     // Row counts measured, not tallied: the number reported is the number
@@ -367,17 +368,14 @@ async function insertChapters(db: ExtractDb, rom: LoadedRom): Promise<void> {
   }
 }
 
+/**
+ * The play order is the one story-path artifact that stays materialized:
+ * branch splicing ("a side chapter is played between its branch parent and
+ * the next main chapter") is a custom ordering SQL cannot express. The
+ * transitions it reads are the `chapter_transitions` view over the raw
+ * event layer.
+ */
 async function insertStory(db: ExtractDb, rom: LoadedRom): Promise<void> {
-  for (const e of rom.mapTransitions) {
-    for (const tr of e.transitions) {
-      await db.insert(t.derivedChapterTransitions).values({
-        mapIndex: e.mapIndex,
-        targetMap: tr.targetMap,
-        opcode: tr.opcode,
-        callDepth: tr.callDepth,
-      });
-    }
-  }
   for (const step of rom.playOrder.steps) {
     await db.insert(t.derivedPlayOrder).values({
       mapIndex: step.mapIndex,
@@ -386,66 +384,71 @@ async function insertStory(db: ExtractDb, rom: LoadedRom): Promise<void> {
       playable: step.playable,
     });
   }
+}
 
-  for (const [kind, map] of [
-    ["join", rom.joins.joins],
-    ["appearance", rom.joins.appearances],
-  ] as const) {
-    for (const [unitId, ev] of map) {
-      await db.insert(t.derivedUnitJoins).values({
-        unitId,
-        kind,
-        mapIndex: ev.chapterIndex,
-        storyOrder: ev.storyOrder,
-        source: ev.source,
-        classOverridden: ev.classOverridden,
-        placedClassId: ev.placedClassId,
-      });
-    }
+/**
+ * The raw event layer: scripts, instructions, slot links and load blocks.
+ * Walk-based derivations (transitions, recruits, gold, joins) are views over
+ * these tables - nothing derived is inserted here.
+ */
+async function insertEventTrace(db: ExtractDb, rom: LoadedRom): Promise<void> {
+  const trace = extractEventTrace(rom.rom, rom.layout, rom.chapters, rom.condSlots, rom.eventScripts);
+  for (const script of trace.scripts) {
+    await db.insert(t.eventScripts).values({
+      id: script.id,
+      stopReason: script.stopReason,
+      instructionCount: script.instructionCount,
+    });
+  }
+  for (const i of trace.instructions) {
+    await db.insert(t.eventInstructions).values({
+      scriptId: i.scriptId,
+      seq: i.seq,
+      opcode: i.opcode,
+      category: i.category,
+      bytesHex: i.bytesHex,
+      loadKind: i.loadKind,
+      blockId: i.blockId,
+      callScriptId: i.callScriptId,
+      targetMap: i.targetMap,
+      goldDelta: i.goldDelta,
+      itemId: i.itemId,
+      giveUnitId: i.giveUnitId,
+    });
+  }
+  for (const slot of trace.chapterSlots) {
+    await db.insert(t.chapterEventSlots).values({
+      mapIndex: slot.mapIndex,
+      slotIndex: slot.slotIndex,
+      slotKind: slot.slotKind,
+      position: slot.position,
+      dataHex: slot.dataHex,
+      scriptId: slot.scriptId,
+    });
+  }
+  for (let id = 0; id < trace.loadBlockCount; id++) {
+    await db.insert(t.loadBlocks).values({ id });
+  }
+  for (const u of trace.loadBlockUnits) {
+    await db.insert(t.loadBlockUnits).values({
+      blockId: u.blockId,
+      position: u.position,
+      unitId: u.unitId,
+      classId: u.classId,
+      level: u.level,
+      side: u.side,
+      x: u.x,
+      y: u.y,
+    });
   }
 }
 
-/** Returns the total truncated walk count, for meta. */
-async function insertEventScans(db: ExtractDb, rom: LoadedRom): Promise<number> {
+/** Condition slots, shops, map objects and the forced-sortie table. */
+async function insertWorldData(db: ExtractDb, rom: LoadedRom): Promise<void> {
   for (const slot of rom.condSlots) {
     await db
       .insert(t.condSlots)
       .values({ idx: slot.index, flag: slot.flag, name: slot.name, kind: slot.kind });
-  }
-
-  let truncatedWalks = 0;
-  for (const scan of rom.chapterScans) {
-    truncatedWalks += scan.truncatedWalks;
-    for (const [site, r] of scan.recruits.entries()) {
-      await db.insert(t.derivedChapterRecruits).values({
-        mapIndex: scan.chapterIndex,
-        site,
-        kind: r.kind,
-      });
-      for (const [position, u] of r.units.entries()) {
-        await db.insert(t.derivedChapterRecruitUnits).values({
-          mapIndex: scan.chapterIndex,
-          site,
-          position,
-          unitId: u.unitId,
-          classId: u.classId,
-          level: u.level,
-          side: u.side,
-          x: u.prePlacementCoord.x,
-          y: u.prePlacementCoord.y,
-        });
-      }
-    }
-    for (const g of scan.gold) {
-      await db.insert(t.derivedChapterGold).values({ mapIndex: scan.chapterIndex, delta: g.delta });
-    }
-    for (const g of scan.itemsGiven) {
-      await db.insert(t.derivedChapterItemGives).values({
-        mapIndex: scan.chapterIndex,
-        itemId: g.itemId,
-        unitId: g.unitId,
-      });
-    }
   }
 
   // Shops before objects: a map object links to its shop by id, and the link
@@ -496,7 +499,6 @@ async function insertEventScans(db: ExtractDb, rom: LoadedRom): Promise<number> 
     }
   }
 
-  return truncatedWalks;
 }
 
 /**
