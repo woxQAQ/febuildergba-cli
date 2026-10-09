@@ -45,6 +45,7 @@
  */
 
 import type { RomBuffer } from '../rom/RomBuffer.ts';
+import { hex } from '../format.ts';
 import type { GameLayout } from '../data/layouts.ts';
 import type { Chapter } from './chapters.ts';
 
@@ -127,7 +128,7 @@ export function readChapterObjects(
     const flag = rom.u16(addr + 2);
     const payload = rom.u32(addr + 4);
     const objectType = rom.u8(addr + 10);
-    const kind = OBJECT_TRIGGER_TYPES[type] ?? `type0x${type.toString(16)}`;
+    const kind = OBJECT_TRIGGER_TYPES[type] ?? `type${hex(type)}`;
 
     const isChest = type === 0x07;
     const isShop = type === 0x0a;
@@ -147,7 +148,7 @@ export function readChapterObjects(
       objectType,
       objectTypeName:
         OBJECT_TYPE_NAMES[objectType] ??
-        (isChest && objectType === chestType ? 'chest' : `0x${objectType.toString(16)}`),
+        (isChest && objectType === chestType ? 'chest' : hex(objectType)),
       x: rom.u8(addr + 8),
       y: rom.u8(addr + 9),
       itemId,

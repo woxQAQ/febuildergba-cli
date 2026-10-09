@@ -36,7 +36,7 @@ import type { TerrainReadResult } from './tables/terrainNames.ts';
 import { readTerrainNames } from './tables/terrainNames.ts';
 import type { ClassRole } from './tables/classRoles.ts';
 import { deriveClassRoles } from './tables/classRoles.ts';
-import { findConfigDataDir } from './config/data.ts';
+import { findConfigDataDir, languageSuffixes } from './config/data.ts';
 import type { ClassFlagDef } from './tables/classFlags.ts';
 import { loadClassFlags } from './tables/classFlags.ts';
 import type { EventScriptTable, CondSlot } from './tables/eventScript.ts';
@@ -66,6 +66,17 @@ import { readShops } from './tables/shops.ts';
 import type { ChapterObjects, MapObject } from './tables/mapObjects.ts';
 import { readAllObjects } from './tables/mapObjects.ts';
 
+/**
+ * One ROM, parsed as far as the caller has asked for.
+ *
+ * Note on the shape: everything past `path` / `rom` / `identity` / `layout` /
+ * `text` is installed as a **non-enumerable memoised getter**, not a data
+ * field. Reading one parses that table; nothing else does. They are
+ * deliberately non-enumerable so that `JSON.stringify(rom)` or `{ ...rom }`
+ * - which would otherwise force every table, including the ~650 ms
+ * `chapterScans` walk - silently yields only the eager fields instead of
+ * quietly doing minutes of work.
+ */
 export interface LoadedRom {
   path: string;
   rom: RomBuffer;
@@ -93,6 +104,12 @@ export interface LoadedRom {
   terrainNames: TerrainReadResult;
   /** Resolved `config/data` directory, or `null` when not found. */
   configDir: string | null;
+  /**
+   * The `--lang` value this ROM was loaded with, or `null` for the default.
+   * Reported by `info` so a surprising name in the output can be traced to a
+   * language choice rather than guessed at.
+   */
+  configLanguage: string | null;
   /** Class ability-flag definitions; empty when `config/data` is missing. */
   classFlagDefs: ClassFlagDef[];
   /** Event-script opcode table; empty when `config/data` is missing. */
@@ -145,6 +162,17 @@ export interface LoadOptions {
    * copy (see `config/data.ts`); override only to test against an upstream tree.
    */
   configDir?: string;
+  /**
+   * `--lang` value for the `config/data` name tables (`en` / `ja` / `zh`).
+   * Defaults to English - see `config/data.ts` for why this differs from
+   * FEBuilderGBA's own order.
+   */
+  language?: string;
+  /**
+   * Where to send the "config/data is missing" warning. Defaults to stderr.
+   * Pass a no-op to stay quiet (library use).
+   */
+  warn?: (message: string) => void;
 }
 
 export class UnsupportedRomError extends Error {
@@ -154,17 +182,43 @@ export class UnsupportedRomError extends Error {
   }
 }
 
+/**
+ * The ROM file could not be read at all - missing, unreadable, a directory.
+ * Distinct from `UnsupportedRomError` because the user can fix it by fixing
+ * the path, and it deserves a one-line message rather than a stack trace.
+ */
+export class RomNotFoundError extends Error {
+  // Written out rather than as constructor parameter properties: Node's type
+  // stripping erases types, and a parameter property is a *runtime* construct
+  // it cannot erase.
+  readonly path: string;
+  readonly reason: string;
+
+  constructor(path: string, reason: string) {
+    super(`cannot read ROM file: ${reason}`);
+    this.name = 'RomNotFoundError';
+    this.path = path;
+    this.reason = reason;
+  }
+}
+
 /** `FE8U` -> `FE8`. FEBuilderGBA's `TitleToFilename` fragment. */
 export function titleFragment(version: string): string {
   return version.slice(0, 3);
 }
 
-/** A property that computes itself once, on first read. */
+/**
+ * A property that computes itself once, on first read.
+ *
+ * Non-enumerable on purpose - see the `LoadedRom` doc comment. Reading is
+ * still the only way to get a value; you just cannot enumerate your way into
+ * computing all of them.
+ */
 function memo<T>(compute: () => T): PropertyDescriptor {
   let done = false;
   let value: T;
   return {
-    enumerable: true,
+    enumerable: false,
     configurable: true,
     get(): T {
       if (!done) {
@@ -199,7 +253,19 @@ function promotedClassIdsOf(classes: readonly UnitClass[]): Set<number> {
 }
 
 export function loadRom(path: string, options: LoadOptions = {}): LoadedRom {
-  const buffer = new RomBuffer(readFileSync(path));
+  // A wrong path is the most common way to invoke this CLI wrong, so it gets a
+  // message instead of Node's stack trace.
+  let bytes: Buffer;
+  try {
+    bytes = readFileSync(path);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === 'ENOENT') throw new RomNotFoundError(path, 'no such file');
+    if (code === 'EISDIR') throw new RomNotFoundError(path, 'is a directory');
+    if (code === 'EACCES') throw new RomNotFoundError(path, 'permission denied');
+    throw new RomNotFoundError(path, (error as Error).message);
+  }
+  const buffer = new RomBuffer(bytes);
   const identity = detectVersion(buffer);
 
   if (!identity.version) {
@@ -222,6 +288,30 @@ export function loadRom(path: string, options: LoadOptions = {}): LoadedRom {
   // up the Huffman tables without decoding anything.
   const text = makeTextContext(buffer, layout.text);
   const game = titleFragment(identity.version);
+  const warn = options.warn ?? ((message: string) => console.error(`warning: ${message}`));
+  const language = options.language;
+  if (language !== undefined && languageSuffixes(language) === null) {
+    // loadRom is also a library entry point, so it cannot assume the CLI
+    // validated `--lang` first.
+    warn(`unknown --lang "${language}"; falling back to the default language`);
+  }
+  // Only warn once, and only about the directory: a missing *file* for this
+  // particular game is reported by whichever table turns up empty.
+  let warnedNoConfig = false;
+  const requireConfigDir = (): string | null => {
+    const dir = self.configDir;
+    if (dir === null && !warnedNoConfig) {
+      warnedNoConfig = true;
+      warn(
+        'config/data not found - class ability names, the event-script opcode ' +
+          'table and the chapter-condition names are all unavailable, so ' +
+          '`chapters`, `roles` mobility and `units` availability will be empty ' +
+          'or fall back to heuristics. Set FEBUILDERGBA_CONFIG or pass ' +
+          'configDir to fix this.',
+      );
+    }
+    return dir;
+  };
   const self = { path, rom: buffer, identity, layout, text } as unknown as LoadedRom;
 
   Object.defineProperties(self, {
@@ -229,9 +319,10 @@ export function loadRom(path: string, options: LoadOptions = {}): LoadedRom {
     // table. Without it we can still parse, but roles lose the mounted/armour
     // distinction and the chapters lose their script walks.
     configDir: memo(() => findConfigDataDir(options.configDir)),
+    configLanguage: memo(() => options.language ?? null),
     classFlagDefs: memo(() => {
-      const dir = self.configDir;
-      return dir === null ? [] : loadClassFlags(dir, game);
+      const dir = requireConfigDir();
+      return dir === null ? [] : loadClassFlags(dir, game, language);
     }),
 
     classTable: memo(() => resolveTable(buffer, layout.unitClass)),
@@ -275,12 +366,12 @@ export function loadRom(path: string, options: LoadOptions = {}): LoadedRom {
     terrainNames: memo(() => readTerrainNames(buffer, layout.terrainNames, text)),
 
     eventScripts: memo(() => {
-      const dir = self.configDir;
-      return dir === null ? { scripts: [], source: null } : loadEventScripts(dir, game);
+      const dir = requireConfigDir();
+      return dir === null ? { scripts: [], source: null } : loadEventScripts(dir, game, language);
     }),
     rawCondSlots: memo(() => {
-      const dir = self.configDir;
-      return dir === null ? [] : loadConditionSlots(dir, game);
+      const dir = requireConfigDir();
+      return dir === null ? [] : loadConditionSlots(dir, game, language);
     }),
     condSlots: memo(() => describeCondSlots(self.rawCondSlots)),
 

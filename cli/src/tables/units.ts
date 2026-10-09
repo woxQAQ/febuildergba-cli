@@ -25,6 +25,7 @@
  */
 
 import { RomBuffer } from '../rom/RomBuffer.ts';
+import { hex } from '../format.ts';
 import type { TextContext } from '../text/huffman.ts';
 import { decodeTextId, displayName, sanitizeName, sanitizeText } from '../text/huffman.ts';
 import type { ClassBases } from './classes.ts';
@@ -329,5 +330,5 @@ export function buildUnitNameMap(units: readonly Unit[]): Map<number, string> {
 export function unitNameOrId(nameMap: ReadonlyMap<number, string>, id: number): string {
   const name = nameMap.get(id);
   if (name && name.length > 0) return name;
-  return `Unit 0x${id.toString(16).toUpperCase().padStart(2, '0')}`;
+  return `Unit ${hex(id, 2)}`;
 }

@@ -1,4 +1,4 @@
-import { hex } from '../cli/hex.ts';
+import { hex } from '../format.ts';
 import { affinityLabel } from './shared.ts';
 import { SUPPORT_RANK_THRESHOLDS, SUPPORT_CONVERSATION_CAPS } from '../tables/supports.ts';
 import { SUPPORT_BONUS_STATS, rankedBonus } from '../tables/supportBonus.ts';
@@ -66,6 +66,20 @@ export const info: Command = {
           ),
           byRank: rankedBonus(b),
         })),
+      },
+      /**
+       * Where the `config/data` name tables came from. These supply the chapter
+       * condition names, the event-script opcode table and the class ability
+       * bit names; when the directory is missing, three commands silently lose
+       * a dimension, so it is worth stating outright.
+       */
+      configData: {
+        directory: rom.configDir,
+        /** The `--lang` requested, or `null` for the default (English). */
+        language: rom.configLanguage,
+        eventScriptTable: rom.eventScripts.source,
+        classAbilityBits: rom.classFlagDefs.length,
+        conditionSlots: rom.condSlots.length,
       },
       terrainNames: {
         table: rom.terrainNames.table?.tableOffset ?? null,

@@ -57,7 +57,12 @@ function optionLines(
   });
 }
 
-/** `fe-rom --help` */
+/**
+ * `fe-rom --help`
+ *
+ * The examples assume the current directory is `cli/`, which is where the
+ * package lives and where its npm scripts run from.
+ */
 export function usage(): string {
   const width = commandColumnWidth();
   return [
@@ -76,18 +81,20 @@ export function usage(): string {
     'Each command documents its own options under "fe-rom <command> --help".',
     'A command-specific option is rejected by commands that do not read it.',
     '',
-    'Examples:',
-    '  fe-rom info         fixtures/dream-of-five.gba',
-    '  fe-rom roles        fixtures/dream-of-five.gba',
-    '  fe-rom chapters     fixtures/dream-of-five.gba',
-    '  fe-rom chapters     fixtures/dream-of-five.gba --all',
-    '  fe-rom terrain      fixtures/dream-of-five.gba',
-    '  fe-rom units        fixtures/dream-of-five.gba',
-    '  fe-rom units        fixtures/dream-of-five.gba --all',
-    '  fe-rom enemy-stats  fixtures/dream-of-five.gba --hard',
-    '  fe-rom enemy-stats  fixtures/dream-of-five.gba --all',
-    '  fe-rom text         fixtures/dream-of-five.gba 703 704 --range 0x210-0x218',
-    '  fe-rom validate     fixtures/dream-of-five.gba',
+    'Exit codes: 0 ok, 1 the ROM could not be parsed, 2 bad arguments.',
+    '',
+    'Examples (run from cli/):',
+    '  fe-rom info         ../fixtures/dream-of-five.gba',
+    '  fe-rom roles        ../fixtures/dream-of-five.gba',
+    '  fe-rom chapters     ../fixtures/dream-of-five.gba',
+    '  fe-rom chapters     ../fixtures/dream-of-five.gba --all',
+    '  fe-rom terrain      ../fixtures/dream-of-five.gba',
+    '  fe-rom units        ../fixtures/dream-of-five.gba',
+    '  fe-rom units        ../fixtures/dream-of-five.gba --all',
+    '  fe-rom enemy-stats  ../fixtures/dream-of-five.gba --hard',
+    '  fe-rom enemy-stats  ../fixtures/dream-of-five.gba --all',
+    '  fe-rom text         ../fixtures/dream-of-five.gba 703 704 --range 0x210-0x218',
+    '  fe-rom validate     ../fixtures/dream-of-five.gba',
   ].join('\n');
 }
 
@@ -111,13 +118,43 @@ export function commandHelp(command: Command): string {
   return lines.join('\n');
 }
 
+/** Levenshtein distance, iterative two-row form. */
+function editDistance(a: string, b: string): number {
+  if (a === b) return 0;
+  let previous = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    const current = [i];
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      current[j] = Math.min(
+        (current[j - 1] as number) + 1,
+        (previous[j] as number) + 1,
+        (previous[j - 1] as number) + cost,
+      );
+    }
+    previous = current;
+  }
+  return previous[b.length] as number;
+}
+
 /**
- * Near-misses for an unknown command word: names containing it, or containing
- * a name from it. Empty string when nothing is close enough to mention.
+ * Near-misses for an unknown command word.
+ *
+ * Substring matching alone misses the common typo - `untis` contains no
+ * command name and contains no substring of one, so it drew a blank line. A
+ * plain edit distance catches it; the threshold scales with the word length so
+ * a short name is not matched by something wildly unlike it.
  */
 export function suggestions(input: string): string[] {
   const lower = input.toLowerCase();
-  return COMMANDS.map((c) => c.name).filter(
+  const substring = COMMANDS.map((c) => c.name).filter(
     (name) => name.includes(lower) || lower.includes(name),
   );
+  if (substring.length > 0) return substring;
+
+  const tolerance = lower.length <= 4 ? 1 : lower.length <= 8 ? 2 : 3;
+  return COMMANDS.map((c) => ({ name: c.name, distance: editDistance(lower, c.name) }))
+    .filter((c) => c.distance <= tolerance)
+    .sort((x, y) => x.distance - y.distance)
+    .map((c) => c.name);
 }

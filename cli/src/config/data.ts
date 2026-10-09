@@ -34,8 +34,10 @@
  *
  * Language variants sit alongside each other as `<name>.<lang>.txt`
  * (`unitclass_checkbox_FE8.txt`, `.en.txt`, `.zh.txt`). The bare name is
- * Japanese. We prefer the caller's language, then English, then the bare file -
- * mirroring `U.ConfigDataFilename` (U.cs:3180).
+ * Japanese. `U.ConfigDataFilename` (U.cs:3180) tries the caller's language,
+ * then English, then the bare file - but the CLI's caller is a program, not a
+ * person, and its output is read by an AI: so the default order here is
+ * English, bare (Japanese), Chinese. Pass `--lang` to change it.
  */
 
 import { existsSync, readFileSync } from 'node:fs';
@@ -73,23 +75,51 @@ export function findConfigDataDir(explicit?: string): string | null {
   return null;
 }
 
-/** Languages to try, in order. The bare filename is Japanese. */
-const LANGUAGE_SUFFIXES = ['', '.en', '.zh'];
+/**
+ * Languages this CLI knows how to ask for, by `--lang` value.
+ *
+ * `ja` is the bare filename (no suffix); the other two are the suffixed
+ * variants. Each entry lists the suffixes to try in order: the requested
+ * language first, then English, then the bare file, so a missing translation
+ * degrades to something readable instead of to nothing.
+ */
+export const LANGUAGES: Readonly<Record<string, readonly string[]>> = {
+  en: ['.en', '', '.zh'],
+  ja: ['', '.en', '.zh'],
+  zh: ['.zh', '.en', ''],
+};
+
+/** Languages `--lang` accepts, in help-text order. */
+export const LANGUAGE_NAMES: readonly string[] = Object.keys(LANGUAGES);
+
+/** Default when `--lang` is absent: English, then bare (Japanese), then Chinese. */
+export const DEFAULT_LANGUAGE = 'en';
 
 /**
- * Resolve `<prefix><game><lang>.txt` the way `U.ConfigDataFilename` does.
+ * Suffixes to try for a `--lang` value, or `null` when the language is not one
+ * we know. Callers validate the name; this is the second gate.
+ */
+export function languageSuffixes(language: string | undefined): readonly string[] | null {
+  if (language === undefined) return LANGUAGES[DEFAULT_LANGUAGE] as readonly string[];
+  return LANGUAGES[language] ?? null;
+}
+
+/**
+ * Resolve `<prefix><game><lang>.txt`.
  *
  * `game` is the `TitleToFilename` fragment - `FE6`, `FE7`, `FE8` - or `ALL`.
- * Returns `null` when no variant exists.
+ * `language` is a `--lang` value. Returns `null` when no variant exists.
  */
 export function resolveDataFile(
   dir: string,
   prefix: string,
   game: string,
-  languages: readonly string[] = LANGUAGE_SUFFIXES,
+  language?: string,
 ): string | null {
-  for (const lang of languages) {
-    const path = join(dir, `${prefix}${game}${lang}.txt`);
+  const suffixes = languageSuffixes(language);
+  if (suffixes === null) return null;
+  for (const suffix of suffixes) {
+    const path = join(dir, `${prefix}${game}${suffix}.txt`);
     if (existsSync(path)) return path;
   }
   return null;

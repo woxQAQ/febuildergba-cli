@@ -8,10 +8,15 @@ export const roles: Command = {
     'What the roster can actually field: which units cover each weapon type, ' +
     'who can heal or cast, and how many of them move at each speed.',
   run: ({ rom, flags }) => {
+    // Every non-empty unit slot, independent of any flag. Counting `playable`
+    // here made the field mean two different things depending on argv, and its
+    // documented value (255 on FE8U) only ever appeared without the flag.
+    const populated = rom.units.filter((u) => !u.isEmpty);
+
     const supportUnitIds = new Set(rom.supports.entries.map((e) => e.unitId));
-    const playable = rom.units.filter(
-      (u) => !u.isEmpty && (!flags.playableOnly || supportUnitIds.has(u.id)),
-    );
+    const playable = flags.playableOnly
+      ? populated.filter((u) => supportUnitIds.has(u.id))
+      : populated;
 
     // Which playable units can use each weapon type.
     const byWeapon = new Map<string, { id: number; name: string; className: string }[]>();
@@ -43,18 +48,20 @@ export const roles: Command = {
       roster: {
         /**
          * Every populated unit slot - NOT the player roster. Enemies, bosses and
-         * generic templates ("Priest", "Outlaw") are in here too. Use
-         * `withSupportData` as a rough proxy for "actually playable", or the
-         * `chapters` command for join order.
+         * generic templates ("Priest", "Outlaw") are in here too. Fixed at 255
+         * on an unmodified FE8U; `--playable-only` never changes it.
          */
-        populatedUnitSlots: playable.length,
+        populatedUnitSlots: populated.length,
         withSupportData: supportUnitIds.size,
         filteredToPlayableOnly: flags.playableOnly,
         classesInUse: new Set(playable.map((u) => u.classId)).size,
-        note:
-          'populatedUnitSlots counts every non-empty record, including enemies ' +
-          'and generic templates. Use --playable-only to narrow to units that ' +
-          'carry support data.',
+        note: flags.playableOnly
+          ? 'populatedUnitSlots counts every non-empty record, including enemies ' +
+            'and generic templates; it is not narrowed by --playable-only. Only ' +
+            'coverage / healers / magicUsers below are.'
+          : 'populatedUnitSlots counts every non-empty record, including enemies ' +
+            'and generic templates. Use --playable-only to narrow to units that ' +
+            'carry support data.',
       },
       coverage: {
         weaponTypes: Object.fromEntries(

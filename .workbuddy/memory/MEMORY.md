@@ -18,9 +18,39 @@
 **给 `load.ts` 加表**：只有 `readFileSync`/`detectVersion`/`getLayout`/`makeTextContext`
 是急切的，其余都是 `memo()` 记忆化 getter。**getter 的依赖靠"读另一个 getter"声明，
 文件里的顺序没有意义**，加表时不必考虑排序。
+**memo 是 non-enumerable**（第六轮改）：`JSON.stringify(rom)` / `{...rom}` 只会拿到
+`path/rom/identity/layout/text` 五个急切字段，不会误触发全量计算。
 
 **`chapters` 的视图**：`playOrder.sequence`（游玩顺序，含 `role`/`playable`）、
 `playOrder.mainPath`（无 detour 主路径）、`branches`、`offPath`、`chapters[]`、`joinOrder[]`。
+
+## CLI 契约（第六轮确立）
+
+**退出码**：`0` 成功 / `1` ROM 读不了或解析失败 / `2` 参数错。
+`UsageError`（`commands/types.ts`）= 用户可以重打一遍的错，走 2；
+其它异常走 1。`RomNotFoundError` = 文件路径问题，一行消息不抛栈。
+不在 `run()` 里校验的命令，参数校验要提到 `args.ts`。
+
+**配置文件语言**：`cli/data/*.txt` 默认**英文优先**（`.en` → 裸日文 → `.zh`），
+`--lang <en|ja|zh>` 可切，`ja` 即裸文件。**`event_FE8.en.txt` 是 `event_FE8.txt`
+的超集（多 6 条 opcode）** —— 上游 `U.ConfigDataFilename`(U.cs:3180) 是
+"调用方语言 → 英文 → 裸文件"，原来移植成 `['', '.en', '.zh']` 把顺序写反了。
+`info.configData` 会报出实际用了哪个目录/语言/表。
+
+**`hex()` 在 `src/format.ts`（不是 `cli/`）** —— `rom/`/`tables/`/`analysis/` 都要用，
+从 `cli/` import 会把依赖方向搞反。**但线路格式不能套它**：`huffman.ts` 的
+`@XXXX` 转义码是 4 位裸十六进制、无 `0x`，解码侧用 `/@([0-9A-Fa-f]{4})/` 匹配。
+
+**Node 版本是 `>=22.18`**：type stripping 在 22.6 就要 `--experimental-strip-types`，
+22.18 才默认开。**`tsc` 过 ≠ 能跑**：类型检查接受构造函数参数属性
+（`constructor(readonly x: T)`），Node 的类型剥离不接受，运行时会
+`ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX`。改完要真跑一次。
+
+**字段含义不能随 flag 变**：`roles.roster.populatedUnitSlots` 恒为全部非空槽位
+（FE8U = 255），`--playable-only` 只影响 coverage/healers/magicUsers。
+**静默降级必须 stderr 警告一次**（`loadRom` 的 `requireConfigDir()`，库用法传
+`warn: () => {}` 静音）。**不在 `run()` 里校验的命令，参数校验要提到 `args.ts`**
+（多余位置参数现在会 exit 2）。
 
 ## 输出模型约定（第四轮去噪后确立）
 
@@ -67,11 +97,15 @@
 - 临时验证脚本放 `/tmp`，别堆在 `cli/` 或 `reports/` 下。
 - 归因字段体积要**按"键名 + 值"计费**；只算值会系统性低估短字段
   （`samples[].grow` 单看很小，乘 3246 行就是 35 KB）。
-- 测"改动前"的基线可以用 `git stash push -- cli/src` + 跑 + `git stash pop`；
-  untracked 的文件（`cli/tmp-*.ts`、`reports/`）不受影响，正好可以跨版本复用同一个脚本。
-  用 git reset 收尾取消暂存。
+- 测"改动前"的基线：`git stash push -- src package.json` → 跑 → `git stash pop`。
+  untracked 的 `reports/` 不受影响，同一个冒烟脚本可跨版本复用
+  （脚本放 `/tmp/smoke.sh`，输出到 `/tmp/smoke-{old,new}/`）。
 - 命令行端到端耗时里约 9.5 s 是 Node 启动 + TS 源码剥离，
   进程内省下的几百 ms 在命令行几乎看不见 —— **别用端到端时间验收惰性化**。
+- **`sed`/`grep` 被 WorkBuddy 的 shim 接管**（`app.asar.unpacked/cli/vendor/shim/`），
+  BSD 语法 `-i ''` 会报 "No such file or directory"。**用 `/usr/bin/sed` 和 Grep 工具**。
+- **Edit 工具的 `old_string` 不能以换行结尾** —— 末尾换行会被吃掉，把下一行粘上来。
+  批量改文件用 python 脚本，别用 Edit 逐个来。
 
 ## VQ v3 规模基线（第五轮）
 

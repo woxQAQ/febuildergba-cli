@@ -2,6 +2,7 @@ import { parseArgs } from 'node:util';
 
 import { flagsFor, globalFlags, type FlagSpec } from './flags.ts';
 import { findCommand } from '../commands/registry.ts';
+import { LANGUAGE_NAMES } from '../config/data.ts';
 import type { ResolvedFlags } from '../commands/types.ts';
 
 export interface ParsedArgv {
@@ -57,8 +58,9 @@ function firstUnknownFlag(argv: readonly string[], accepted: readonly FlagSpec[]
 /**
  * Parse `argv` into a command, a ROM path, trailing positionals and flags.
  *
- * Throws a plain `Error` for input the user got wrong (unknown option); the
- * caller turns that into a message plus exit code 2.
+ * Throws a plain `Error` for input the user got wrong (unknown option, unknown
+ * `--lang`, a stray positional); the caller turns that into a message plus
+ * exit code 2.
  */
 export function parseArgv(argv: readonly string[]): ParsedArgv {
   // First positional is the command word; the flags it accepts depend on it,
@@ -81,9 +83,21 @@ export function parseArgv(argv: readonly string[]): ParsedArgv {
 
   // Only worth complaining about once we know the command is real: otherwise
   // the "unknown command" message is the more useful one.
-  if (command !== null && findCommand(command) !== undefined) {
+  const known = command === null ? undefined : findCommand(command);
+  if (command !== null && known !== undefined) {
     const bad = firstUnknownFlag(argv, accepted);
     if (bad !== null) throw new Error(`unknown option "${bad}" for "${command}"`);
+
+    // A command that documents no trailing positionals must not quietly accept
+    // them: `fe-rom units rom.gba typo` used to run and exit 0, so a mistyped
+    // flag or a forgotten argument was invisible.
+    const extra = positionals.slice(2);
+    if (extra.length > 0 && known.extraArgs === undefined) {
+      throw new Error(
+        `"${command}" takes no extra arguments, but got: ${extra.join(' ')}\n` +
+          `Usage: fe-rom ${command} <rom.gba> [options]`,
+      );
+    }
   }
 
   const str = (key: string): string | undefined => {
@@ -95,6 +109,10 @@ export function parseArgv(argv: readonly string[]): ParsedArgv {
   // `string | undefined` re-widened by the second call.
   const out = str('out');
   const range = str('range');
+  const lang = str('lang');
+  if (lang !== undefined && !LANGUAGE_NAMES.includes(lang)) {
+    throw new Error(`--lang expects one of ${LANGUAGE_NAMES.join(', ')}, got "${lang}"`);
+  }
 
   return {
     command,
@@ -108,6 +126,7 @@ export function parseArgv(argv: readonly string[]): ParsedArgv {
       hard: values.hard === true,
       ...(out === undefined ? {} : { out }),
       ...(range === undefined ? {} : { range }),
+      ...(lang === undefined ? {} : { lang }),
     },
   };
 }

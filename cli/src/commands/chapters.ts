@@ -1,4 +1,4 @@
-import { hex } from '../cli/hex.ts';
+import { hex } from '../format.ts';
 import { alwaysForcedUnits, forcedUnitsForMap, MAP_ANY, routeLabel } from '../tables/forceSortie.ts';
 import { duplicateRegistrations, isRealMap } from '../tables/storyPath.ts';
 import { isStoryTitle } from '../analysis/crossTable.ts';

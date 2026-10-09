@@ -28,6 +28,16 @@ export const units: Command = {
     const rosterOnly = !flags.all || flags.playableOnly;
     const rows = rosterOnly ? rom.units.filter((u) => supportUnitIds.has(u.id)) : rom.units;
 
+    // Per-unit lookups by class id, indexed once. `rom.classes` is an array, so
+    // `find` inside the row loop made this O(units x classes); the map is not
+    // measurably faster at 255 rows but it stops being quadratic.
+    const classById = new Map(rom.classes.map((c) => [c.id, c]));
+    const partnersByUnit = new Map<number, number>();
+    for (const e of rom.supports.entries) {
+      // First entry wins, matching the `find` this replaced.
+      if (!partnersByUnit.has(e.unitId)) partnersByUnit.set(e.unitId, e.partners.length);
+    }
+
     return rows.map((u) => {
       const role = rom.classRoles.get(u.classId);
       return {
@@ -86,7 +96,7 @@ export const units: Command = {
             }
           : null,
         /** Movement range, copied from the class. */
-        movement: rom.classes.find((c) => c.id === u.classId)?.movementRange ?? null,
+        movement: classById.get(u.classId)?.movementRange ?? null,
         /**
          * Earliest chapter this unit is in the player's army, from an initial
          * placement or a `LOAD1` ("仲間にする") instruction. `chapters` reports
@@ -142,8 +152,7 @@ export const units: Command = {
           };
         })(),
         /** How many support partners this unit has, or 0 when it has no support data. */
-        supportPartnerCount:
-          rom.supports.entries.find((e) => e.unitId === u.id)?.partners.length ?? 0,
+        supportPartnerCount: partnersByUnit.get(u.id) ?? 0,
       };
     });
   },

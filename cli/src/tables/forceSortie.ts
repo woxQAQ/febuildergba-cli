@@ -64,6 +64,7 @@
  */
 
 import type { ForceSortieLayout, GameLayout } from '../data/layouts.ts';
+import { hex } from '../format.ts';
 import { RomBuffer } from '../rom/RomBuffer.ts';
 
 /** Value of the route filter meaning "this record applies on every route". */
@@ -117,7 +118,7 @@ export interface ForceSortieTable {
 export function routeLabel(route: number): string {
   if (route === ROUTE_ANY) return 'any';
   const name = ROUTE_LABELS[route];
-  return `0x${route.toString(16).padStart(2, '0')}${name === undefined ? '' : ` (${name})`}`;
+  return `${hex(route, 2)}${name === undefined ? '' : ` (${name})`}`;
 }
 
 /**

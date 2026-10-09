@@ -1,4 +1,4 @@
-import { hex } from '../cli/hex.ts';
+import { hex } from '../format.ts';
 import type { Command } from './types.ts';
 
 export const objects: Command = {

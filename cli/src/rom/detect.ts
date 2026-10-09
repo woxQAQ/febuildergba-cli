@@ -5,7 +5,7 @@
  */
 
 import { RomBuffer } from './RomBuffer.ts';
-
+import { hex } from '../format.ts';
 export type GameVersion = 'FE6J' | 'FE7J' | 'FE7U' | 'FE8J' | 'FE8U';
 
 /** FEBuilderGBA reads 6 bytes here: 4-byte game code + 2-byte maker code. */
@@ -66,7 +66,7 @@ export function detectVersion(rom: RomBuffer): RomIdentity {
       size: rom.length,
       notes: [
         `File is only ${rom.length} bytes; a GBA ROM header needs at least ` +
-          `${MIN_HEADER_SIZE} (0x${MIN_HEADER_SIZE.toString(16)}).`,
+          `${MIN_HEADER_SIZE} (${hex(MIN_HEADER_SIZE)}).`,
       ],
     };
   }
@@ -82,7 +82,7 @@ export function detectVersion(rom: RomBuffer): RomIdentity {
     sizeOk = rom.length >= min;
     if (!sizeOk) {
       notes.push(
-        `ROM is ${rom.length} bytes but ${version} expects at least ${min} (0x${min.toString(16)}).`,
+        `ROM is ${rom.length} bytes but ${version} expects at least ${min} (${hex(min)}).`,
       );
     }
   } else {
@@ -93,7 +93,7 @@ export function detectVersion(rom: RomBuffer): RomIdentity {
   // because it usually means the file was trimmed or repacked.
   if ((rom.length & (rom.length - 1)) !== 0) {
     notes.push(
-      `ROM length 0x${rom.length.toString(16)} is not a power of two (expanded/repacked ROM).`,
+      `ROM length ${hex(rom.length)} is not a power of two (expanded/repacked ROM).`,
     );
   }
 

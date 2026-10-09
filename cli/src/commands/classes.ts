@@ -1,4 +1,5 @@
 import { terrainHint } from '../tables/terrainNames.ts';
+import { hex } from '../format.ts';
 import { promotesForwardTarget } from '../analysis/crossTable.ts';
 import type { Command } from './types.ts';
 
@@ -21,7 +22,7 @@ export const classes: Command = {
       const name = terrainName.get(id);
       if (name !== undefined && name !== '') return name;
       const hint = terrainHint(id, isMultibyte);
-      return `terrain 0x${id.toString(16)}${hint === '' ? '' : ` ${hint}`}`;
+      return `terrain ${hex(id)}${hint === '' ? '' : ` ${hint}`}`;
     };
 
     return rows.map((c) => ({

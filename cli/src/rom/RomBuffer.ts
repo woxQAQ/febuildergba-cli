@@ -14,6 +14,8 @@
  *            FEBuilderGBA/FEBuilderGBA/U.cs  (`toOffset`, `isPointer`, `isSafetyOffset`).
  */
 
+import { hex } from '../format.ts';
+
 export const POINTER_BASE = 0x0800_0000;
 export const POINTER_END = 0x0a00_0000;
 export const NOT_FOUND = 0xffff_ffff;
@@ -38,8 +40,8 @@ export class RomBuffer {
   private ensure(addr: number, size: number): void {
     if (!Number.isInteger(addr) || addr < 0 || addr + size > this.data.length) {
       throw new RangeError(
-        `read out of range: addr=0x${addr.toString(16)} size=${size} ` +
-          `romLength=0x${this.data.length.toString(16)}`,
+        `read out of range: addr=${hex(addr)} size=${size} ` +
+          `romLength=${hex(this.data.length)}`,
       );
     }
   }

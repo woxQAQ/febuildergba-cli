@@ -5,9 +5,10 @@
  * Extracts unit, class and support data from FE6/FE7/FE8 ROMs so it can be fed
  * to an AI for analysis.
  *
- * Runs directly on Node >= 22.6 thanks to built-in TypeScript type stripping:
+ * Runs directly on Node >= 22.18, where TypeScript type stripping is on by
+ * default (22.6 - 22.17 need `--experimental-strip-types`):
  *
- *     node src/index.ts units ../../fixtures/dream-of-five.gba
+ *     node src/index.ts units ../fixtures/dream-of-five.gba
  *
  * Zero runtime dependencies.
  *
@@ -19,17 +20,28 @@
  * dispatcher all read from that one registry.
  */
 
-import { loadRom, UnsupportedRomError } from './load.ts';
+import { loadRom, RomNotFoundError, UnsupportedRomError } from './load.ts';
 import { findCommand } from './commands/registry.ts';
+import { UsageError } from './commands/types.ts';
 import { parseArgv } from './cli/args.ts';
 import { commandHelp, suggestions, usage } from './cli/help.ts';
 import { emit } from './cli/emit.ts';
 
-/** Bad invocation: the user can fix it. Exit 2, matching the old CLI. */
+/**
+ * Bad invocation: the user can fix it by typing something else. Exit 2,
+ * matching the old CLI. `usage` is suppressed for errors that already carry
+ * their own one-line usage (a stray positional, say).
+ */
 function fail(message: string, showUsage = true): void {
   console.error(`error: ${message}`);
   if (showUsage) console.error(`\n${usage()}`);
   process.exitCode = 2;
+}
+
+/** The ROM is wrong, not the command line. Exit 1, no usage - nothing to retype. */
+function failRom(message: string): void {
+  console.error(`error: ${message}`);
+  process.exitCode = 1;
 }
 
 function main(): void {
@@ -70,14 +82,18 @@ function main(): void {
 
   let rom;
   try {
-    rom = loadRom(romPath);
+    rom = loadRom(romPath, flags.lang === undefined ? {} : { language: flags.lang });
   } catch (error) {
     if (error instanceof UnsupportedRomError) {
-      console.error(`error: ${error.message}`);
-      process.exitCode = 1;
+      failRom(error.message);
       return;
     }
-    // Anything else (missing file, bad header) is unexpected: let it surface.
+    // A path that does not exist is the single most common mistake here, so it
+    // gets the same one-line treatment as an unsupported ROM - not a stack.
+    if (error instanceof RomNotFoundError) {
+      failRom(`${error.message}\n  tried: ${error.path}`);
+      return;
+    }
     throw error;
   }
 
@@ -87,8 +103,14 @@ function main(): void {
     const code = resolved.exitCode?.(payload) ?? 0;
     if (code !== 0) process.exitCode = code;
   } catch (error) {
-    console.error(`error: ${error instanceof Error ? error.message : String(error)}`);
-    process.exitCode = 1;
+    // The command may have been called with something it cannot accept - a
+    // malformed `--range`, a text id that is not a number. That is still the
+    // user's to fix, so it exits 2 like every other usage error.
+    if (error instanceof UsageError) {
+      fail(error.message);
+      return;
+    }
+    failRom(error instanceof Error ? error.message : String(error));
   }
 }
 

@@ -340,8 +340,12 @@ export interface EventScriptTable {
 }
 
 /** Load `event_<game>.txt`. */
-export function loadEventScripts(configDir: string, game: string): EventScriptTable {
-  const path = resolveDataFile(configDir, 'event_', game);
+export function loadEventScripts(
+  configDir: string,
+  game: string,
+  language?: string,
+): EventScriptTable {
+  const path = resolveDataFile(configDir, 'event_', game, language);
   if (path === null) return { scripts: [], source: null };
 
   const scripts: EventScriptDef[] = [];
@@ -464,8 +468,8 @@ export interface CondSlot {
   name: string;
 }
 
-export function loadConditionSlots(configDir: string, game: string): CondSlot[] {
-  const path = resolveDataFile(configDir, 'eventcond_', game);
+export function loadConditionSlots(configDir: string, game: string, language?: string): CondSlot[] {
+  const path = resolveDataFile(configDir, 'eventcond_', game, language);
   if (path === null) return [];
   return parseTwoColumnTable(readTextFile(path));
 }

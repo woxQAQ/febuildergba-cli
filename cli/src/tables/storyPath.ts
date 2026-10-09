@@ -52,7 +52,7 @@ import {
   type EventScriptTable,
 } from './eventScript.ts';
 import type { Chapter } from './chapters.ts';
-import { hex } from '../cli/hex.ts';
+import { hex } from '../format.ts';
 
 /** Category token the opcode table puts on every map-moving instruction. */
 const MAP_CATEGORY = 'MAP';

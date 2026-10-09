@@ -24,6 +24,7 @@
  */
 
 import { RomBuffer } from '../rom/RomBuffer.ts';
+import { hex } from '../format.ts';
 import type { TextLayout } from '../data/layouts.ts';
 
 export interface TextContext {
@@ -54,6 +55,8 @@ function appendString(out: number[], code: number, beforeCode: number): void {
   if (code === 0x00) return;
 
   if (isEscapeCode(code, beforeCode)) {
+    // Not `hex()`: this is the on-the-wire escape format, exactly four bare
+    // hex digits with no `0x`, and the decoder matches on `@([0-9A-Fa-f]{4})`.
     const escape = `@${code.toString(16).toUpperCase().padStart(4, '0')}`;
     for (let i = 0; i < escape.length; i++) out.push(escape.charCodeAt(i));
     return;
@@ -86,14 +89,14 @@ export function huffmanDecode(
   const addrStart = addr;
 
   if (!rom.isSafeOffset(addr)) {
-    throw new Error(`huffmanDecode: string address 0x${addr.toString(16)} is not safe`);
+    throw new Error(`huffmanDecode: string address ${hex(addr)} is not safe`);
   }
   if (!rom.isSafeOffset(ctx.treeBase)) {
-    throw new Error(`huffmanDecode: broken mask_pointer -> 0x${ctx.treeBase.toString(16)}`);
+    throw new Error(`huffmanDecode: broken mask_pointer -> ${hex(ctx.treeBase)}`);
   }
   if (!rom.isSafeOffset(ctx.treeDataBase)) {
     throw new Error(
-      `huffmanDecode: broken mask_point_base_pointer -> 0x${ctx.treeDataBase.toString(16)}`,
+      `huffmanDecode: broken mask_point_base_pointer -> ${hex(ctx.treeDataBase)}`,
     );
   }
 
@@ -213,8 +216,9 @@ function isSjis2ndCode(c: number): boolean {
 /** `AppendAtmarkCode`: pushes the literal ASCII text `@XXXX`. */
 function appendAtmarkCode(out: number[], code: number): void {
   out.push(0x40); // '@'
-  const hex = (code >>> 0).toString(16).toUpperCase().padStart(4, '0');
-  for (let i = 0; i < hex.length; i++) out.push(hex.charCodeAt(i));
+  // Same wire format as above: four bare digits, no `0x`.
+  const digits = (code >>> 0).toString(16).toUpperCase().padStart(4, '0');
+  for (let i = 0; i < digits.length; i++) out.push(digits.charCodeAt(i));
 }
 
 /**

@@ -7,6 +7,7 @@
  */
 
 import { RomBuffer } from '../rom/RomBuffer.ts';
+import { hex } from '../format.ts';
 import type { TableLayout } from '../data/layouts.ts';
 import { resolveTableSlot } from '../data/layouts.ts';
 
@@ -25,8 +26,8 @@ export function resolveTable(rom: RomBuffer, layout: TableLayout): ResolvedTable
 
   if (!rom.isSafeOffset(tableOffset)) {
     throw new Error(
-      `Table pointer slot 0x${slotOffset.toString(16)} resolved to ` +
-        `0x${tableOffset.toString(16)}, which is outside the ROM.`,
+      `Table pointer slot ${hex(slotOffset)} resolved to ` +
+        `${hex(tableOffset)}, which is outside the ROM.`,
     );
   }
 

@@ -126,8 +126,9 @@ export function decodeFlagKey(key: string): { offset: number; mask: number } | n
 export function loadClassFlags(
   configDir: string,
   game: string,
+  language?: string,
 ): ClassFlagDef[] {
-  const path = resolveDataFile(configDir, 'unitclass_checkbox_', game);
+  const path = resolveDataFile(configDir, 'unitclass_checkbox_', game, language);
   if (path === null) return [];
 
   const out: ClassFlagDef[] = [];

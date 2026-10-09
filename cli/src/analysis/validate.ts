@@ -7,6 +7,7 @@
  * stride, broken text decoding, off-by-one indexing.
  */
 
+import { hex } from '../format.ts';
 import type { LoadedRom } from '../load.ts';
 import {
   validateSupports,
@@ -92,7 +93,7 @@ export function validateRom(loaded: LoadedRom): ValidationReport {
     'rom.size',
     loaded.identity.sizeOk,
     loaded.identity.sizeOk
-      ? `${loaded.rom.length} bytes (0x${loaded.rom.length.toString(16).toUpperCase()})`
+      ? `${loaded.rom.length} bytes (${hex(loaded.rom.length)})`
       : `ROM too small for ${loaded.layout.version}`,
   );
 
@@ -177,7 +178,7 @@ export function validateRom(loaded: LoadedRom): ValidationReport {
       : `${missingClasses.length} units reference a class id with no record ` +
         `(e.g. ${missingClasses
           .slice(0, 5)
-          .map((u) => `${u.name || `#${u.id}`}->0x${u.classId.toString(16)}`)
+          .map((u) => `${u.name || `#${u.id}`}->${hex(u.classId)}`)
           .join(', ')})`,
     missingClasses.length === 0 && unnamedClasses.length > 0 ? 'warn' : 'error',
   );
@@ -413,9 +414,7 @@ export function validateRom(loaded: LoadedRom): ValidationReport {
     terrain.table === null
       ? 'the terrain-name pointer slot did not resolve to a usable table'
       : terrainOk
-        ? `${terrainCount} terrain names read (ids 0..0x${(terrainCount - 1)
-            .toString(16)
-            .toUpperCase()}), stride ${terrain.table.recordSize}`
+        ? `${terrainCount} terrain names read (ids 0..${hex(terrainCount - 1)}), stride ${terrain.table.recordSize}`
         : `only ${terrainCount} terrain names read; the movement-cost tables have ` +
           `0x41 columns, so 65 are expected`,
   );
@@ -504,7 +503,7 @@ export function validateRom(loaded: LoadedRom): ValidationReport {
       : `${roleless.length} units have no role ` +
         `(e.g. ${roleless
           .slice(0, 5)
-          .map((u) => `${u.name || `#${u.id}`}->${u.className || `0x${u.classId.toString(16)}`}`)
+          .map((u) => `${u.name || `#${u.id}`}->${u.className || hex(u.classId)}`)
           .join(', ')})`,
     'warn',
   );
@@ -579,7 +578,7 @@ export function validateRom(loaded: LoadedRom): ValidationReport {
     mapSettings !== null && mapSettings.count > 0,
     mapSettings === null
       ? 'this game layout has no map section'
-      : `table 0x${mapSettings.tableOffset.toString(16).toUpperCase()} ` +
+      : `table ${hex(mapSettings.tableOffset)} ` +
         `(${mapSettings.count} records of ${mapSettings.recordSize} bytes, ` +
         `counted by ${mapSettings.countSource} scan)`,
   );
@@ -690,7 +689,7 @@ export function validateRom(loaded: LoadedRom): ValidationReport {
     force === null || (force.count > 0 && force.recordSize === 4),
     force === null
       ? 'this game layout has no forced-deployment table'
-      : `table 0x${force.tableOffset.toString(16).toUpperCase()} ` +
+      : `table ${hex(force.tableOffset)} ` +
         `(${force.count} records of ${force.recordSize} bytes, ` +
         `terminated by 0xFFFF): ` +
         `${[...new Set(force.records.map((r) => r.unitId))].length} distinct units, ` +
@@ -942,7 +941,7 @@ export function validateRom(loaded: LoadedRom): ValidationReport {
     'shop.prepShop',
     prep !== undefined && prep.entries.length > 0,
     prep
-      ? `prep-screen shop at 0x${prep.addr.toString(16)} lists ${prep.entries.length} items`
+      ? `prep-screen shop at ${hex(prep.addr)} lists ${prep.entries.length} items`
       : 'no prep-screen shop was found',
     'warn',
   );
@@ -989,7 +988,7 @@ export function validateRom(loaded: LoadedRom): ValidationReport {
       : `${badChestType.length} chest records carry a non-chest object type: ` +
         badChestType
           .slice(0, 5)
-          .map((o) => `0x${o.objectType.toString(16)}`)
+          .map((o) => hex(o.objectType))
           .join(', '),
     'warn',
   );
@@ -1003,7 +1002,7 @@ export function validateRom(loaded: LoadedRom): ValidationReport {
       (unresolvedChestItems.length
         ? `; unresolved: ${unresolvedChestItems
             .slice(0, 5)
-            .map((o) => `0x${(o.itemId ?? 0).toString(16)}`)
+            .map((o) => hex(o.itemId ?? 0))
             .join(', ')}`
         : ''),
     'error',
@@ -1029,7 +1028,7 @@ export function validateRom(loaded: LoadedRom): ValidationReport {
     'object.shopObjects',
     shopObjects.length > 0 && [...shopKinds].every((k) => k === 0x16 || k === 0x17 || k === 0x18),
     `${shopObjects.length} shop objects, object types ` +
-      [...shopKinds].map((k) => `0x${k.toString(16)}`).join(', '),
+      [...shopKinds].map((k) => hex(k)).join(', '),
     'warn',
   );
 

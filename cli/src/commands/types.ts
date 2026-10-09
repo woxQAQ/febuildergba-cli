@@ -7,10 +7,29 @@ import type { LoadedRom } from '../load.ts';
 export interface ResolvedFlags {
   out?: string;
   range?: string;
+  /** `--lang` value; absent means the default (English). */
+  lang?: string;
   all: boolean;
   compact: boolean;
   playableOnly: boolean;
   hard: boolean;
+}
+
+/**
+ * A mistake in the arguments the user typed, as opposed to a failure parsing
+ * the ROM. `index.ts` gives this exit code 2 and prints the usage; anything
+ * else is exit 1.
+ *
+ * Throw this from a command body for anything the user can retype: a
+ * malformed `--range`, a non-numeric text id. Validating before the ROM is
+ * loaded is better still, but a command often cannot know what is valid until
+ * it has parsed the tables.
+ */
+export class UsageError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'UsageError';
+  }
 }
 
 /** Everything a command body needs: the parsed ROM plus the parsed argv. */

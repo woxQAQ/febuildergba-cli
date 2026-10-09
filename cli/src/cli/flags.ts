@@ -10,6 +10,8 @@
  * read `ctx.<camelCase>` in the command. Nothing else - not the usage text, not
  * the option parser, not the dispatcher - needs to know it exists.
  */
+import { LANGUAGE_NAMES } from '../config/data.ts';
+
 export interface FlagSpec {
   /** Canonical name without the leading dashes. */
   readonly name: string;
@@ -29,6 +31,15 @@ export interface FlagSpec {
 }
 
 export const FLAGS: readonly FlagSpec[] = [
+  {
+    name: 'lang',
+    type: 'string',
+    arg: `<${LANGUAGE_NAMES.join('|')}>`,
+    summary:
+      `Language for the config/data name tables (chapter conditions, class ` +
+      `ability bits); default en, and a missing translation falls back to ` +
+      `English then Japanese. "ja" is the bare upstream file`,
+  },
   {
     name: 'out',
     type: 'string',
@@ -80,14 +91,14 @@ export const FLAGS: readonly FlagSpec[] = [
     name: 'hard',
     type: 'boolean',
     summary:
-      '(enemy-stats) Project hard-mode stats: the promoted autolevel round is 19 levels instead of 9',
+      'Project hard-mode stats: the promoted autolevel round is 19 levels instead of 9',
     commands: ['enemy-stats'],
   },
   {
     name: 'range',
     type: 'string',
     arg: '<a-b>',
-    summary: '(text) Decode a contiguous id range, inclusive',
+    summary: 'Decode a contiguous id range, inclusive',
     commands: ['text'],
   },
 ];
