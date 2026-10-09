@@ -174,6 +174,11 @@ export interface UnitClass {
   sortOrder: number;
   movementRange: number;
   movementSpeed: number;
+  /**
+   * `+26`: experience bonus factored into kill/exp gains (the reference's
+   * 経験値ボーナス). 0 means the class grants no bonus.
+   */
+  experienceBonus: number;
   bases: ClassBases;
   /** Stat caps, same field order as `bases`. */
   caps: ClassBases;
@@ -215,6 +220,10 @@ export interface UnitClass {
    * class cannot enter that terrain. Read from the pointer at `+56`.
    */
   movementCosts: number[];
+  /** Rain-weather cost table (`+60`), or `[]` when the class has none. */
+  movementCostsRain: number[];
+  /** Snow-weather cost table (`+64`), or `[]` when the class has none. */
+  movementCostsSnow: number[];
   /**
    * True when every *passable* terrain costs the same.
    *
@@ -270,11 +279,12 @@ export interface ClassTableContext {
 }
 
 /**
- * Read a movement-cost table. Returns an empty array when the pointer is not
- * usable, so callers can treat "no data" and "uniform costs" differently.
+ * Read a movement-cost table from one of the three cost pointers.
+ * Returns an empty array when the pointer is not usable, so callers can
+ * treat "no data" and "uniform costs" differently.
  */
-function readMovementCosts(rom: RomBuffer, addr: number): number[] {
-  const offset = rom.toOffset(rom.u32(addr + CLASS_OFFSET.movementCostPointer));
+function readMovementCosts(rom: RomBuffer, addr: number, pointerOffset: number): number[] {
+  const offset = rom.toOffset(rom.u32(addr + pointerOffset));
   if (!rom.isSafeOffset(offset) || offset + CLASS_TERRAIN_COUNT > rom.length) return [];
   return Array.from(rom.bytes(offset, CLASS_TERRAIN_COUNT));
 }
@@ -319,7 +329,11 @@ export function readClass(ctx: ClassTableContext, index: number): UnitClass | nu
   const id = rom.u8(addr + CLASS_OFFSET.classId);
 
   const caps = readBases(rom, addr + (CLASS_OFFSET.statCaps - CLASS_OFFSET.baseStats));
-  const movementCosts = readMovementCosts(rom, addr);
+  const movementCosts = readMovementCosts(rom, addr, CLASS_OFFSET.movementCostPointer);
+  // Weather variants of the same table (+60 rain, +64 snow). Empty when the
+  // class has no weather-specific table, which is the common case.
+  const movementCostsRain = readMovementCosts(rom, addr, CLASS_OFFSET.movementCostRainPointer);
+  const movementCostsSnow = readMovementCosts(rom, addr, CLASS_OFFSET.movementCostSnowPointer);
   const abilityFlags: [number, number, number, number] = [
     rom.u8(addr + CLASS_OFFSET.abilityFlags + 0),
     rom.u8(addr + CLASS_OFFSET.abilityFlags + 1),
@@ -358,6 +372,7 @@ export function readClass(ctx: ClassTableContext, index: number): UnitClass | nu
     sortOrder: rom.u8(addr + CLASS_OFFSET.sortOrder),
     movementRange: rom.u8(addr + CLASS_OFFSET.movementRange),
     movementSpeed: rom.u8(addr + CLASS_OFFSET.movementSpeed),
+    experienceBonus: rom.u8(addr + CLASS_OFFSET.experienceBonus),
     bases: readBases(rom, addr),
     caps,
     enemyGrowths: {
@@ -383,6 +398,8 @@ export function readClass(ctx: ClassTableContext, index: number): UnitClass | nu
     mount: classifyMount(abilityFlagIds),
     specialAction: specialActionRole(abilityFlagIds),
     movementCosts,
+    movementCostsRain,
+    movementCostsSnow,
     flying: isFlying(movementCosts),
     terrainBonuses,
     terrainBonusImmune,

@@ -63,7 +63,7 @@
  * `text/itemFont.ts`.
  */
 
-import type { RomBuffer } from "../rom/RomBuffer.ts";
+import { RomBuffer } from "../rom/RomBuffer.ts";
 import type { ItemLayout } from "../data/layouts.ts";
 import { resolveTableSlot } from "../data/layouts.ts";
 import type { TextContext, TextPointerKind } from "../text/huffman.ts";
@@ -114,6 +114,26 @@ export function weaponRankLetter(rank: number): string {
   return "S";
 }
 
+/**
+ * Equipped-stat bonuses, read from the table `+12` points at.
+ *
+ * Record layout per `ItemStatBonusesForm.cs` (HP / 攻撃 / 技 / 速さ / 守備 /
+ * 魔防 / 幸運 / 移動 / 体格 at bytes 0..8). Read as `u8`, matching the
+ * reference; vanilla never goes negative, and a hack that wants a penalty
+ * uses the ability bytes instead.
+ */
+export interface ItemStatBonuses {
+  hp: number;
+  str: number;
+  skl: number;
+  spd: number;
+  def: number;
+  res: number;
+  lck: number;
+  mov: number;
+  con: number;
+}
+
 export interface Item {
   id: number;
   addr: number;
@@ -133,8 +153,17 @@ export interface Item {
   typeName: string;
   /** `+8..+11`, four bytes of ability flags. */
   attributes: number[];
-  statBonusPointer: number;
-  effectivenessPointer: number;
+  /**
+   * Stat bonuses while equipped, from the table `+12` points at, or `null`
+   * when the pointer is unusable. See {@link ItemStatBonuses}.
+   */
+  statBonuses: ItemStatBonuses | null;
+  /**
+   * Class ids this weapon is effective against, from the `+16` table
+   * (u8 list, 0-terminated, per `ItemEffectivenessForm.cs`), or `null` when
+   * the pointer is unusable. Empty list = the table exists but names nothing.
+   */
+  effectiveness: number[] | null;
   uses: number;
   might: number;
   hit: number;
@@ -227,6 +256,8 @@ export function readItems(rom: RomBuffer, layout: ItemLayout, text: TextContext)
     const nm = readItemName(rom, nameTextId, text);
     const desc =
       descTextId === 0 ? "" : stripAllCodes(sanitizeText(decodeTextId(rom, descTextId, text)));
+    const statBonuses = readStatBonuses(rom, rom.u32(addr + 12));
+    const effectiveness = readEffectiveness(rom, rom.u32(addr + 16));
 
     items.push({
       id,
@@ -242,8 +273,8 @@ export function readItems(rom: RomBuffer, layout: ItemLayout, text: TextContext)
       type,
       typeName: ITEM_TYPES[type] ?? `type${type}`,
       attributes: [rom.u8(addr + 8), rom.u8(addr + 9), rom.u8(addr + 10), rom.u8(addr + 11)],
-      statBonusPointer: rom.u32(addr + 12),
-      effectivenessPointer: rom.u32(addr + 16),
+      statBonuses,
+      effectiveness,
       uses,
       might: rom.u8(addr + 21),
       hit: rom.u8(addr + 22),
@@ -273,6 +304,41 @@ export function readItems(rom: RomBuffer, layout: ItemLayout, text: TextContext)
     },
     items,
   };
+}
+
+/** The nine stat-bonus bytes, or `null` when the pointer does not resolve. */
+function readStatBonuses(rom: RomBuffer, pointer: number): ItemStatBonuses | null {
+  if (!RomBuffer.isPointer(pointer)) return null;
+  const offset = rom.toOffset(pointer);
+  if (!rom.isSafeOffset(offset) || offset + 9 > rom.length) return null;
+  return {
+    hp: rom.u8(offset + 0),
+    str: rom.u8(offset + 1),
+    skl: rom.u8(offset + 2),
+    spd: rom.u8(offset + 3),
+    def: rom.u8(offset + 4),
+    res: rom.u8(offset + 5),
+    lck: rom.u8(offset + 6),
+    mov: rom.u8(offset + 7),
+    con: rom.u8(offset + 8),
+  };
+}
+
+/** Longest effectiveness list we will read; the terminator is a 0 byte. */
+const EFFECTIVENESS_LIMIT = 0x100;
+
+/** The 0-terminated class-id list at `+16`, or `null` when unusable. */
+function readEffectiveness(rom: RomBuffer, pointer: number): number[] | null {
+  if (!RomBuffer.isPointer(pointer)) return null;
+  const offset = rom.toOffset(pointer);
+  if (!rom.isSafeOffset(offset)) return null;
+  const out: number[] = [];
+  for (let i = 0; i < EFFECTIVENESS_LIMIT && offset + i < rom.length; i++) {
+    const classId = rom.u8(offset + i);
+    if (classId === 0) break;
+    out.push(classId);
+  }
+  return out;
 }
 
 /** id -> item, for callers that have an item id from a shop or a unit. */

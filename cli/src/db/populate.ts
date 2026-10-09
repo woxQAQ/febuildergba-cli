@@ -34,17 +34,18 @@ export async function populate(handle: OpenDb, rom: LoadedRom): Promise<Populate
   sqlite.exec("BEGIN");
   try {
     await insertMeta(db, rom);
-    const emptySlots = await insertUnits(db, rom);
-    await db
-      .insert(t.meta)
-      .values({ key: "units.emptySlots", value: String(emptySlots) });
+    await insertUnits(db, rom);
     await insertClasses(db, rom);
     await insertSupports(db, rom);
     await insertItemsAndTerrain(db, rom);
     await insertChapters(db, rom);
     await insertStory(db, rom);
-    await insertEventScans(db, rom);
+    const truncatedWalks = await insertEventScans(db, rom);
     const unresolvedEnemyClasses = await insertEnemySamples(db, rom);
+    await db.insert(t.meta).values([
+      { key: "scan.truncatedWalks", value: String(truncatedWalks) },
+      { key: "enemy.unresolvedClasses", value: String(unresolvedEnemyClasses) },
+    ]);
     sqlite.exec("COMMIT");
 
     // Row counts measured, not tallied: the number reported is the number
@@ -62,7 +63,7 @@ export async function populate(handle: OpenDb, rom: LoadedRom): Promise<Populate
 }
 
 async function insertMeta(db: ExtractDb, rom: LoadedRom): Promise<void> {
-  const entries: (typeof t.meta.$inferInsert)[] = [
+  await db.insert(t.meta).values([
     { key: "rom.path", value: rom.path },
     { key: "rom.sizeBytes", value: String(rom.rom.length) },
     { key: "rom.gameCode", value: rom.identity.gameCode },
@@ -73,36 +74,14 @@ async function insertMeta(db: ExtractDb, rom: LoadedRom): Promise<void> {
     { key: "rom.notes", value: JSON.stringify(rom.identity.notes) },
     { key: "config.dir", value: rom.configDir ?? "" },
     { key: "config.language", value: rom.configLanguage ?? "en" },
-    {
-      key: "tables",
-      value: JSON.stringify({
-        unit: {
-          slot: rom.unitTable.slotOffset,
-          address: rom.unitTable.tableOffset,
-          recordSize: rom.unitTable.recordSize,
-          declaredCount: rom.unitTable.maxCount,
-        },
-        class: {
-          slot: rom.classTable.slotOffset,
-          address: rom.classTable.tableOffset,
-          recordSize: rom.classTable.recordSize,
-        },
-        text: {
-          huffmanTreeBase: rom.text.treeBase,
-          huffmanDataBase: rom.text.treeDataBase,
-          textTableBase: rom.text.textBase,
-        },
-      }),
-    },
-  ];
-  for (const entry of entries) await db.insert(t.meta).values(entry);
+    { key: "playOrder.mainPath", value: JSON.stringify(rom.playOrder.mainPath) },
+    { key: "playOrder.branches", value: JSON.stringify(rom.playOrder.branches) },
+    { key: "playOrder.closedLoop", value: JSON.stringify(rom.playOrder.closedLoop) },
+  ]);
 }
 
-/**
- * Empty slots (no name, class or level) are skipped: they carry no data and
- * their id 0 is not unique. Returns how many were skipped, for `meta`.
- */
-async function insertUnits(db: ExtractDb, rom: LoadedRom): Promise<number> {
+/** Empty slots (no name, class or level) are skipped; the count lands in meta. */
+async function insertUnits(db: ExtractDb, rom: LoadedRom): Promise<void> {
   let skipped = 0;
   for (const u of rom.units) {
     if (u.isEmpty) {
@@ -111,9 +90,7 @@ async function insertUnits(db: ExtractDb, rom: LoadedRom): Promise<number> {
     }
     await db.insert(t.units).values({
       id: u.id,
-      address: u.address,
       name: u.name,
-      nameRaw: u.nameRaw,
       nameTextId: u.nameTextId,
       description: u.description,
       descTextId: u.descriptionTextId,
@@ -149,19 +126,16 @@ async function insertUnits(db: ExtractDb, rom: LoadedRom): Promise<number> {
       wlLight: u.weaponLevels.light,
       wlDark: u.weaponLevels.dark,
       abilityFlags: u.abilityFlags,
-      supportPointer: u.supportPointer,
-      supportAddress: u.supportAddress,
       hasSupportData: u.hasSupportData,
     });
   }
-  return skipped;
+  await db.insert(t.meta).values({ key: "units.emptySlots", value: String(skipped) });
 }
 
 async function insertClasses(db: ExtractDb, rom: LoadedRom): Promise<void> {
   for (const c of rom.classes) {
     await db.insert(t.classes).values({
       id: c.id,
-      address: c.address,
       name: c.name,
       nameTextId: c.nameTextId,
       description: c.description,
@@ -169,6 +143,7 @@ async function insertClasses(db: ExtractDb, rom: LoadedRom): Promise<void> {
       sortOrder: c.sortOrder,
       movementRange: c.movementRange,
       movementSpeed: c.movementSpeed,
+      experienceBonus: c.experienceBonus,
       baseHp: c.bases.hp,
       baseStr: c.bases.str,
       baseSkl: c.bases.skl,
@@ -214,8 +189,14 @@ async function insertClasses(db: ExtractDb, rom: LoadedRom): Promise<void> {
     for (const flag of c.abilityFlagIds) {
       await db.insert(t.classAbilityFlags).values({ classId: c.id, flag });
     }
-    for (const [terrainId, cost] of c.movementCosts.entries()) {
-      await db.insert(t.classMovementCosts).values({ classId: c.id, terrainId, cost });
+    for (const [variant, costs] of [
+      ["normal", c.movementCosts],
+      ["rain", c.movementCostsRain],
+      ["snow", c.movementCostsSnow],
+    ] as const) {
+      for (const [terrainId, cost] of costs.entries()) {
+        await db.insert(t.classMovementCosts).values({ classId: c.id, variant, terrainId, cost });
+      }
     }
     if (c.terrainBonuses !== null) {
       for (const [terrainId, avoid] of c.terrainBonuses.avoid.entries()) {
@@ -235,17 +216,22 @@ async function insertClasses(db: ExtractDb, rom: LoadedRom): Promise<void> {
       classId,
       mobility: role.mobility,
       mobilitySource: role.mobilitySource,
-      weapons: role.weapons,
-      hasStaff: role.hasStaff,
-      isMagic: role.isMagic,
     });
   }
 }
 
 async function insertSupports(db: ExtractDb, rom: LoadedRom): Promise<void> {
-  for (const [id, name] of rom.affinityNames) {
-    await db.insert(t.affinities).values({ id, name });
+  // Every referenced affinity id gets a row, named or not: a unit carrying
+  // an unnamed hack affinity is data, not an absence of data.
+  const affinityIds = new Set<number>(rom.affinityNames.keys());
+  for (const b of rom.supportBonuses) affinityIds.add(b.affinity);
+  for (const u of rom.units) {
+    if (u.attribute !== 0) affinityIds.add(u.attribute);
   }
+  for (const id of [...affinityIds].sort((a, b) => a - b)) {
+    await db.insert(t.affinities).values({ id, name: rom.affinityNames.get(id) ?? null });
+  }
+
   for (const b of rom.supportBonuses) {
     await db.insert(t.supportBonuses).values({
       affinityId: b.affinity,
@@ -260,7 +246,6 @@ async function insertSupports(db: ExtractDb, rom: LoadedRom): Promise<void> {
   for (const e of rom.supports.entries) {
     await db.insert(t.supportEntries).values({
       unitId: e.unitId,
-      address: e.address,
       declaredCount: e.declaredCount,
       actualCount: e.actualCount,
     });
@@ -278,29 +263,29 @@ async function insertSupports(db: ExtractDb, rom: LoadedRom): Promise<void> {
       .insert(t.supportEdges)
       .values({ a: e.a, b: e.b, initial: e.initial, growth: e.growth });
   }
-  await db
-    .insert(t.meta)
-    .values({ key: "supports.missingPointers", value: JSON.stringify(rom.supports.missing) });
 }
 
 async function insertItemsAndTerrain(db: ExtractDb, rom: LoadedRom): Promise<void> {
   for (const i of rom.items) {
     await db.insert(t.items).values({
       id: i.id,
-      address: i.addr,
       name: i.name,
-      nameRaw: i.nameRaw,
       nameTextId: i.nameTextId,
       descTextId: i.descTextId,
       useDescTextId: i.useDescTextId,
-      nameKind: i.nameKind,
-      nameUnknownCodes: i.nameUnknownCodes,
       description: i.desc,
       type: i.type,
       typeName: i.typeName,
       attributes: i.attributes,
-      statBonusPointer: i.statBonusPointer,
-      effectivenessPointer: i.effectivenessPointer,
+      sbHp: i.statBonuses?.hp ?? null,
+      sbStr: i.statBonuses?.str ?? null,
+      sbSkl: i.statBonuses?.skl ?? null,
+      sbSpd: i.statBonuses?.spd ?? null,
+      sbDef: i.statBonuses?.def ?? null,
+      sbRes: i.statBonuses?.res ?? null,
+      sbLck: i.statBonuses?.lck ?? null,
+      sbMov: i.statBonuses?.mov ?? null,
+      sbCon: i.statBonuses?.con ?? null,
       uses: i.uses,
       might: i.might,
       hit: i.hit,
@@ -316,6 +301,14 @@ async function insertItemsAndTerrain(db: ExtractDb, rom: LoadedRom): Promise<voi
       unitPrice: i.unitPrice,
       isWeapon: i.isWeapon,
     });
+    /**
+     * The ROM's list can name a class twice (the bow table lists the flier
+     * ids 99/100 and 59/60 doubled up); "effective against" is a set, so the
+     * duplicates are redundant, not data.
+     */
+    for (const classId of new Set(i.effectiveness ?? [])) {
+      await db.insert(t.itemEffectiveness).values({ itemId: i.id, classId });
+    }
   }
 
   for (const terrain of rom.terrainNames.names) {
@@ -323,9 +316,7 @@ async function insertItemsAndTerrain(db: ExtractDb, rom: LoadedRom): Promise<voi
       id: terrain.id,
       name: terrain.name,
       textId: terrain.textId,
-      nameAddress: terrain.nameAddress,
       decoded: terrain.decoded,
-      raw: terrain.raw,
     });
   }
 }
@@ -334,18 +325,10 @@ async function insertChapters(db: ExtractDb, rom: LoadedRom): Promise<void> {
   for (const c of rom.chapters) {
     await db.insert(t.chapters).values({
       mapIndex: c.index,
-      mapSettingAddr: c.mapSettingAddr,
       chapterNumber: c.chapterNumber,
-      chapterNumberRaw: c.chapterNumberRaw,
       titleTextId: c.titleTextId,
       title: c.title,
-      eventPlist: c.eventPlist,
-      condTableAddr: c.condTableAddr,
-      condPointers: c.condPointers,
-      playerPlacementAddr: c.playerPlacementAddr,
-      hardPlacementAddr: c.hardPlacementAddr,
-      startEventAddr: c.startEventAddr,
-      endEventAddr: c.endEventAddr,
+      weatherId: c.weatherId,
       deploySlots: c.deploySlots,
       deploySlotsHard: c.deploySlotsHard,
     });
@@ -358,23 +341,31 @@ async function insertChapters(db: ExtractDb, rom: LoadedRom): Promise<void> {
           mapIndex: c.index,
           mode,
           position,
-          address: p.addr,
           unitId: p.unitId,
           classId: p.classId,
           commander: p.commander,
           level: p.level,
-          unitGrow: p.unitGrow,
-          assign: p.assign,
           side: p.side,
           autolevel: p.autolevel === 1,
           x: p.prePlacementCoord.x,
           y: p.prePlacementCoord.y,
           ext: p.prePlacementCoord.ext,
-          positionRaw: p.position,
-          postPlacementCount: p.postPlacementCount,
-          postPlacementAddr: p.postPlacementAddr,
           items: p.items,
         });
+        for (const [step, s] of p.postPlacements.entries()) {
+          await db.insert(t.chapterPlacementSteps).values({
+            mapIndex: c.index,
+            mode,
+            position,
+            step,
+            x: s.x,
+            y: s.y,
+            ext: s.ext,
+            speed: s.speed,
+            unitId: s.unitId,
+            wait: s.wait,
+          });
+        }
       }
     }
   }
@@ -382,18 +373,11 @@ async function insertChapters(db: ExtractDb, rom: LoadedRom): Promise<void> {
 
 async function insertStory(db: ExtractDb, rom: LoadedRom): Promise<void> {
   for (const e of rom.mapTransitions) {
-    await db.insert(t.chapterEndEvents).values({
-      mapIndex: e.mapIndex,
-      endEventAddress: e.endEventAddress,
-      instructionsDecoded: e.instructionsDecoded,
-      stopReason: e.stopReason,
-    });
     for (const tr of e.transitions) {
       await db.insert(t.chapterTransitions).values({
         mapIndex: e.mapIndex,
         targetMap: tr.targetMap,
         opcode: tr.opcode,
-        scriptAddress: tr.scriptAddress,
         callDepth: tr.callDepth,
       });
     }
@@ -406,11 +390,6 @@ async function insertStory(db: ExtractDb, rom: LoadedRom): Promise<void> {
       playable: step.playable,
     });
   }
-  await db.insert(t.meta).values([
-    { key: "playOrder.mainPath", value: JSON.stringify(rom.playOrder.mainPath) },
-    { key: "playOrder.branches", value: JSON.stringify(rom.playOrder.branches) },
-    { key: "playOrder.closedLoop", value: JSON.stringify(rom.playOrder.closedLoop) },
-  ]);
 
   for (const [kind, map] of [
     ["join", rom.joins.joins],
@@ -423,7 +402,6 @@ async function insertStory(db: ExtractDb, rom: LoadedRom): Promise<void> {
         mapIndex: ev.chapterIndex,
         storyOrder: ev.storyOrder,
         source: ev.source,
-        evidenceAddr: ev.evidenceAddr,
         classOverridden: ev.classOverridden,
         placedClassId: ev.placedClassId,
       });
@@ -431,79 +409,43 @@ async function insertStory(db: ExtractDb, rom: LoadedRom): Promise<void> {
   }
 }
 
-async function insertEventScans(db: ExtractDb, rom: LoadedRom): Promise<void> {
+/** Returns the total truncated walk count, for meta. */
+async function insertEventScans(db: ExtractDb, rom: LoadedRom): Promise<number> {
   for (const slot of rom.condSlots) {
     await db
       .insert(t.condSlots)
       .values({ idx: slot.index, flag: slot.flag, name: slot.name, kind: slot.kind });
   }
+
+  let truncatedWalks = 0;
   for (const scan of rom.chapterScans) {
-    await db
-      .insert(t.chapterScanStats)
-      .values({ mapIndex: scan.chapterIndex, truncatedWalks: scan.truncatedWalks });
+    truncatedWalks += scan.truncatedWalks;
     for (const r of scan.recruits) {
       await db.insert(t.chapterRecruits).values({
         mapIndex: scan.chapterIndex,
-        address: r.addr,
-        slotIndex: r.slotIndex,
-        slotKind: r.slotKind,
-        instruction: r.instruction,
         kind: r.kind,
-        blockAddr: r.blockAddr,
         unitIds: r.units.map((u) => u.unitId),
       });
     }
     for (const g of scan.gold) {
-      await db.insert(t.chapterGold).values({
-        mapIndex: scan.chapterIndex,
-        address: g.addr,
-        delta: g.delta,
-        instruction: g.instruction,
-      });
+      await db.insert(t.chapterGold).values({ mapIndex: scan.chapterIndex, delta: g.delta });
     }
     for (const g of scan.itemsGiven) {
       await db.insert(t.chapterItemGives).values({
         mapIndex: scan.chapterIndex,
-        address: g.addr,
         itemId: g.itemId,
         unitId: g.unitId,
-        instruction: g.instruction,
       });
     }
   }
 
-  for (const co of rom.chapterObjects) {
-    for (const o of co.objects) {
-      await db.insert(t.mapObjects).values({
-        mapIndex: co.chapterIndex,
-        address: o.addr,
-        type: o.type,
-        kind: o.kind,
-        flag: o.flag,
-        objectType: o.objectType,
-        objectTypeName: o.objectTypeName,
-        x: o.x,
-        y: o.y,
-        itemId: o.itemId,
-        gold: o.gold,
-        isGoldChest: o.isGoldChest,
-        eventAddr: o.eventAddr,
-        shopAddr: o.shopAddr,
-      });
-    }
-  }
-
+  // Shops before objects: a map object links to its shop by id, and the link
+  // key during parsing is the shop's list address.
+  const shopIdByAddress = new Map<number, number>();
   if (rom.shopData !== null) {
     for (const [shopId, shop] of rom.shopData.shops.entries()) {
-      await db.insert(t.shops).values({
-        id: shopId,
-        kind: shop.kind,
-        label: shop.label,
-        address: shop.addr,
-        mapIndex: shop.mapIndex,
-        chapterNumber: shop.chapterNumber,
-        chapterTitle: shop.chapterTitle,
-      });
+      shopIdByAddress.set(shop.addr, shopId);
+      await db.insert(t.shops).values({ id: shopId, kind: shop.kind, mapIndex: shop.mapIndex });
       for (const [position, e] of shop.entries.entries()) {
         await db.insert(t.shopItems).values({
           shopId,
@@ -516,22 +458,41 @@ async function insertEventScans(db: ExtractDb, rom: LoadedRom): Promise<void> {
     }
   }
 
-  if (rom.forceSortie !== null) {
-    for (const r of rom.forceSortie.records) {
-      await db.insert(t.forceSortie).values({
-        idx: r.index,
-        address: r.addr,
-        unitId: r.unitId,
-        route: r.route,
-        mapIndex: r.mapIndex,
+  for (const co of rom.chapterObjects) {
+    for (const o of co.objects) {
+      await db.insert(t.mapObjects).values({
+        mapIndex: co.chapterIndex,
+        type: o.type,
+        kind: o.kind,
+        flag: o.flag,
+        objectType: o.objectType,
+        objectTypeName: o.objectTypeName,
+        x: o.x,
+        y: o.y,
+        itemId: o.itemId,
+        gold: o.gold,
+        isGoldChest: o.isGoldChest,
+        shopId: o.shopAddr === 0 ? null : (shopIdByAddress.get(o.shopAddr) ?? null),
       });
     }
   }
+
+  if (rom.forceSortie !== null) {
+    for (const r of rom.forceSortie.records) {
+      await db
+        .insert(t.forceSortie)
+        .values({ unitId: r.unitId, route: r.route, mapIndex: r.mapIndex })
+        // Identical records are redundant, not an error.
+        .onConflictDoNothing();
+    }
+  }
+
+  return truncatedWalks;
 }
 
 /**
  * Both autolevel modes, so normal-vs-hard is a WHERE clause, not a re-run.
- * Returns the unresolved-class count for the extract warning.
+ * Returns the unresolved-class count for meta.
  */
 async function insertEnemySamples(db: ExtractDb, rom: LoadedRom): Promise<number> {
   let unresolved = 0;
@@ -553,7 +514,6 @@ async function insertEnemySamples(db: ExtractDb, rom: LoadedRom): Promise<number
         mode,
         mapIndex: s.mapIndex,
         chapterNumber: s.chapterNumber,
-        address: s.addr,
         unitId: s.unitId,
         classId: s.classId,
         level: s.level,

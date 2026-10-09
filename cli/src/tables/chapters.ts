@@ -327,6 +327,19 @@ export function decodeUnitPosition(
   return { x: packed & 0xff, y: (packed >> 8) & 0xff, ext: null };
 }
 
+export interface PostPlacement {
+  /** Decoded packed FE8 coordinate at `+0`. */
+  x: number;
+  y: number;
+  ext: number | null;
+  /** `+2`: movement speed override for the approach (0 = default). */
+  speed: number;
+  /** `+3`: unit id this step belongs to (0 = the placed unit itself). */
+  unitId: number;
+  /** `+6`: frames to wait before this step. */
+  wait: number;
+}
+
 export interface PlacedUnit {
   /** Byte offset of this record in the ROM. */
   addr: number;
@@ -361,6 +374,12 @@ export interface PlacedUnit {
   postPlacementCount: number;
   /** `+8`: file offset of the post-placement coordinate array (0 when absent). */
   postPlacementAddr: number;
+  /**
+   * The post-placement steps, decoded from the 8-byte records at
+   * `postPlacementAddr` (u16 packed pos, u8 speed, u8 unit id, u16 wait -
+   * `EventUnitForm.cs` writes them at `8 * i`). Empty when absent.
+   */
+  postPlacements: PostPlacement[];
   /** `+12..15`: starting items. */
   items: number[];
 }
@@ -397,6 +416,23 @@ export function readPlacements(
     const position = rom.u16(a + 4);
     const post = rom.u32(a + 8);
     const items = [12, 13, 14, 15].map((o) => rom.u8(a + o));
+    const postAddr = rom.isSafePointer(post) ? rom.toOffset(post) : 0;
+    const postCount = rom.u8(a + 7);
+
+    const postPlacements: PostPlacement[] = [];
+    for (let s = 0; s < postCount; s++) {
+      const pa = postAddr + s * 8;
+      if (postAddr === 0 || !rom.isSafeOffset(pa + 8)) break;
+      const coord = decodeUnitPosition(rom.u16(pa), layout.version);
+      postPlacements.push({
+        x: coord.x,
+        y: coord.y,
+        ext: coord.ext,
+        speed: rom.u8(pa + 2),
+        unitId: rom.u8(pa + 3),
+        wait: rom.u16(pa + 6),
+      });
+    }
 
     out.push({
       addr: a,
@@ -410,8 +446,9 @@ export function readPlacements(
       autolevel: parseUnitGrowAutolevel(unitGrow),
       position,
       prePlacementCoord: decodeUnitPosition(position, layout.version),
-      postPlacementCount: rom.u8(a + 7),
-      postPlacementAddr: rom.isSafePointer(post) ? rom.toOffset(post) : 0,
+      postPlacementCount: postCount,
+      postPlacementAddr: postAddr,
+      postPlacements,
       items,
     });
   }
@@ -468,6 +505,11 @@ export interface Chapter {
   title: string;
   /** Event plist index from the map setting record. */
   eventPlist: number;
+  /**
+   * Weather id from the map setting record (`u8(addr + 12)`). 0 means no
+   * weather; the game maps ids to rain / snow / sandstorm etc.
+   */
+  weatherId: number;
   /** File offset of the event-condition table (0 when unresolved). */
   condTableAddr: number;
   /** The 20 raw pointer values from the condition table. */
@@ -542,6 +584,7 @@ export function readChapters(
       titleTextId,
       title: text === null ? "" : decodeTextId(rom, titleTextId, text),
       eventPlist: record.eventPlist,
+      weatherId: record.weather,
       condTableAddr: 0,
       condPointers: [],
       playerPlacementAddr: 0,

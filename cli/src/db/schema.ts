@@ -6,19 +6,25 @@
  * and query-side consumers (`scripts/emit-mgba-units.ts`) select through
  * them. There is no hand-written SQL copy of the schema to drift away from.
  *
- * One principle decides the shape: **store facts, derive at query time**.
- * Everything the old JSON commands computed by joining tables in memory -
- * class names on unit rows, shop prices, buy/sell prices, promotion direction
- * - is a SQL join or expression away, so none of it is a column here. What is
- * stored is what the ROM (or the config/data tables) actually says, plus the
- * derived facts SQL cannot reproduce on its own (play order, joins, enemy
- * projections - these come from walking event scripts).
+ * Two principles decide the shape:
+ *
+ *   - **Model the game, not the ROM bytes.** No file offsets, no raw
+ *     pointer values, no extraction diagnostics as columns. A ROM address
+ *     is how we *found* the data, not what the data *is*; anything it was
+ *     needed to reach (stat-bonus tables, effectiveness lists, post-placement
+ *     steps) is parsed and modelled instead.
+ *   - **Store facts, derive at query time.** Names join by id instead of
+ *     being denormalized into rows; prices are `uses * unit_price`; weapon
+ *     usability is `wl_* > 0`; the old `units` roster filter is the `roster`
+ *     view. Absence is modelled as NULL or a missing child row, never as
+ *     the ROM's zero-as-absence convention.
  *
  * Conventions:
  *
  *   - Booleans use `integer({ mode: "boolean" })` (stored 0/1).
- *   - Bulky leaf detail that never joins (raw ability bytes, condition-slot
- *     pointers, placement item lists) is a `text({ mode: "json" })` column.
+ *   - Small lists that never join (ability bytes, placement items, recruited
+ *     unit ids) are `text({ mode: "json" })` columns; anything that joins
+ *     (effectiveness, movement costs) is a child table.
  *   - Ids are the game's own: unit ids are 1-based, class ids 0-based,
  *     `map_index` is the map-setting table row, **not** the chapter number.
  *     Primary keys are those natural ids; a duplicate id means corrupt data
@@ -26,19 +32,16 @@
  *   - Support bonuses are stored as the ROM's half-points (`*_half` columns);
  *     the applied bonus at rank C/B/A is `half * 1/2/3` (see
  *     `tables/supportBonus.ts`).
- *   - Prices: `buy = items.uses * items.unit_price`, `sell = buy / 2`;
- *     a shop row charges `shop_items.effective_uses * items.unit_price`.
  *
- * The roster the old `units` command emitted by default (units carrying
- * support data) survives as the `roster` view - filtering is a query-time
- * decision now. Empty unit slots (no name, class or level) are **not**
- * extracted at all: they carry no data and their id 0 is not unique. Their
- * count is recorded in `meta` as `units.emptySlots`.
+ * Empty unit slots (no name, class or level) are not extracted: they carry
+ * no data and their id 0 is not unique. Their count is in `meta` as
+ * `units.emptySlots`.
  */
 
 import { integer, primaryKey, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
 import { foreignKey } from "drizzle-orm/sqlite-core";
 
+/** Provenance and run-level facts, as key/value pairs. */
 export const meta = sqliteTable("meta", {
   key: text("key").primaryKey(),
   value: text("value").notNull(),
@@ -47,17 +50,14 @@ export const meta = sqliteTable("meta", {
 export const units = sqliteTable("units", {
   /** Game unit id, 1-based. Unique per ROM; support/placement data keys on it. */
   id: integer("id").primaryKey(),
-  /** File offset of the 52-byte record. */
-  address: integer("address").notNull(),
   /** Display name: decoded, control bytes and `@XXXX` escapes stripped. */
   name: text("name").notNull(),
-  /** Decoded name with `@XXXX` escapes intact. */
-  nameRaw: text("name_raw").notNull(),
+  /** Text id the name was decoded from; feed it to `fe-rom text` to see raw. */
   nameTextId: integer("name_text_id").notNull(),
   description: text("description").notNull(),
   descTextId: integer("desc_text_id").notNull(),
   classId: integer("class_id").notNull(),
-  /** True when this class is the promoted half of a base/promoted pair. */
+  /** True when this unit's class is the promoted half of a base/promoted pair. */
   isPromotedClass: integer("is_promoted_class", { mode: "boolean" }).notNull(),
   mapFaceId: integer("map_face_id").notNull(),
   portraitId: integer("portrait_id").notNull(),
@@ -100,17 +100,13 @@ export const units = sqliteTable("units", {
   abilityFlags: text("ability_flags", { mode: "json" })
     .$type<[number, number, number, number]>()
     .notNull(),
-  /** Raw pointer value stored at +44. */
-  supportPointer: integer("support_pointer").notNull(),
-  /** File offset the support pointer resolves to; 0 when unset/invalid. */
-  supportAddress: integer("support_address").notNull(),
+  /** True when the unit's support pointer (+44) resolves to a record. */
   hasSupportData: integer("has_support_data", { mode: "boolean" }).notNull(),
 });
 
 export const classes = sqliteTable("classes", {
   /** Class id, 0-based. Id 0 is the reserved empty entry (kept, is_empty = 1). */
   id: integer("id").primaryKey(),
-  address: integer("address").notNull(),
   name: text("name").notNull(),
   nameTextId: integer("name_text_id").notNull(),
   description: text("description").notNull(),
@@ -124,6 +120,8 @@ export const classes = sqliteTable("classes", {
   sortOrder: integer("sort_order").notNull(),
   movementRange: integer("movement_range").notNull(),
   movementSpeed: integer("movement_speed").notNull(),
+  /** Experience bonus factored into exp gains; 0 = none. */
+  experienceBonus: integer("experience_bonus").notNull(),
 
   baseHp: integer("base_hp").notNull(),
   baseStr: integer("base_str").notNull(),
@@ -191,15 +189,20 @@ export const classAbilityFlags = sqliteTable(
   (t) => [primaryKey({ columns: [t.classId, t.flag] })],
 );
 
-/** 65 rows per class, indexed by terrain id; cost 0xFF = impassable. */
+/**
+ * 65 rows per class per variant, indexed by terrain id; 0xFF = impassable.
+ * `rain`/`snow` rows exist only for classes that carry a weather-specific
+ * table - most do not.
+ */
 export const classMovementCosts = sqliteTable(
   "class_movement_costs",
   {
     classId: integer("class_id").notNull(),
+    variant: text("variant", { enum: ["normal", "rain", "snow"] }).notNull(),
     terrainId: integer("terrain_id").notNull(),
     cost: integer("cost").notNull(),
   },
-  (t) => [primaryKey({ columns: [t.classId, t.terrainId] })],
+  (t) => [primaryKey({ columns: [t.classId, t.variant, t.terrainId] })],
 );
 
 export const classTerrainBonuses = sqliteTable(
@@ -216,35 +219,36 @@ export const classTerrainBonuses = sqliteTable(
 
 /**
  * Derived mobility profile; SQL cannot reproduce it (it needs the
- * infantry-baseline comparison across the whole class table). `movement`,
- * `mount` and `special_action` live on `classes`.
+ * infantry-baseline comparison across the whole class table). Weapon
+ * usability, staff and magic access derive from `classes.wl_*` and are not
+ * repeated here.
  */
 export const classRoles = sqliteTable("class_roles", {
   classId: integer("class_id").primaryKey(),
   mobility: text("mobility", { enum: ["flying", "mounted", "armour", "normal"] }).notNull(),
   /** "flags" when the ROM stated it, "costs" when we inferred it. */
   mobilitySource: text("mobility_source", { enum: ["flags", "costs"] }).notNull(),
-  /** Weapon types this class can use, in ROM order. */
-  weapons: text("weapons", { mode: "json" }).$type<string[]>().notNull(),
-  hasStaff: integer("has_staff", { mode: "boolean" }).notNull(),
-  isMagic: integer("is_magic", { mode: "boolean" }).notNull(),
 });
 
 export const terrains = sqliteTable("terrains", {
   /** Terrain id 0..0x40; also the movement-cost index space. */
   id: integer("id").primaryKey(),
+  /** Decoded name; "" when the record is empty or undecodable. */
   name: text("name").notNull(),
+  /** Non-multibyte releases: the text id the name was decoded from. */
   textId: integer("text_id"),
-  nameAddress: integer("name_address"),
+  /** False when the name could not be decoded (Shift-JIS releases). */
   decoded: integer("decoded", { mode: "boolean" }).notNull(),
-  /** Raw bytes, for the undecoded case. */
-  raw: text("raw", { mode: "json" }).$type<number[]>().notNull(),
 });
 
-/** Affinity names decoded from the ROM's own text table. */
+/**
+ * Affinity names decoded from the ROM's own text table. Every affinity id
+ * referenced by units or the bonus table gets a row; ids the ROM has no name
+ * for (hacks extend past the reference's seven) have name NULL.
+ */
 export const affinities = sqliteTable("affinities", {
   id: integer("id").primaryKey(),
-  name: text("name").notNull(),
+  name: text("name"),
 });
 
 export const supportBonuses = sqliteTable("support_bonuses", {
@@ -257,10 +261,9 @@ export const supportBonuses = sqliteTable("support_bonuses", {
   critAvoidHalf: integer("crit_avoid_half").notNull(),
 });
 
-/** Per-unit support record diagnostics (declared vs actual partner count). */
+/** Per-unit support record: partner count as declared vs as actually filled. */
 export const supportEntries = sqliteTable("support_entries", {
   unitId: integer("unit_id").primaryKey(),
-  address: integer("address").notNull(),
   declaredCount: integer("declared_count").notNull(),
   actualCount: integer("actual_count").notNull(),
 });
@@ -293,25 +296,27 @@ export const supportEdges = sqliteTable(
 
 export const items = sqliteTable("items", {
   id: integer("id").primaryKey(),
-  address: integer("address").notNull(),
-  /** Decoded via the item-font path; see tables/items.ts. */
   name: text("name").notNull(),
-  /** As the plain text decoder renders it (diagnostic). */
-  nameRaw: text("name_raw").notNull(),
   nameTextId: integer("name_text_id").notNull(),
   descTextId: integer("desc_text_id").notNull(),
   useDescTextId: integer("use_desc_text_id").notNull(),
-  /** Storage format of the name string. */
-  nameKind: text("name_kind", { enum: ["huffman", "unhuffman", "direct", "invalid"] }).notNull(),
-  /** Codes the item-font table has no mapping for; should stay []. */
-  nameUnknownCodes: text("name_unknown_codes", { mode: "json" }).$type<number[]>().notNull(),
   description: text("description").notNull(),
   type: integer("type").notNull(),
   typeName: text("type_name").notNull(),
   /** Raw ability bytes at +8..+11. */
   attributes: text("attributes", { mode: "json" }).$type<number[]>().notNull(),
-  statBonusPointer: integer("stat_bonus_pointer").notNull(),
-  effectivenessPointer: integer("effectiveness_pointer").notNull(),
+
+  // Stat bonuses while equipped; NULL columns when the item has no table.
+  sbHp: integer("sb_hp"),
+  sbStr: integer("sb_str"),
+  sbSkl: integer("sb_skl"),
+  sbSpd: integer("sb_spd"),
+  sbDef: integer("sb_def"),
+  sbRes: integer("sb_res"),
+  sbLck: integer("sb_lck"),
+  sbMov: integer("sb_mov"),
+  sbCon: integer("sb_con"),
+
   uses: integer("uses").notNull(),
   might: integer("might").notNull(),
   hit: integer("hit").notNull(),
@@ -329,15 +334,24 @@ export const items = sqliteTable("items", {
   isWeapon: integer("is_weapon", { mode: "boolean" }).notNull(),
 });
 
+/** Classes a weapon is effective against. */
+export const itemEffectiveness = sqliteTable(
+  "item_effectiveness",
+  {
+    itemId: integer("item_id").notNull(),
+    classId: integer("class_id").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.itemId, t.classId] }),
+    foreignKey({ columns: [t.itemId], foreignColumns: [items.id] }),
+  ],
+);
+
 export const shops = sqliteTable("shops", {
   id: integer("id").primaryKey(),
   kind: text("kind", { enum: ["weapon", "item", "secret", "prep"] }).notNull(),
-  label: text("label").notNull(),
-  address: integer("address").notNull(),
-  /** NULL for the prep shop. */
+  /** NULL for the prep-screen shop. */
   mapIndex: integer("map_index"),
-  chapterNumber: real("chapter_number"),
-  chapterTitle: text("chapter_title"),
 });
 
 export const shopItems = sqliteTable(
@@ -361,27 +375,22 @@ export const shopItems = sqliteTable(
 export const chapters = sqliteTable("chapters", {
   /** Map-setting table row. NOT the chapter number. */
   mapIndex: integer("map_index").primaryKey(),
-  mapSettingAddr: integer("map_setting_addr").notNull(),
   /** Prep-screen number; gaiden chapters use half steps (8.5). */
   chapterNumber: real("chapter_number").notNull(),
-  /** The doubled raw field. */
-  chapterNumberRaw: integer("chapter_number_raw").notNull(),
   titleTextId: integer("title_text_id").notNull(),
   title: text("title").notNull(),
-  eventPlist: integer("event_plist").notNull(),
-  condTableAddr: integer("cond_table_addr").notNull(),
-  /** The 20 raw condition-slot pointer values. */
-  condPointers: text("cond_pointers", { mode: "json" }).$type<number[]>().notNull(),
-  playerPlacementAddr: integer("player_placement_addr").notNull(),
-  hardPlacementAddr: integer("hard_placement_addr").notNull(),
-  startEventAddr: integer("start_event_addr").notNull(),
-  endEventAddr: integer("end_event_addr").notNull(),
+  /** Weather id; 0 = none. */
+  weatherId: integer("weather_id").notNull(),
   /** Deployment slot count, normal mode. */
   deploySlots: integer("deploy_slots").notNull(),
   deploySlotsHard: integer("deploy_slots_hard").notNull(),
 });
 
-/** Player/enemy/ally placements, both modes. class_id 0 = the unit's own class. */
+/**
+ * Player/enemy/ally placements, both modes. class_id 0 = the unit's own
+ * class. The coordinate is the pre-placement (staging) position; where the
+ * unit actually walks to is `chapter_placement_steps`.
+ */
 export const chapterPlacements = sqliteTable(
   "chapter_placements",
   {
@@ -389,45 +398,58 @@ export const chapterPlacements = sqliteTable(
     mode: text("mode", { enum: ["normal", "hard"] }).notNull(),
     /** Row number within the placement block. */
     position: integer("position").notNull(),
-    address: integer("address").notNull(),
     unitId: integer("unit_id").notNull(),
     classId: integer("class_id").notNull(),
     commander: integer("commander").notNull(),
     level: integer("level").notNull(),
-    /** Raw +3 byte, the only place allegiance is recorded. */
-    unitGrow: integer("unit_grow").notNull(),
-    assign: integer("assign").notNull(),
     side: text("side", { enum: ["player", "ally", "enemy", "removed"] }).notNull(),
     autolevel: integer("autolevel", { mode: "boolean" }).notNull(),
-    /** Pre-placement (staging) coordinate. */
     x: integer("x").notNull(),
     y: integer("y").notNull(),
     ext: integer("ext"),
-    positionRaw: integer("position_raw").notNull(),
-    postPlacementCount: integer("post_placement_count").notNull(),
-    postPlacementAddr: integer("post_placement_addr").notNull(),
     /** Starting items, +12..+15. */
     items: text("items", { mode: "json" }).$type<number[]>().notNull(),
   },
-  (t) => [foreignKey({ columns: [t.mapIndex], foreignColumns: [chapters.mapIndex] })],
+  (t) => [
+    primaryKey({ columns: [t.mapIndex, t.mode, t.position] }),
+    foreignKey({ columns: [t.mapIndex], foreignColumns: [chapters.mapIndex] }),
+  ],
 );
 
-/** END_EVENT walk results, one row per chapter. */
-export const chapterEndEvents = sqliteTable("chapter_end_events", {
-  mapIndex: integer("map_index").primaryKey(),
-  endEventAddress: integer("end_event_address").notNull(),
-  instructionsDecoded: integer("instructions_decoded").notNull(),
-  /** Why the walk stopped - a table that ran out is not a chapter with no exit. */
-  stopReason: text("stop_reason").notNull(),
-});
+/** Where a placed unit actually walks to, step by step (8-byte records). */
+export const chapterPlacementSteps = sqliteTable(
+  "chapter_placement_steps",
+  {
+    mapIndex: integer("map_index").notNull(),
+    mode: text("mode", { enum: ["normal", "hard"] }).notNull(),
+    /** Placement row this belongs to. */
+    position: integer("position").notNull(),
+    /** Step number within the unit's approach. */
+    step: integer("step").notNull(),
+    x: integer("x").notNull(),
+    y: integer("y").notNull(),
+    ext: integer("ext"),
+    /** Movement speed override for the approach; 0 = default. */
+    speed: integer("speed").notNull(),
+    /** Unit id this step belongs to; 0 = the placed unit itself. */
+    unitId: integer("unit_id").notNull(),
+    /** Frames to wait before this step. */
+    wait: integer("wait").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.mapIndex, t.mode, t.position, t.step] })],
+);
 
+/**
+ * A story-advancing destination found in a chapter's END_EVENT.
+ * `call_depth` > 0 means the instruction lives in a shared CALL helper, so
+ * it fires for every chapter that calls that helper.
+ */
 export const chapterTransitions = sqliteTable("chapter_transitions", {
   mapIndex: integer("map_index").notNull(),
   /** Destination: a map-setting index, not a chapter number. */
   targetMap: integer("target_map").notNull(),
+  /** The opcode that carried the transition. */
   opcode: text("opcode").notNull(),
-  scriptAddress: integer("script_address").notNull(),
-  /** > 0 means reached via a shared CALL helper. */
   callDepth: integer("call_depth").notNull(),
 });
 
@@ -457,7 +479,6 @@ export const unitJoins = sqliteTable(
     /** play_order.position; NULL when the map is off every known path. */
     storyOrder: integer("story_order"),
     source: text("source", { enum: ["placement", "recruit", "load", "cutscene"] }).notNull(),
-    evidenceAddr: integer("evidence_addr").notNull(),
     classOverridden: integer("class_overridden", { mode: "boolean" }).notNull(),
     placedClassId: integer("placed_class_id").notNull(),
   },
@@ -469,7 +490,6 @@ export const unitJoins = sqliteTable(
 
 export const mapObjects = sqliteTable("map_objects", {
   mapIndex: integer("map_index").notNull(),
-  address: integer("address").notNull(),
   type: integer("type").notNull(),
   kind: text("kind").notNull(),
   /** Achievement flag; 0 = repeatable. */
@@ -478,25 +498,27 @@ export const mapObjects = sqliteTable("map_objects", {
   objectTypeName: text("object_type_name").notNull(),
   x: integer("x").notNull(),
   y: integer("y").notNull(),
-  /** Chest only. */
+  /** Chest only: the item inside. */
   itemId: integer("item_id"),
-  /** Chest only. */
+  /** Chest only: pays gold instead of an item. */
   gold: integer("gold").notNull(),
   isGoldChest: integer("is_gold_chest", { mode: "boolean" }).notNull(),
-  eventAddr: integer("event_addr").notNull(),
-  shopAddr: integer("shop_addr").notNull(),
+  /** The shop this object opens, when it is one. */
+  shopId: integer("shop_id"),
 });
 
 /** 必ず出撃: units the chapter forces into the deployment. */
-export const forceSortie = sqliteTable("force_sortie", {
-  idx: integer("idx").primaryKey(),
-  address: integer("address").notNull(),
-  unitId: integer("unit_id").notNull(),
-  /** 0xFF = any route. */
-  route: integer("route").notNull(),
-  /** 0xFF = any map. */
-  mapIndex: integer("map_index").notNull(),
-});
+export const forceSortie = sqliteTable(
+  "force_sortie",
+  {
+    unitId: integer("unit_id").notNull(),
+    /** 0xFF = any route. */
+    route: integer("route").notNull(),
+    /** 0xFF = any map. */
+    mapIndex: integer("map_index").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.unitId, t.route, t.mapIndex] })],
+);
 
 /** Condition-slot names from config/data; empty when that directory was missing. */
 export const condSlots = sqliteTable("cond_slots", {
@@ -506,42 +528,28 @@ export const condSlots = sqliteTable("cond_slots", {
   kind: text("kind").notNull(),
 });
 
-/** Event-script walk hits, per chapter. */
+/** Units an event script loads or recruits, per chapter. */
 export const chapterRecruits = sqliteTable("chapter_recruits", {
   mapIndex: integer("map_index").notNull(),
-  /** Address of the LOAD* instruction. */
-  address: integer("address").notNull(),
-  /** Condition slot the walk started from; -1 for a direct placement block. */
-  slotIndex: integer("slot_index").notNull(),
-  slotKind: text("slot_kind").notNull(),
-  /** The opcode pattern, for diagnostics. */
-  instruction: text("instruction").notNull(),
-  kind: text("kind").notNull(),
-  blockAddr: integer("block_addr").notNull(),
-  /** Unit ids named in the block. */
+  /** Which load instruction this is: recruit | load | cutscene. */
+  kind: text("kind", { enum: ["recruit", "load", "cutscene"] }).notNull(),
+  /** Unit ids named in the placement block the instruction points at. */
   unitIds: text("unit_ids", { mode: "json" }).$type<number[]>().notNull(),
 });
 
+/** Direct gold writes reachable from a chapter's scripts. */
 export const chapterGold = sqliteTable("chapter_gold", {
   mapIndex: integer("map_index").notNull(),
-  address: integer("address").notNull(),
   /** Signed: gain or lose. */
   delta: integer("delta").notNull(),
-  instruction: text("instruction").notNull(),
 });
 
+/** Item grants reachable from a chapter's scripts. */
 export const chapterItemGives = sqliteTable("chapter_item_gives", {
   mapIndex: integer("map_index").notNull(),
-  address: integer("address").notNull(),
   itemId: integer("item_id").notNull(),
   /** 0xFFFF = the unit currently acting. */
   unitId: integer("unit_id").notNull(),
-  instruction: text("instruction").notNull(),
-});
-
-export const chapterScanStats = sqliteTable("chapter_scan_stats", {
-  mapIndex: integer("map_index").primaryKey(),
-  truncatedWalks: integer("truncated_walks").notNull(),
 });
 
 /**
@@ -553,11 +561,10 @@ export const enemySamples = sqliteTable("enemy_samples", {
   mode: text("mode", { enum: ["normal", "hard"] }).notNull(),
   mapIndex: integer("map_index").notNull(),
   chapterNumber: real("chapter_number").notNull(),
-  address: integer("address").notNull(),
   unitId: integer("unit_id").notNull(),
   classId: integer("class_id").notNull(),
   level: integer("level").notNull(),
-  /** +3 bit 0: autolevel on/off. */
+  /** +3 bit 0 of the placement record: autolevel on/off. */
   grow: integer("grow", { mode: "boolean" }).notNull(),
   routine: text("routine", { enum: ["none", "unit", "realistic"] }).notNull(),
   promoted: integer("promoted", { mode: "boolean" }).notNull(),
@@ -595,11 +602,12 @@ export const TABLES = [
   supportPartners,
   supportEdges,
   items,
+  itemEffectiveness,
   shops,
   shopItems,
   chapters,
   chapterPlacements,
-  chapterEndEvents,
+  chapterPlacementSteps,
   chapterTransitions,
   playOrder,
   unitJoins,
@@ -609,6 +617,5 @@ export const TABLES = [
   chapterRecruits,
   chapterGold,
   chapterItemGives,
-  chapterScanStats,
   enemySamples,
 ] as const;
