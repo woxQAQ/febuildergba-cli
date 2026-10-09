@@ -1,9 +1,16 @@
 /**
- * One-call ROM loading: identify the game, resolve every table, decode text,
- * and hand back ready-to-use data.
+ * One-call ROM loading: identify the game, then resolve each table the first
+ * time a command asks for it.
  *
- * Order matters - classes are read before units because unit output embeds
- * class names.
+ * Only the ROM buffer, the detected identity, the layout and the text context
+ * are read eagerly - everything else is a memoised getter, so a command pays
+ * for the tables it reads and nothing else. That matters because the tables
+ * differ by two orders of magnitude in cost: `text` needs a 1 ms Huffman
+ * context, while `chapterScans` walks every event script of every chapter and
+ * takes ~650 ms on a 30 MB hack.
+ *
+ * Dependencies between getters are declared by reading the other getter, so
+ * order in this file carries no meaning.
  */
 
 import { readFileSync } from 'node:fs';
@@ -34,7 +41,13 @@ import type { ClassFlagDef } from './tables/classFlags.ts';
 import { loadClassFlags } from './tables/classFlags.ts';
 import type { EventScriptTable, CondSlot } from './tables/eventScript.ts';
 import { loadConditionSlots, loadEventScripts } from './tables/eventScript.ts';
-import type { Chapter, ChapterScan, CondSlotInfo, JoinDerivation, MapSettingTable } from './tables/chapters.ts';
+import type {
+  Chapter,
+  ChapterScan,
+  CondSlotInfo,
+  JoinDerivation,
+  MapSettingTable,
+} from './tables/chapters.ts';
 import {
   deriveJoins,
   describeCondSlots,
@@ -42,6 +55,8 @@ import {
   readMapSettingTable,
   scanChapter,
 } from './tables/chapters.ts';
+import type { ChapterEdges, PlayOrder } from './tables/storyPath.ts';
+import { buildPlayOrder, isRealMap, readAllTransitions } from './tables/storyPath.ts';
 import type { ForceSortieTable } from './tables/forceSortie.ts';
 import { readForceSortie } from './tables/forceSortie.ts';
 import type { Item, ItemReadResult } from './tables/items.ts';
@@ -90,9 +105,20 @@ export interface LoadedRom {
   mapSettings: MapSettingTable | null;
   /** One entry per map setting record. */
   chapters: Chapter[];
+  /**
+   * Each chapter's END_EVENT decoded into outgoing transitions. The input to
+   * `playOrder`; also the per-map edge list in its own right.
+   */
+  mapTransitions: ChapterEdges[];
+  /**
+   * The order the chapters are played in, main path and side chapters together.
+   * This - not `chapterNumber` - is what orders the game; see
+   * `tables/storyPath.ts`.
+   */
+  playOrder: PlayOrder;
   /** Per-chapter recruit scan. Empty when the opcode table is missing. */
   chapterScans: ChapterScan[];
-  /** Earliest chapter per unit id. */
+  /** Earliest chapter per unit id, ordered by `playOrder`. */
   joins: JoinDerivation;
   /**
    * Forced-deployment ("必ず出撃") table, or `null` when the game has none.
@@ -133,9 +159,48 @@ export function titleFragment(version: string): string {
   return version.slice(0, 3);
 }
 
+/** A property that computes itself once, on first read. */
+function memo<T>(compute: () => T): PropertyDescriptor {
+  let done = false;
+  let value: T;
+  return {
+    enumerable: true,
+    configurable: true,
+    get(): T {
+      if (!done) {
+        value = compute();
+        done = true;
+      }
+      return value;
+    },
+  };
+}
+
+/**
+ * Which classes are already promoted.
+ *
+ * NOT via `promotesToClassId`: in a base/promoted pair that field links the two
+ * ids **both ways** (verified on FE8U - `Brawler`(1) stores 3 and `Great
+ * Chief`(3) stores 1; same for 5/7, 9/11, 15/17), so it cannot break the tie.
+ * `sortOrder` can: verified across 9 pairs, the **higher** value is always the
+ * promoted side (Brawler=1 / Great Chief=2, Sword Pegasus=16 / Falcoknight=17,
+ * Swd Mercenary=3 / Hero=4).
+ *
+ * My partner is whatever `promotesToClassId` names. If my partner sorts higher
+ * than I do, *it* is the promoted one and I am still base.
+ */
+function promotedClassIdsOf(classes: readonly UnitClass[]): Set<number> {
+  const promoted = new Set<number>();
+  for (const c of classes) {
+    const target = classes.find((o) => o.id === c.promotesToClassId);
+    if (target && target.sortOrder < c.sortOrder) promoted.add(c.id);
+  }
+  return promoted;
+}
+
 export function loadRom(path: string, options: LoadOptions = {}): LoadedRom {
-  const rom = new RomBuffer(readFileSync(path));
-  const identity = detectVersion(rom);
+  const buffer = new RomBuffer(readFileSync(path));
+  const identity = detectVersion(buffer);
 
   if (!identity.version) {
     // `detectVersion` already explains why (too small, or an unknown code).
@@ -153,138 +218,123 @@ export function loadRom(path: string, options: LoadOptions = {}): LoadedRom {
     );
   }
 
-  const text = makeTextContext(rom, layout.text);
-
-  // `config/data` supplies the names of class ability bits. Without it we can
-  // still parse, but roles lose the mounted/armour distinction.
-  const configDir = findConfigDataDir(options.configDir);
-  const classFlagDefs =
-    configDir === null ? [] : loadClassFlags(configDir, titleFragment(identity.version));
-
-  const classTable = resolveTable(rom, layout.unitClass);
-  const classes = readAllClasses({ rom, table: classTable, text, abilityFlagDefs: classFlagDefs });
-  const classNames = buildClassNameMap(classes);
-  const classRoles = deriveClassRoles(classes);
-
-  const unitTable = resolveTable(rom, layout.unit);
-  // Class base stats are needed to turn a unit's per-unit deltas into the stats
-  // it actually starts with (`startingStat = class base + unit base`).
-  const classBases = new Map(classes.map((c) => [c.id, c.bases]));
-  // Which classes are already promoted?
-  //
-  // NOT via `promotesToClassId`: in a base/promoted pair that field links the
-  // two ids **both ways** (verified on FE8U - `Brawler`(1) stores 3 and
-  // `Great Chief`(3) stores 1; same for 5/7, 9/11, 15/17), so it cannot
-  // break the tie. `sortOrder` can: verified across 9 pairs, the **higher**
-  // value is always the promoted side (Brawler=1 / Great Chief=2,
-  // Sword Pegasus=16 / Falcoknight=17, Swd Mercenary=3 / Hero=4).
-  //
-  // My partner is whatever `promotesToClassId` names. If my partner sorts
-  // higher than I do, *it* is the promoted one and I am still base.
-  const promotedClassIds = new Set<number>();
-  for (const c of classes) {
-    const target = classes.find((o) => o.id === c.promotesToClassId);
-    if (target && target.sortOrder < c.sortOrder) promotedClassIds.add(c.id);
-  }
-  const units = readAllUnits({
-    rom,
-    table: unitTable,
-    text,
-    classNames,
-    classBases,
-    promotedClassIds,
-  });
-  const unitNames = buildUnitNameMap(units);
-
-  const supports = readSupports(rom, units, unitNames);
-  const supportGraph = buildSupportGraph(supports.entries, unitNames);
-
-  const supportBonuses = layout.support
-    ? readSupportBonuses(rom, layout.support.attributePointer)
-    : [];
-
-  // Affinity names straight from the ROM's text table, via the text ids the
-  // game's own `GetAffinityName` uses. Falls back per-entry to the hardcoded
-  // table when a text id does not decode.
-  const affinityNames = readAffinityNames(rom, text);
-
-  const terrainNames = readTerrainNames(rom, layout.terrainNames, text);
-
-  // Chapters and join order. Both need `config/data`: the opcode table to walk
-  // scripts, and `eventcond_<game>.txt` to know which condition slot is which.
+  // Only what every command needs, and all of it cheap: `makeTextContext` sets
+  // up the Huffman tables without decoding anything.
+  const text = makeTextContext(buffer, layout.text);
   const game = titleFragment(identity.version);
-  const eventScripts =
-    configDir === null ? { scripts: [], source: null } : loadEventScripts(configDir, game);
-  const rawCondSlots = configDir === null ? [] : loadConditionSlots(configDir, game);
-  const condSlots = describeCondSlots(rawCondSlots);
+  const self = { path, rom: buffer, identity, layout, text } as unknown as LoadedRom;
 
-  const mapSettings = readMapSettingTable(rom, layout);
-  const chapters =
-    mapSettings === null || condSlots.length === 0
-      ? []
-      : readChapters(rom, layout, mapSettings, condSlots, text);
+  Object.defineProperties(self, {
+    // `config/data` supplies the names of class ability bits and the opcode
+    // table. Without it we can still parse, but roles lose the mounted/armour
+    // distinction and the chapters lose their script walks.
+    configDir: memo(() => findConfigDataDir(options.configDir)),
+    classFlagDefs: memo(() => {
+      const dir = self.configDir;
+      return dir === null ? [] : loadClassFlags(dir, game);
+    }),
 
-  const chapterScans =
-    eventScripts.scripts.length === 0
-      ? []
-      : chapters.map((chapter) => scanChapter(rom, eventScripts, layout, chapter, condSlots));
+    classTable: memo(() => resolveTable(buffer, layout.unitClass)),
+    classes: memo(() =>
+      readAllClasses({
+        rom: buffer,
+        table: self.classTable,
+        text,
+        abilityFlagDefs: self.classFlagDefs,
+      }),
+    ),
+    classNames: memo(() => buildClassNameMap(self.classes)),
+    classRoles: memo(() => deriveClassRoles(self.classes)),
 
-  const ownClassOf = new Map<number, number>();
-  for (const unit of units) {
-    if (unit.classId !== undefined) ownClassOf.set(unit.id, unit.classId);
-  }
-  const joins = deriveJoins(chapters, chapterScans, ownClassOf);
+    unitTable: memo(() => resolveTable(buffer, layout.unit)),
+    units: memo(() => {
+      // Class base stats turn a unit's per-unit deltas into the stats it
+      // actually starts with (`startingStat = class base + unit base`).
+      const classBases = new Map(self.classes.map((c) => [c.id, c.bases]));
+      return readAllUnits({
+        rom: buffer,
+        table: self.unitTable,
+        text,
+        classNames: self.classNames,
+        classBases,
+        promotedClassIds: promotedClassIdsOf(self.classes),
+      });
+    }),
+    unitNames: memo(() => buildUnitNameMap(self.units)),
 
-  const forceSortie = readForceSortie(rom, layout);
+    supports: memo(() => readSupports(buffer, self.units, self.unitNames)),
+    supportGraph: memo(() => buildSupportGraph(self.supports.entries, self.unitNames)),
+    supportBonuses: memo(() =>
+      layout.support ? readSupportBonuses(buffer, layout.support.attributePointer) : [],
+    ),
+    // Affinity names straight from the ROM's text table, via the text ids the
+    // game's own `GetAffinityName` uses. Falls back per-entry to the hardcoded
+    // table when a text id does not decode.
+    affinityNames: memo(() => readAffinityNames(buffer, text)),
 
-  // Items and shops. Items come first: shop entries are priced through them.
-  const itemData = layout.item === null ? null : readItems(rom, layout.item, text);
-  const items = itemData?.items ?? [];
-  const itemMap = buildItemMap(items);
+    terrainNames: memo(() => readTerrainNames(buffer, layout.terrainNames, text)),
 
-  // Map objects (chest / village / door / seize / shop) are read once; the shop
-  // reader only turns the shop-typed ones into priced entry lists.
-  const chapterObjects = readAllObjects(rom, layout, chapters);
-  const mapObjects = chapterObjects.flatMap((c) => c.objects);
+    eventScripts: memo(() => {
+      const dir = self.configDir;
+      return dir === null ? { scripts: [], source: null } : loadEventScripts(dir, game);
+    }),
+    rawCondSlots: memo(() => {
+      const dir = self.configDir;
+      return dir === null ? [] : loadConditionSlots(dir, game);
+    }),
+    condSlots: memo(() => describeCondSlots(self.rawCondSlots)),
 
-  const shopData =
-    layout.shop === null || items.length === 0
-      ? null
-      : readShops(rom, layout.shop, chapterObjects, itemMap);
+    mapSettings: memo(() => readMapSettingTable(buffer, layout)),
+    chapters: memo(() => {
+      const settings = self.mapSettings;
+      const slots = self.condSlots;
+      return settings === null || slots.length === 0
+        ? []
+        : readChapters(buffer, layout, settings, slots, text);
+    }),
 
-  return {
-    path,
-    rom,
-    identity,
-    layout,
-    text,
-    classTable,
-    unitTable,
-    classes,
-    classNames,
-    classRoles,
-    units,
-    unitNames,
-    supports,
-    supportGraph,
-    supportBonuses,
-    affinityNames,
-    terrainNames,
-    configDir,
-    classFlagDefs,
-    eventScripts,
-    condSlots,
-    rawCondSlots,
-    mapSettings,
-    chapters,
-    chapterScans,
-    joins,
-    forceSortie,
-    itemData,
-    items,
-    itemMap,
-    shopData,
-    chapterObjects,
-    mapObjects,
-  };
+    mapTransitions: memo(() =>
+      self.eventScripts.scripts.length === 0
+        ? []
+        : readAllTransitions(buffer, self.eventScripts, self.chapters),
+    ),
+    playOrder: memo(() => {
+      const real = new Set(
+        self.chapters.filter((c) => isRealMap(buffer, c)).map((c) => c.index),
+      );
+      return buildPlayOrder(self.mapTransitions, (m) => real.has(m));
+    }),
+
+    chapterScans: memo(() =>
+      self.eventScripts.scripts.length === 0
+        ? []
+        : self.chapters.map((c) => scanChapter(buffer, self.eventScripts, layout, c, self.condSlots)),
+    ),
+    joins: memo(() => {
+      const ownClassOf = new Map<number, number>();
+      for (const unit of self.units) {
+        if (unit.classId !== undefined) ownClassOf.set(unit.id, unit.classId);
+      }
+      const position = self.playOrder.position;
+      return deriveJoins(self.chapters, self.chapterScans, ownClassOf, (m) => position.get(m) ?? null);
+    }),
+
+    forceSortie: memo(() => readForceSortie(buffer, layout)),
+
+    // Items come first: shop entries are priced through them, and map objects
+    // only need the chapter list.
+    itemData: memo(() => (layout.item === null ? null : readItems(buffer, layout.item, text))),
+    items: memo(() => self.itemData?.items ?? []),
+    itemMap: memo(() => buildItemMap(self.items)),
+
+    chapterObjects: memo(() => readAllObjects(buffer, layout, self.chapters)),
+    mapObjects: memo(() => self.chapterObjects.flatMap((c) => c.objects)),
+    shopData: memo(() =>
+      layout.shop === null || self.items.length === 0
+        ? null
+        : readShops(buffer, layout.shop, self.chapterObjects, self.itemMap),
+    ),
+  });
+
+  return self;
 }

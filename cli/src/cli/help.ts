@@ -80,7 +80,7 @@ export function usage(): string {
     '  fe-rom info         fixtures/dream-of-five.gba',
     '  fe-rom roles        fixtures/dream-of-five.gba',
     '  fe-rom chapters     fixtures/dream-of-five.gba',
-    '  fe-rom storypath    fixtures/dream-of-five.gba',
+    '  fe-rom chapters     fixtures/dream-of-five.gba --all',
     '  fe-rom terrain      fixtures/dream-of-five.gba',
     '  fe-rom units        fixtures/dream-of-five.gba',
     '  fe-rom units        fixtures/dream-of-five.gba --all',

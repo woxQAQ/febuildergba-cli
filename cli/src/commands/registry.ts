@@ -7,7 +7,6 @@ import { roles } from './roles.ts';
 import { supports } from './supports.ts';
 import { terrain } from './terrain.ts';
 import { chapters } from './chapters.ts';
-import { storypath } from './storypath.ts';
 import { items } from './items.ts';
 import { shops } from './shops.ts';
 import { objects } from './objects.ts';
@@ -30,7 +29,6 @@ export const COMMANDS: readonly Command[] = [
   supports,
   terrain,
   chapters,
-  storypath,
   items,
   shops,
   objects,

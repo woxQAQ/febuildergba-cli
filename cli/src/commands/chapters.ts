@@ -1,50 +1,74 @@
 import { hex } from '../cli/hex.ts';
 import { alwaysForcedUnits, forcedUnitsForMap, MAP_ANY, routeLabel } from '../tables/forceSortie.ts';
-import { isRealMap } from '../tables/storyPath.ts';
+import { duplicateRegistrations, isRealMap } from '../tables/storyPath.ts';
 import { isStoryTitle } from '../analysis/crossTable.ts';
 import type { Command } from './types.ts';
 
 /**
- * Join order. A unit's join chapter is not stored anywhere; it is derived from
- * two kinds of evidence:
+ * The chapter table, and everything keyed by chapter.
  *
- *   1. the chapter's initial player placement block (condition slot 10), and
- *   2. `LOAD1` ("自軍ユニットは仲間にする") instructions in the chapter's events.
+ * This used to be two commands. `storypath` owned the play order and
+ * `chapters` owned the per-map rosters and join order, which made the pair
+ * look like two views of one table when they were really one table presented
+ * twice - and, worse, one of them was presenting the wrong ordering. The
+ * chapter *number* restarts at 1 in every act, so neither command's numeric
+ * key could answer "when does this happen".
  *
- * See `tables/chapters.ts` for the full chain and its two documented
- * deviations from FEBuilderGBA.
+ * So `playOrder` is the spine. It is the sequence of maps a playthrough sees,
+ * derived from each chapter's END_EVENT transitions: the main path plus the
+ * side chapters, each spliced in where its branch puts it. Every other list
+ * here - `chapters`, `joinOrder` - is ordered by that position, and nothing
+ * falls back on `mapIndex` or `chapterNumber` for ordering.
  *
- * ## Output shape
+ * ## Views
  *
- * Two views, and deliberately not three. `joinOrder` is one row per **unit** -
- * the question "when can I use this unit" is per-unit, and 62 rows answer it.
- * `chapters` is one row per **map**, for questions about a single map.
- *
- * The per-map row does not repeat every placement record. A map's placement
- * block holds one entry per deployment slot, and hack authors reuse unit ids as
- * generic templates with a different class, so the block runs to several
- * hundred entries where the roster is sixty characters. Emitting them all made
- * this command the largest by output size (535 KB on Vision Quest, against 27 KB
- * for `storypath`) while adding nothing the other views did not carry. What is
- * kept is `detachedClasses`, the one thing placements say that join order cannot:
- * a character fought this map as a different class than their own.
- *
- * `storypath` owns the main path, so this command does not repeat it.
+ *   - `playOrder.sequence` - every map in play order, with `role` and
+ *     `playable`; this is the chapter list.
+ *   - `chapters`        - one row per map, in play order: what it deploys,
+ *     who is on it, where it leads.
+ *   - `joinOrder`       - one row per unit, in join order: when it becomes
+ *     available.
+ *   - `branches`        - where the path forks, i.e. where a side chapter
+ *     hangs off it.
+ *   - `offPath`         - real maps the main path does not reach.
  */
 export const chapters: Command = {
-name: 'chapters',
-  summary: 'Join order: when each unit becomes available, and per-map rosters',
+  name: 'chapters',
+  summary: 'Chapter table: play order, per-map rosters, and when each unit joins',
   description:
-    'Two views of the same data: `joinOrder` is one row per **unit** ordered by ' +
-    'when it becomes available, and `chapters` is one row per **map**. ' +
-    '**Prefer `chapterNumber` over `mapIndex`** - the map table has a row per map ' +
-    'id, so the index also counts unused slots and bonus maps. **Run `storypath` ' +
-    'for the order chapters play in**: the chapter number restarts at 1 in every ' +
-    'act and cannot order them. Padded map rows are dropped unless `--all`; the ' +
-    'deploy roster is deduplicated per character rather than per slot.',
+    'The play order first, then everything keyed by chapter. **Order on ' +
+    '`storyOrder`, never on `chapterNumber`**: the chapter number is the one ' +
+    'the prep screen shows and it restarts at 1 in every act, so Vision ' +
+    'Quest\'s map 16 is followed by 41, 42 and only then 17. `playOrder` is ' +
+    'derived from the END_EVENT transitions; a side chapter is spliced in ' +
+    'where its branch puts it. `joinOrder` is one row per unit ordered by the ' +
+    'play position of its join chapter. Padded map rows are dropped unless ' +
+    '`--all`; the deploy roster is deduplicated per character rather than per ' +
+    'slot.',
   run: ({ rom, flags }) => {
     const supportIds = new Set(rom.supports.entries.map((e) => e.unitId));
     const unitById = new Map(rom.units.map((u) => [u.id, u]));
+    const byMap = new Map(rom.chapters.map((c) => [c.index, c]));
+    const edgesByMap = new Map(rom.mapTransitions.map((e) => [e.mapIndex, e]));
+    const realMaps = new Set(
+      rom.chapters.filter((c) => isRealMap(rom.rom, c)).map((c) => c.index),
+    );
+
+    const play = rom.playOrder;
+    const position = play.position;
+    const stepOf = new Map(play.steps.map((s) => [s.mapIndex, s]));
+    const orderOf = (mapIndex: number | null | undefined): number | null =>
+      mapIndex === null || mapIndex === undefined ? null : (position.get(mapIndex) ?? null);
+    const label = (mapIndex: number): string => {
+      const c = byMap.get(mapIndex);
+      return c === undefined || c.title.length === 0 ? `(map ${mapIndex})` : c.title;
+    };
+    /** `main` / `side` / `offPath` / `padded` - how a map relates to the path. */
+    const playsAsOf = (mapIndex: number): 'main' | 'side' | 'offPath' | 'padded' => {
+      const step = stepOf.get(mapIndex);
+      if (step !== undefined) return step.role;
+      return realMaps.has(mapIndex) ? 'offPath' : 'padded';
+    };
 
     const describe = (id: number): string => {
       const unit = unitById.get(id);
@@ -73,24 +97,56 @@ name: 'chapters',
 
     const chapterRows = rom.chapters.map((chapter) => {
       const scan = rom.chapterScans.find((s) => s.chapterIndex === chapter.index);
-      /**
-       * True for a row that pads the map table out to its full length: the row
-       * does not claim its own slot id, so nothing refers to it either. Same
-       * test `storypath` uses, kept here so the two commands agree.
-       */
-      const isPaddedRow = !isRealMap(rom.rom, chapter);
+      const edge = edgesByMap.get(chapter.index);
+      const step = stepOf.get(chapter.index);
       return {
-        mapIndex: chapter.index,
-        /** False for the rows that only pad the table; see `storypath`. */
-        isPaddedRow,
+        /** 1-based play position, or `null` when the main path does not reach it. */
+        storyOrder: orderOf(chapter.index),
         /**
-         * The game's own chapter number (`u16(record + 0x80) / 2`). **Use this,
-         * not `mapIndex`.** The table has a row per map id, so `mapIndex` counts
-         * unused slots and bonus maps too; 0 means "this row is not a chapter".
+         * `main` (on the no-detour path), `side` (a chapter spliced in at a
+         * branch), `offPath` (a real map the path does not reach), `padded` (a
+         * table row that was never a map).
+         */
+        playsAs: playsAsOf(chapter.index),
+        mapIndex: chapter.index,
+        /** False for the rows that only pad the table out to its full length. */
+        isPaddedRow: !realMaps.has(chapter.index),
+        /**
+         * The game's own chapter number (`u16(record + 0x80) / 2`), for display
+         * next to the title. **Never order on this.** It restarts at 1 every
+         * act, and gaiden chapters carry a `.5` suffix, so `7` and `7.5` are
+         * both real values.
          */
         chapterNumber: chapter.chapterNumber,
         /** Chapter title from `+0x70`; `''` for unused slots, `@001F` for world-map maps. */
         title: chapter.title,
+        /**
+         * Maps this chapter's END_EVENT can send you to, in script order. The
+         * first is the one the main path follows; any others are side chapters
+         * spliced in here, and they are already in `playOrder.sequence`.
+         */
+        goesTo: edge === undefined ? [] : [...new Set(edge.transitions.map((t) => t.targetMap))],
+        /**
+         * Why the transition walk ended. `"unrecognised opcode"` means the
+         * script was not read to its end, so a missing transition there is not
+         * evidence of anything.
+         */
+        stoppedBecause: edge?.stopReason ?? 'no END_EVENT',
+        /**
+         * Instruction-level edges, `--all` only. `goesTo` answers "where can
+         * this chapter go"; this answers "which instruction said so", which is
+         * how a missing destination is told apart from an undecodable script.
+         * `callDepth > 0` means the instruction sits in a shared helper event.
+         */
+        ...(flags.all
+          ? {
+              transitions: (edge?.transitions ?? []).map((t) => ({
+                opcode: t.opcode,
+                targetMap: t.targetMap,
+                callDepth: t.callDepth,
+              })),
+            }
+          : {}),
         /**
          * How many units this map lets you field. See `Chapter.deploySlots` in
          * `tables/chapters.ts` for how this is derived and why it is the same
@@ -122,10 +178,6 @@ name: 'chapters',
          * Roster actually deployed here, one entry per **character** rather than
          * per placement record: a character placed under two classes in the same
          * map appears once per distinct class.
-         *
-         * Replaces the raw `placements` list, which was one entry per
-         * deployment slot and therefore hundreds of rows on a hack that reuses
-         * ids as generic templates.
          */
         roster: (() => {
           const merged = new Map<string, {
@@ -215,13 +267,11 @@ name: 'chapters',
          * Items this chapter's scripts hand out, deduplicated by address.
          *
          * Hack chapters share one script across many maps, so the same payout
-         * reappears under every map that reaches it - the reference's own
-         * limitation note calls this out. Keeping one row per address stops a
-         * single 5,000-gold script from being counted once per map.
+         * reappears under every map that reaches it. Keeping one row per address
+         * stops a single 5,000-gold script from being counted once per map.
          *
          * `unitPrice` is the item's `+26` field: for a money bag (`Gold`,
-         * `3,000 Gold`, ...) that field **is** the gold amount the bag is worth,
-         * which is how the game pays out money.
+         * `3,000 Gold`, ...) that field **is** the gold amount the bag is worth.
          */
         itemsGiven: (() => {
           const byAddress = new Map<
@@ -249,16 +299,15 @@ name: 'chapters',
     const chapterOf = (index: number | null | undefined) =>
       index === null || index === undefined
         ? null
-        : (rom.chapters.find((c) => c.index === index) ?? null);
+        : (byMap.get(index) ?? null);
     const titleOf = (index: number | null | undefined): string | null =>
       chapterOf(index)?.title ?? null;
     const where = (index: number | null | undefined): string => {
       const chapter = chapterOf(index);
       if (chapter === null) return `map#${index}`;
-      const label = chapter.title === '' ? '(untitled)' : chapter.title;
-      return chapter.chapterNumber > 0
-        ? `ch${chapter.chapterNumber} ${label}`
-        : `map#${index} ${label}`;
+      const body = chapter.title === '' ? '(untitled)' : chapter.title;
+      const place = orderOf(index) === null ? `off-path` : `play ${orderOf(index)}`;
+      return `${place} ${body}`;
     };
     const unitIds = new Set<number>([...rom.joins.joins.keys(), ...rom.joins.appearances.keys()]);
     for (const record of rom.forceSortie?.records ?? []) unitIds.add(record.unitId);
@@ -288,6 +337,7 @@ name: 'chapters',
       const earliestSource = appearance?.source ?? join?.source ?? null;
       const joinRecord = chapterOf(join?.chapterIndex);
       const joinIsStory = joinRecord === null ? null : isStoryTitle(joinRecord.title);
+      const joinStoryOrder = orderOf(join?.chapterIndex);
       const forced = forcedByUnit.get(id) ?? [];
       const forcedEverywhere = forced.filter((f) => f.everyMap);
       const notes: string[] = [];
@@ -307,6 +357,11 @@ name: 'chapters',
             : `no recruit instruction names this unit; it is only loaded ` +
               `(${earliestSource}) in ${where(earliestChapter)}.`,
         );
+      } else if (joinStoryOrder === null) {
+        notes.push(
+          `the recruit instruction points at ${where(join.chapterIndex)}, which the ` +
+            'main path never reaches - the story position is unknown, not late.',
+        );
       } else if (earliestChapter !== null && earliestChapter < join.chapterIndex) {
         notes.push(
           `loaded (${earliestSource}) in ${where(earliestChapter)} but only ` +
@@ -323,12 +378,22 @@ name: 'chapters',
       }
       rows.push({
         ...described(id),
+        /**
+         * 1-based play position of the join chapter, or `null` when the main path
+         * does not reach it. **This is the ordering key** - `joinChapter` is a
+         * map-table row and `joinChapterNumber` restarts every act.
+         */
+        joinStoryOrder,
         /** Earliest chapter with a placement or a `LOAD1` ("仲間にする") instruction. */
         joinChapter: join?.chapterIndex ?? null,
-        /** The game's chapter number for `joinChapter`. **Prefer this over `joinChapter`.** */
+        /** The game's own number for `joinChapter`. Display only - see `storyOrder`. */
         joinChapterNumber: joinRecord?.chapterNumber ?? null,
-        /** **Prefer this over `joinChapter`** - the index counts placeholder records. */
         joinChapterTitle: joinRecord?.title ?? null,
+        /** How `joinChapter` relates to the path: main / side / offPath / padded. */
+        joinChapterPlaysAs:
+          join?.chapterIndex === undefined || join.chapterIndex === null
+            ? null
+            : playsAsOf(join.chapterIndex),
         /** False when `joinChapter` is an unused slot, a skirmish map or a bonus map. */
         joinChapterIsStory: joinIsStory,
         joinSource: join?.source ?? null,
@@ -342,6 +407,7 @@ name: 'chapters',
          */
         forcedDeployment: forced.map((f) => ({
           mapIndex: f.chapterIndex,
+          storyOrder: orderOf(f.chapterIndex),
           chapterNumber:
             f.chapterIndex === null ? null : (chapterOf(f.chapterIndex)?.chapterNumber ?? null),
           chapterTitle: f.chapterIndex === null ? null : (chapterOf(f.chapterIndex)?.title ?? null),
@@ -355,6 +421,7 @@ name: 'chapters',
          * lower bound on "usable from" - but it can also be a script the author
          * reused defensively, so it is a hint rather than a fact.
          */
+        earliestEvidenceStoryOrder: orderOf(earliestChapter),
         earliestEvidenceChapter: earliestChapter,
         earliestEvidenceChapterNumber: chapterOf(earliestChapter)?.chapterNumber ?? null,
         earliestEvidenceChapterTitle: titleOf(earliestChapter),
@@ -364,12 +431,94 @@ name: 'chapters',
     }
     rows.sort(
       (a, b) =>
+        ((a.joinStoryOrder as number | null) ?? Number.MAX_SAFE_INTEGER) -
+          ((b.joinStoryOrder as number | null) ?? Number.MAX_SAFE_INTEGER) ||
         ((a.joinChapter as number | null) ?? Number.MAX_SAFE_INTEGER) -
           ((b.joinChapter as number | null) ?? Number.MAX_SAFE_INTEGER) ||
         (a.id as number) - (b.id as number),
     );
 
     return {
+      /**
+       * The spine: the sequence of maps a playthrough sees, from each chapter's
+       * END_EVENT transitions. Everything else in this payload is ordered by the
+       * position it gives.
+       */
+      playOrder: {
+        /** Rows in the order, playable and not. */
+        length: play.steps.length,
+        /** Rows that are actual maps - the chapter count. */
+        playable: play.steps.filter((s) => s.playable).length,
+        /** Side chapters spliced in at a branch. */
+        sideChapters: play.steps.filter((s) => s.role === 'side').length,
+        /** The no-detour path, which is `playOrder.length - sideChapters`. */
+        mainPathLength: play.mainPath.length,
+        /**
+         * How the opening chapter was chosen, so the chain is not a black box.
+         * Vision Quest has four maps numbered 1 because its four acts each open
+         * at chapter 1; the first in map-table order is the real one.
+         */
+        startReason: play.startReason,
+        startCandidates: play.startCandidates,
+        endOfChain: {
+          lastMap: play.mainPath.at(-1) ?? null,
+          lastTitle: (play.mainPath.at(-1) ?? -1) === -1 ? '' : label(play.mainPath.at(-1) as number),
+          /** Maps the walk re-entered, i.e. it stopped because it looped. */
+          closedLoop: play.closedLoop.map((m) => ({ mapIndex: m, title: label(m) })),
+        },
+        /** Every map in play order. `filter(playable)` is the chapter list. */
+        sequence: play.steps.map((s) => ({
+          order: s.order,
+          mapIndex: s.mapIndex,
+          role: s.role,
+          playable: s.playable,
+          chapterNumber: byMap.get(s.mapIndex)?.chapterNumber ?? 0,
+          title: byMap.get(s.mapIndex)?.title ?? '',
+        })),
+      },
+      /**
+       * Where the path forks: a map whose END_EVENT names more than one next
+       * chapter. The first destination is the one the main path follows; the
+       * others are already placed in `playOrder.sequence` at this point.
+       */
+      branches: play.branches.map((b) => ({
+        mapIndex: b.mapIndex,
+        title: label(b.mapIndex),
+        to: b.to.map((m, i) => ({
+          mapIndex: m,
+          title: label(m),
+          /** Position in `playOrder.sequence`. */
+          storyOrder: orderOf(m),
+          followedByMainPath: i === 0,
+        })),
+        /** `LOMA` targets from the same map: in-chapter teleports, not chapters. */
+        viaLoma: b.viaLoma.map((m) => ({ mapIndex: m, title: label(m) })),
+      })),
+      /**
+       * Real maps the main path never reaches - bonus maps, skirmish maps and
+       * maps entered from a menu rather than from a chapter transition. A unit
+       * whose join evidence points at one has no play position.
+       */
+      offPath: [...realMaps]
+        .filter((m) => !position.has(m))
+        .sort((a, b) => a - b)
+        .map((m) => ({
+          mapIndex: m,
+          chapterNumber: byMap.get(m)?.chapterNumber ?? 0,
+          title: byMap.get(m)?.title ?? '',
+          deploySlots: byMap.get(m)?.deploySlots ?? 0,
+          goesTo: [...new Set((edgesByMap.get(m)?.transitions ?? []).map((t) => t.targetMap))],
+        })),
+      /**
+       * Rows that register an existing battle a second time. Vision Quest: 60
+       * real maps, and 14 rows that all duplicate map 56's battle.
+       */
+      mapRows: {
+        total: rom.chapters.length,
+        real: realMaps.size,
+        padded: rom.chapters.length - realMaps.size,
+        duplicateRegistrations: duplicateRegistrations(rom.rom, rom.chapters),
+      },
       source: {
         configDir: rom.configDir,
         eventOpcodeTable: rom.eventScripts.source,
@@ -417,6 +566,7 @@ name: 'chapters',
           ...described(f.unitId),
           mapIndex: f.mapIndex,
           mapIndexIsAny: f.mapIndex === MAP_ANY,
+          storyOrder: orderOf(f.mapIndex === MAP_ANY ? null : f.mapIndex),
           chapterNumber: f.mapIndex === MAP_ANY ? null : (chapterOf(f.mapIndex)?.chapterNumber ?? null),
           chapterTitle: f.mapIndex === MAP_ANY ? null : (chapterOf(f.mapIndex)?.title ?? null),
           routeFilter: f.route,
@@ -429,17 +579,21 @@ name: 'chapters',
           'A unit absent from this table is not necessarily benchable - the lord ' +
             'is force-deployed by a separate rule the table does not describe.',
           'A record with mapIndex 0xFF applies to every map. Those records are ' +
-          'listed once in forcedDeployment.everyMap rather than repeated on ' +
-          'every chapter, so a chapter\'s forcedUnits holds only its own maps\' ' +
-          'records - union the two to answer "who can I not bench here".',
+            'listed once in forcedDeployment.everyMap rather than repeated on ' +
+            'every chapter, so a chapter\'s forcedUnits holds only its own maps\' ' +
+            'records - union the two to answer "who can I not bench here".',
         ],
       },
       stats: {
         /** Rows in the map-setting table, not the number of story chapters. */
         mapSettingRecords: rom.chapters.length,
+        /** Rows in the play order that are actual maps. */
+        chaptersInPlayOrder: play.steps.filter((s) => s.playable).length,
+        /** Real maps the main path does not reach. */
+        offPathRealMaps: realMaps.size - [...realMaps].filter((m) => position.has(m)).length,
         /** Rows that carry a non-zero chapter number (`+0x80 / 2`). */
         chaptersWithNumber: rom.chapters.filter((c) => c.chapterNumber > 0).length,
-        /** Highest chapter number in the table. */
+        /** Highest chapter number in the table - which restarts every act. */
         maxChapterNumber: rom.chapters.reduce((n, c) => Math.max(n, c.chapterNumber), 0),
         placementsExamined: rom.joins.placementsExamined,
         classOverriddenPlacements: rom.joins.classOverriddenPlacements,
@@ -455,25 +609,38 @@ name: 'chapters',
       },
       joinOrder: rows,
       /**
-       * One row per map. Padded rows are dropped unless `--all`: the map table
-       * has a row per map *slot*, and those rows carry no roster, no events and
-       * no title, so a default run would spend two thirds of its output on
-       * nothing. `storypath` reports how many were dropped and which battles are
-       * registered twice.
+       * One row per map, **in play order**. Padded rows are dropped unless
+       * `--all`: the map table has a row per map *slot*, and those rows carry no
+       * roster, no events and no title. `offPath` maps sort after every placed
+       * one, and `--all` appends the padded rows at the end.
        */
-      chapters: flags.all ? chapterRows : chapterRows.filter((c) => !c.isPaddedRow),
+      chapters: chapterRows
+        .filter((c) => flags.all || !c.isPaddedRow)
+        .sort(
+          (a, b) =>
+            (a.storyOrder ?? Number.MAX_SAFE_INTEGER) - (b.storyOrder ?? Number.MAX_SAFE_INTEGER) ||
+            a.mapIndex - b.mapIndex,
+        ),
       limitations: [
+        'Order on `storyOrder`. `chapterNumber` is the number the prep screen ' +
+          'shows and it restarts at 1 in every act, so consecutive numbers are ' +
+          'not consecutive chapters: Vision Quest\'s path runs 16, 41, 42, 17. ' +
+          '`mapIndex` is a row number in the map-setting table and counts ' +
+          'unused slots and bonus maps too.',
+        'A transition says where a chapter CAN go. Which branch a playthrough ' +
+          'takes depends on flag conditions inside the branch, which this does ' +
+          'not walk - so a side chapter\'s position is where the branch puts it, ' +
+          'not proof that every playthrough sees it there.',
+        'Transitions reached through CALL live in a shared helper event, so they ' +
+          'fire for every chapter that calls it. The per-map attribution is ' +
+          'correct but the helper may also run mid-chapter.',
+        'A map whose END_EVENT names itself is read as a self-loop and ignored ' +
+          'when ordering; Dream of Five\'s map 18 does this before naming the ' +
+          'chapter it actually leads to.',
         'A placement record counts as the named character only when its class id ' +
           'is 0 or matches the unit\'s own class. Hack authors reuse one unit id ' +
           'as a generic template with varying class ids; those records are ' +
           'reported with `overridden` in `roster` and excluded from join order.',
-        'mapIndex is a row number in the map-setting table, NOT a chapter ' +
-          'number: the table has one row per map id, so it also holds unused ' +
-          'slots (chapterNumber 0), world-map/skirmish maps (title "@001F", ' +
-          'sharing a story chapter\'s number) and bonus maps. Use ' +
-          'chapterNumber / joinChapterNumber, or the decoded title. Run ' +
-          '`storypath` for the order the chapters actually play in - the chapter ' +
-          'number restarts at 1 in every act and cannot order them.',
         'Script walks stop after ten consecutive unrecognised opcodes, matching ' +
           'FEBuilderGBA. truncatedScriptWalks counts those. A recruit site after ' +
           'such a stop is missed.',

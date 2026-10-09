@@ -51,17 +51,16 @@ export const FLAGS: readonly FlagSpec[] = [
     type: 'boolean',
     summary: 'Include empty/unused table slots',
     commands: [
-      'units', 'classes', 'terrain', 'items', 'objects', 'chapters', 'storypath', 'enemy-stats',
+      'units', 'classes', 'terrain', 'items', 'objects', 'chapters', 'enemy-stats',
     ],
     notes: {
       units:
         'emit every slot, including the enemy / generic-template rows and the ' +
         'empty ones - a plain run is already restricted to the roster',
       classes: 'also resolve each class\' impassable terrain list',
-      chapters: 'also include non-character join records and padded map rows',
-      storypath:
-        'also include padded map rows, whose transitions are copies, and the ' +
-        'raw instruction edges behind each destination',
+      chapters:
+        'also include padded map rows and the instruction-level transitions ' +
+        'behind each chapter\'s destinations',
       'enemy-stats':
         'also emit `samples`, one row per projected enemy record - a plain run ' +
         'emits only the distributions computed from them',

@@ -1113,6 +1113,16 @@ export interface JoinEvidence {
   unitId: number;
   /** Map setting index of the earliest chapter the unit is present in. */
   chapterIndex: number;
+  /**
+   * The chapter's position in the play order (see `buildPlayOrder`), or `null`
+   * when it is off every known path.
+   *
+   * This, not `chapterIndex`, is what "earliest" means. `chapterIndex` is a row
+   * number in the map-setting table and the game's chapter *number* restarts at
+   * 1 in every act, so neither orders the game: Vision Quest's map 16 is
+   * followed by 41, 42 and only then 17.
+   */
+  storyOrder: number | null;
   source: JoinSource;
   /** Where the evidence is: a placement record address, or a `LOAD*` address. */
   evidenceAddr: number;
@@ -1156,11 +1166,18 @@ const EMPTY_SITES: Record<JoinSource, number> = {
  * A placement only counts as the named character when its class id is 0 or
  * matches the unit's own class. `LOAD*` blocks are always counted, because a
  * load target is by construction "this unit is on the field".
+ *
+ * `orderOf` supplies the play position of a map index and is what "earliest"
+ * is decided on; a chapter off every known path has no position and therefore
+ * never beats one that has. Pass the map index back when there is no play order
+ * to speak of - the comparison then degenerates to map-table order, which is
+ * what this used to do.
  */
 export function deriveJoins(
   chapters: readonly Chapter[],
   scans: readonly ChapterScan[],
   ownClassOf: ReadonlyMap<number, number>,
+  orderOf: (mapIndex: number) => number | null = () => null,
 ): JoinDerivation {
   const joins = new Map<number, JoinEvidence>();
   const appearances = new Map<number, JoinEvidence>();
@@ -1169,9 +1186,17 @@ export function deriveJoins(
   let placementsExamined = 0;
   let classOverriddenPlacements = 0;
 
+  /** Off-path chapters sort after every placed one, then by table order. */
+  const rankOf = (record: JoinEvidence): number =>
+    record.storyOrder ?? Number.MAX_SAFE_INTEGER;
+
   const earliest = (into: Map<number, JoinEvidence>, record: JoinEvidence): void => {
     const existing = into.get(record.unitId);
-    if (existing === undefined || record.chapterIndex < existing.chapterIndex) {
+    if (
+      existing === undefined ||
+      rankOf(record) < rankOf(existing) ||
+      (rankOf(record) === rankOf(existing) && record.chapterIndex < existing.chapterIndex)
+    ) {
       into.set(record.unitId, record);
     }
   };
@@ -1189,6 +1214,7 @@ export function deriveJoins(
       const record: JoinEvidence = {
         unitId: placed.unitId,
         chapterIndex: chapter.index,
+        storyOrder: orderOf(chapter.index),
         source: 'placement',
         evidenceAddr: placed.addr,
         classOverridden: false,
@@ -1209,6 +1235,7 @@ export function deriveJoins(
         const record: JoinEvidence = {
           unitId: unit.unitId,
           chapterIndex: chapter.index,
+          storyOrder: orderOf(chapter.index),
           source,
           evidenceAddr: site.addr,
           classOverridden: false,

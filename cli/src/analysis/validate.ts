@@ -23,12 +23,7 @@ import {
   SUPPORT_BONUS_STATS,
 } from '../tables/supportBonus.ts';
 import { MAP_ANY, forcedUnitsForMap } from '../tables/forceSortie.ts';
-import {
-  duplicateRegistrations,
-  isRealMap,
-  readAllTransitions,
-  traceStoryPath,
-} from '../tables/storyPath.ts';
+import { duplicateRegistrations, isRealMap, traceStoryPath } from '../tables/storyPath.ts';
 import { collectEnemyStats } from './enemyStats.ts';
 
 export interface CheckResult {
@@ -815,9 +810,9 @@ export function validateRom(loaded: LoadedRom): ValidationReport {
   // can fail on its own. Two things worth asserting: that the scripts were read
   // to their terminating opcode rather than abandoned mid-way, and that the
   // opening chapter really is unreferenced - if a hack opens with a map that
-  // something else points into, the chain `storypath` prints is not the story.
+  // something else points into, the path `chapters` prints is not the story.
   if (loaded.eventScripts.scripts.length > 0) {
-    const edges = readAllTransitions(loaded.rom, loaded.eventScripts, loaded.chapters);
+    const edges = loaded.mapTransitions;
     const realMaps = new Set(
       loaded.chapters.filter((c) => isRealMap(loaded.rom, c)).map((c) => c.index),
     );
@@ -847,6 +842,23 @@ export function validateRom(loaded: LoadedRom): ValidationReport {
             ? `; the walk closed a loop at map ${path.closedLoop.join(', ')}`
             : '')
         : path.startReason,
+      'warn',
+    );
+
+    // The play order is what every chapter-keyed list is sorted by, so a walk
+    // that silently dropped most of the game would mis-order all of them. The
+    // order covers the chain plus every side chapter, so it must be at least as
+    // long as the chain and should reach every real map the walk can reach.
+    const play = loaded.playOrder;
+    const placed = new Set(play.steps.map((s) => s.mapIndex));
+    const playablePlaced = [...placed].filter((m) => realMaps.has(m)).length;
+    add(
+      'story.playOrder',
+      play.steps.length >= path.chain.length && playablePlaced > 0,
+      `${play.steps.length} rows in play order (${playablePlaced} of ${realMaps.size} ` +
+        `real maps); ${play.steps.filter((s) => s.role === 'side').length} spliced in ` +
+        `at ${play.branches.length} branch points. ${realMaps.size - playablePlaced} ` +
+        'real maps are off the path',
       'warn',
     );
 

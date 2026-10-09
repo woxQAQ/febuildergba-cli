@@ -97,12 +97,22 @@ export const units: Command = {
           const join = rom.joins.joins.get(u.id);
           const appearance = rom.joins.appearances.get(u.id);
           if (!join && !appearance) return null;
+          const position = rom.playOrder.position;
+          const orderOf = (c: typeof join | undefined): number | null =>
+            c === undefined ? null : (position.get(c.chapterIndex) ?? null);
           const chapterOf = (c: typeof join | undefined): Record<string, unknown> | null => {
             if (!c) return null;
             const ch = rom.chapters.find((x) => x.index === c.chapterIndex);
             return ch
               ? {
                   mapIndex: ch.index,
+                  /**
+                   * 1-based play position, or `null` when the main path never
+                   * reaches this map. **Order on this** - see the `chapters`
+                   * command; `chapterNumber` restarts at 1 in every act.
+                   */
+                  storyOrder: c.storyOrder,
+                  /** The prep screen's numbering. Display only. */
                   chapterNumber: ch.chapterNumber,
                   title: ch.title,
                   source: c.source,
@@ -111,14 +121,24 @@ export const units: Command = {
                 }
               : null;
           };
+          /** Off-path chapters sort last, then by table order. */
+          const rank = (c: typeof join | undefined): number =>
+            orderOf(c) ?? Number.MAX_SAFE_INTEGER;
           return {
             join: chapterOf(join),
             earliestAppearance: chapterOf(appearance),
-            /** The appearance may predate the join when a unit loads as a guest. */
+            /**
+             * The appearance may predate the join when a unit loads as a guest
+             * before it can be recruited. Compared by play position, so a load
+             * on a side chapter counts as earlier than a recruit later in the
+             * main path even though the side chapter has the lower map index.
+             */
             mayAppearEarlier:
               appearance !== undefined &&
               join !== undefined &&
-              appearance.chapterIndex < join.chapterIndex,
+              (rank(appearance) < rank(join) ||
+                (rank(appearance) === rank(join) &&
+                  appearance.chapterIndex < join.chapterIndex)),
           };
         })(),
         /** How many support partners this unit has, or 0 when it has no support data. */

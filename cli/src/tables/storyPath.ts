@@ -241,6 +241,25 @@ export function readAllTransitions(
 }
 
 /**
+ * The destinations a chapter's END_EVENT advances the story to.
+ *
+ * Two things are dropped. `LOMA` moves a battle around inside one map rather
+ * than between chapters. A destination equal to the chapter itself is a
+ * self-transition - Dream of Five's map 18 "Crossroads" names itself before the
+ * chapter it actually leads to - and treating it as an edge makes the walk
+ * believe it closed a loop one chapter in.
+ */
+export function steppingDestinations(edge: ChapterEdges): number[] {
+  return [
+    ...new Set(
+      edge.transitions
+        .filter((t) => t.opcode !== 'LOMA' && t.targetMap !== edge.mapIndex)
+        .map((t) => t.targetMap),
+    ),
+  ];
+}
+
+/**
  * The map-id byte a map-setting row carries (`+0x0E`).
  *
  * A real map writes its own slot index here. Unused rows leave it 0, and hack
@@ -295,34 +314,12 @@ export function duplicateRegistrations(
 /**
  * Order the chapters into a main path by following the transitions.
  *
- * ## Picking the start
+ * `chain` follows a branch's **first** destination. Which destination a
+ * playthrough actually takes depends on flag conditions inside the branch, not
+ * on the opcode, so `branches` reports all of them and
+ * {@link buildPlayOrder} is what puts the other ones back in sequence.
  *
- * The obvious rule - "a map with an outgoing transition and no incoming one" -
- * picks the wrong map on real data. Vision Quest's true opening chapter, map 0
- * "A Forced Hand", *does* have an incoming edge: map 57, an unnumbered map
- * reached only after the ending, redirects to it. Requiring no incoming edge at
- * all therefore fails to find any start.
- *
- * So an incoming edge only counts when it comes from a **real, numbered**
- * chapter. Two things are filtered out:
- *
- *   - **Padded map-table rows.** Their transitions are copies of a real map's,
- *     so treating them as predecessors invents a cycle at the opening chapter.
- *   - **Unnumbered chapters.** `chapterNumber === 0` marks post-battle maps,
- *     bonus maps and skirmish-style maps, which no playthrough walks through to
- *     reach the start.
- *
- * The remaining candidates are the maps the prep screen calls chapter 1. Vision
- * Quest has four (map 0, 12, 18, 21) because its four acts each open at chapter
- * 1; the first in map-table order is the real one, and `startReason` reports the
- * choice so the caller can see it was made rather than proven.
- *
- * ## Branches
- *
- * A map whose END_EVENT names two destinations is where a hack splices a gaiden
- * chapter into the middle of a path. Which destination a playthrough takes
- * depends on flag conditions inside the branch, not on the opcode, so `chain`
- * follows the first and `branches` reports all of them.
+ * See {@link walkMainPath} for how the opening chapter is chosen.
  */
 export interface StoryPath {
   /** The linear run of chapters, in play order. */
@@ -333,12 +330,7 @@ export interface StoryPath {
    * destination is the one the chain followed; the rest are only reachable on
    * some playthroughs.
    */
-  readonly branches: readonly {
-    mapIndex: number;
-    to: readonly number[];
-    /** `LOMA` targets from the same map: in-chapter teleports, not chapters. */
-    viaLoma: readonly number[];
-  }[];
+  readonly branches: readonly PathBranch[];
   /**
    * Maps the chain reached whose single story-advancing destination it did not
    * follow, because the chain had already visited it - i.e. where the walk
@@ -359,13 +351,143 @@ export interface StoryPath {
   readonly found: boolean;
 }
 
+/** One map in play order. */
+export interface PlayOrderStep {
+  /** 1-based position, no gaps. */
+  readonly order: number;
+  /** Map-setting row index. **Not** a chapter number. */
+  readonly mapIndex: number;
+  /**
+   * `main` for a chapter on the no-detour path, `side` for one spliced in at a
+   * branch. A side chapter is optional content, but it still occupies a slot in
+   * the order because a playthrough that takes it plays it at that point.
+   */
+  readonly role: 'main' | 'side';
+  /**
+   * False for a row the walk passed through that is not a playable map - a row
+   * that claims its own slot id but deploys no units, which is how a chain ends
+   * rather than where. Vision Quest has one, at the very end.
+   */
+  readonly playable: boolean;
+}
+
+/**
+ * The order the chapters are played in, main path and side chapters together.
+ *
+ * `chain` answers "what is the shortest route through the game"; this answers
+ * "what is the sequence of maps a playthrough sees", which is what a question
+ * about unit availability actually needs. The two differ by the side chapters:
+ * Vision Quest's chain is 41 maps and its order is 49 rows, of which 48 are
+ * playable and the last is the row its final transition stops on.
+ *
+ * ## Why a side chapter goes where it does
+ *
+ * At a branch the script names the next main chapter and a side chapter, and
+ * the side chapter's own END_EVENT leads back into the next main chapter - so
+ * the detour is played between the two. The ROM agrees: it numbers gaiden
+ * chapters `N.5` (`u16(+0x80) / 2`, so the half steps are real data), and map
+ * 36 "Old Habits" is chapter 5.5, i.e. it sits between 5 and 6, which is
+ * exactly where the map 16 branch puts it.
+ *
+ * A side chapter can branch again - Vision Quest's map 63 leads either back to
+ * the main path or on to map 60 - so the walk is recursive, not one level deep.
+ */
+export interface PlayOrder {
+  /** Every map on a known path, in play order, playable rows included. */
+  readonly steps: readonly PlayOrderStep[];
+  /** `mapIndex` -> 1-based position. A map absent from this is off every path. */
+  readonly position: ReadonlyMap<number, number>;
+  /** The no-detour path, in order - the map indices `chain` holds. */
+  readonly mainPath: readonly number[];
+  /**
+   * Maps with more than one story-advancing destination, each naming the side
+   * chapter that gets spliced in there.
+   */
+  readonly branches: readonly PathBranch[];
+  /**
+   * Maps the main walk re-entered - where it stopped because it looped, not
+   * where the story ends. Empty when the path ran to a dead end.
+   */
+  readonly closedLoop: readonly number[];
+  /** Maps numbered 1 that no real numbered chapter leads into. */
+  readonly startCandidates: readonly number[];
+  /** How the opening chapter was chosen, for the caller to report. */
+  readonly startReason: string;
+}
+
+/**
+ * Order the chapters into the sequence a playthrough sees.
+ *
+ * The main path is the first-destination walk. Every *other* destination a
+ * chapter names is a detour, and a detour is emitted where it hangs off the
+ * main path - which is exactly where it gets played, because its own END_EVENT
+ * leads back into the chapter after. Destinations already on the main path are
+ * not detours: Dream of Five's map 22 names both the next chapter and the one
+ * after it, and treating the second as a detour would move a main chapter to
+ * the end of the game.
+ *
+ * Destinations that are not map rows are skipped rather than ending the walk -
+ * an END_EVENT also carries `LOMA` and warp targets that name no chapter.
+ *
+ * Rows that cannot be played are kept in the order but marked `playable: false`
+ * rather than dropped, so `steps.filter((s) => s.playable)` is the chapter list
+ * while `order` stays a rank every map can be compared on.
+ */
+export function buildPlayOrder(
+  edges: readonly ChapterEdges[],
+  isReal: (mapIndex: number) => boolean = () => true,
+): PlayOrder {
+  const byMap = new Map(edges.map((e) => [e.mapIndex, e]));
+  const walk = walkMainPath(edges, isReal);
+  const onMainPath = new Set(walk.chain.map((e) => e.mapIndex));
+
+  const steps: PlayOrderStep[] = [];
+  const placed = new Set<number>();
+  const push = (mapIndex: number, role: 'main' | 'side'): void => {
+    if (placed.has(mapIndex)) return;
+    placed.add(mapIndex);
+    steps.push({ order: steps.length + 1, mapIndex, role, playable: isReal(mapIndex) });
+  };
+
+  /** A detour and everything behind it, walking until it rejoins the main path. */
+  const walkDetour = (root: number): void => {
+    if (placed.has(root) || onMainPath.has(root)) return;
+    const edge = byMap.get(root);
+    if (edge === undefined) return;
+    push(root, 'side');
+    for (const dest of steppingDestinations(edge)) walkDetour(dest);
+  };
+
+  for (const edge of walk.chain) {
+    push(edge.mapIndex, 'main');
+    for (const dest of steppingDestinations(edge)) {
+      if (onMainPath.has(dest)) continue;
+      walkDetour(dest);
+    }
+  }
+
+  return {
+    steps,
+    position: new Map(steps.map((s) => [s.mapIndex, s.order])),
+    mainPath: walk.chain.map((e) => e.mapIndex),
+    branches: walk.branches,
+    closedLoop: walk.closedLoop,
+    startCandidates: walk.candidates.map((c) => c.mapIndex),
+    startReason:
+      walk.candidates[0] === undefined
+        ? 'no map numbered 1 that no real numbered chapter leads into'
+        : 'map-table order among the maps numbered 1 that no real numbered ' +
+          `chapter leads into (chose map ${walk.candidates[0].mapIndex})`,
+  };
+}
+
 /**
  * Every chapter reachable from the start, chain and branches together.
  *
  * `chain` is the path with no detours, so a gaiden chapter spliced into the
  * middle of it is **not** in `chain` - only in `branches`. A caller asking
  * "which chapters does this game have" wants this set; one asking "what order
- * do I play them" wants `chain`.
+ * do I play them" wants `buildPlayOrder`.
  */
 export function reachableFrom(edges: readonly ChapterEdges[], startMap: number): Set<number> {
   const byMap = new Map(edges.map((e) => [e.mapIndex, e]));
@@ -387,51 +509,76 @@ export function reachableFrom(edges: readonly ChapterEdges[], startMap: number):
   return seen;
 }
 
-export function traceStoryPath(
+/** Branch point of the main path: a map whose END_EVENT names several next chapters. */
+export interface PathBranch {
+  readonly mapIndex: number;
+  readonly to: readonly number[];
+  readonly viaLoma: readonly number[];
+}
+
+/** The main path and everything the walk learned on the way. */
+interface MainWalk {
+  /** The first-destination path, in order. */
+  readonly chain: readonly ChapterEdges[];
+  readonly branches: readonly PathBranch[];
+  /** Maps the walk re-entered - where it stopped because it looped. */
+  readonly closedLoop: readonly number[];
+  /** Maps numbered 1 that no real numbered chapter leads into. */
+  readonly candidates: readonly ChapterEdges[];
+}
+
+/**
+ * Walk the no-detour path by always taking a branch's *first* destination.
+ *
+ * ## Picking the start
+ *
+ * The obvious rule - "a map with an outgoing transition and no incoming one" -
+ * picks the wrong map on real data. Vision Quest's true opening chapter, map 0
+ * "A Forced Hand", *does* have an incoming edge: map 57, an unnumbered map
+ * reached only after the ending, redirects to it. Requiring no incoming edge at
+ * all therefore fails to find any start.
+ *
+ * So an incoming edge only counts when it comes from a **real, numbered**
+ * chapter. Two things are filtered out:
+ *
+ *   - **Padded map-table rows.** Their transitions are copies of a real map's,
+ *     so treating them as predecessors invents a cycle at the opening chapter.
+ *   - **Unnumbered chapters.** `chapterNumber === 0` marks post-battle maps,
+ *     bonus maps and skirmish-style maps, which no playthrough walks through to
+ *     reach the start.
+ *
+ * The remaining candidates are the maps the prep screen calls chapter 1. Vision
+ * Quest has four (map 0, 12, 18, 21) because its four acts each open at chapter
+ * 1; the first in map-table order is the real one, and `startReason` reports the
+ * choice so the caller can see it was made rather than proven.
+ */
+function walkMainPath(
   edges: readonly ChapterEdges[],
-  isReal: (mapIndex: number) => boolean = () => true,
-): StoryPath {
+  isReal: (mapIndex: number) => boolean,
+): MainWalk {
   const byMap = new Map(edges.map((e) => [e.mapIndex, e]));
 
-  /** Maps a real, numbered chapter leads into. */
   const reachedFromRealChapter = new Set<number>();
   for (const e of edges) {
     if (!isReal(e.mapIndex) || e.chapterNumber === 0) continue;
     for (const t of e.transitions) reachedFromRealChapter.add(t.targetMap);
   }
 
-  const chain: ChapterEdges[] = [];
-  const branches: {
-    mapIndex: number;
-    to: number[];
-    viaLoma: number[];
-  }[] = [];
-  const closedLoop: number[] = [];
-
-  /** Story-advancing destinations, ignoring in-chapter `LOMA` teleports. */
-  const advancingOf = (e: ChapterEdges): number[] =>
-    [...new Set(e.transitions.filter((t) => t.opcode !== 'LOMA').map((t) => t.targetMap))];
-  const lomaOf = (e: ChapterEdges): number[] =>
-    [...new Set(e.transitions.filter((t) => t.opcode === 'LOMA').map((t) => t.targetMap))];
-
   const candidates = edges.filter(
     (e) =>
       e.chapterNumber === 1 &&
-      advancingOf(e).length > 0 &&
+      steppingDestinations(e).length > 0 &&
       !reachedFromRealChapter.has(e.mapIndex),
   );
 
-  if (candidates.length === 0) {
-    return {
-      chain,
-      branches,
-      closedLoop,
-      startReason: 'no map numbered 1 that no real numbered chapter leads into',
-      startCandidates: [],
-      reachable: [],
-      found: false,
-    };
-  }
+  const chain: ChapterEdges[] = [];
+  const branches: PathBranch[] = [];
+  const closedLoop: number[] = [];
+  if (candidates.length === 0) return { chain, branches, closedLoop, candidates };
+
+  const lomaOf = (e: ChapterEdges): number[] => [
+    ...new Set(e.transitions.filter((t) => t.opcode === 'LOMA').map((t) => t.targetMap)),
+  ];
 
   const seen = new Set<number>();
   let cur: ChapterEdges | undefined = candidates[0];
@@ -439,7 +586,7 @@ export function traceStoryPath(
     seen.add(cur.mapIndex);
     chain.push(cur);
 
-    const advancing = advancingOf(cur);
+    const advancing = steppingDestinations(cur);
     if (advancing.length > 1) {
       branches.push({ mapIndex: cur.mapIndex, to: advancing, viaLoma: lomaOf(cur) });
     }
@@ -452,18 +599,30 @@ export function traceStoryPath(
     }
     cur = next;
   }
+  return { chain, branches, closedLoop, candidates };
+}
 
-  const first = candidates[0] as ChapterEdges;
+export function traceStoryPath(
+  edges: readonly ChapterEdges[],
+  isReal: (mapIndex: number) => boolean = () => true,
+): StoryPath {
+  const walk = walkMainPath(edges, isReal);
+  const first = walk.candidates[0];
   return {
-    chain,
-    branches,
-    closedLoop,
+    chain: walk.chain,
+    branches: walk.branches,
+    closedLoop: walk.closedLoop,
     startReason:
-      'map-table order among the maps numbered 1 that no real numbered ' +
-      `chapter leads into (chose map ${first.mapIndex}; ` +
-      `candidates ${candidates.map((c) => c.mapIndex).join(', ')})`,
-    startCandidates: candidates.map((c) => c.mapIndex),
-    reachable: [...reachableFrom(edges, first.mapIndex)].sort((a, b) => a - b),
-    found: chain.length > 0,
+      first === undefined
+        ? 'no map numbered 1 that no real numbered chapter leads into'
+        : 'map-table order among the maps numbered 1 that no real numbered ' +
+          `chapter leads into (chose map ${first.mapIndex}; ` +
+          `candidates ${walk.candidates.map((c) => c.mapIndex).join(', ')})`,
+    startCandidates: walk.candidates.map((c) => c.mapIndex),
+    reachable:
+      first === undefined
+        ? []
+        : [...reachableFrom(edges, first.mapIndex)].sort((a, b) => a - b),
+    found: walk.chain.length > 0,
   };
 }
