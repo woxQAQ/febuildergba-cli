@@ -28,11 +28,10 @@
  *      cannot drift from the raw layer because they ARE the raw layer,
  *      read differently.
  *   3. **`derived_*` tables**: inference SQL cannot express even over the
- *      raw event layer - graph traversal with branch splicing
- *      (`derived_play_order`) and RNG projection (`derived_enemy_samples`).
- *      They are materialized at extract time because the consumer cannot
- *      recompute them without the ROM and the parser. Treat them as
- *      conclusions, not evidence.
+ *      raw event layer - currently just `derived_play_order`, where branch
+ *      splicing is a custom ordering SQL cannot express. It is materialized
+ *      at extract time because the consumer cannot recompute it without the
+ *      ROM and the parser. Treat it as a conclusion, not evidence.
  *
  * The walk-based derivations used to be `derived_*` tables too; with the
  * raw event layer (`event_scripts` / `event_instructions` /
@@ -587,40 +586,6 @@ export const loadBlockUnits = sqliteTable(
   ],
 );
 
-/**
- * One row per projected enemy placement record, per autolevel mode. "hard"
- * re-projects with the hard-mode autolevel round (19 levels instead of 9);
- * both modes are extracted so the choice is a WHERE clause, not a re-run.
- */
-export const derivedEnemySamples = sqliteTable("derived_enemy_samples", {
-  mode: text("mode", { enum: ["normal", "hard"] }).notNull(),
-  mapIndex: integer("map_index").notNull(),
-  chapterNumber: real("chapter_number").notNull(),
-  unitId: integer("unit_id").notNull(),
-  classId: integer("class_id").notNull(),
-  level: integer("level").notNull(),
-  /** +3 bit 0 of the placement record: autolevel on/off. */
-  grow: integer("grow", { mode: "boolean" }).notNull(),
-  routine: text("routine", { enum: ["none", "unit", "realistic"] }).notNull(),
-  promoted: integer("promoted", { mode: "boolean" }).notNull(),
-  classBaseSpd: integer("class_base_spd").notNull(),
-  /** Signed character-table speed delta. */
-  unitSpdDelta: integer("unit_spd_delta").notNull(),
-  // Projected speed as an RNG band:
-  spdLo: integer("spd_lo").notNull(),
-  spdHi: integer("spd_hi").notNull(),
-  spdMean: real("spd_mean").notNull(),
-  con: integer("con").notNull(),
-  /** Heaviest weapon (worst case for the enemy). */
-  weight: integer("weight").notNull(),
-  /** First weapon (editor order). */
-  weightFirst: integer("weight_first").notNull(),
-  // Attack speed = spd - max(0, weight - con); signed on purpose:
-  asLo: integer("as_lo").notNull(),
-  asHi: integer("as_hi").notNull(),
-  asMean: real("as_mean").notNull(),
-});
-
 /** Every data table, in insertion order. `roster` is a view, not in here. */
 export const TABLES = [
   meta,
@@ -652,5 +617,4 @@ export const TABLES = [
   loadBlockUnits,
   // Materialized inference SQL cannot express - see the module doc.
   derivedPlayOrder,
-  derivedEnemySamples,
 ] as const;

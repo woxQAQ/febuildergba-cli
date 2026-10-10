@@ -14,7 +14,6 @@ import { sql } from "drizzle-orm";
 import { getTableConfig } from "drizzle-orm/sqlite-core";
 
 import type { ParsedRom } from "../load.ts";
-import { collectEnemyStats } from "../analysis/enemyStats.ts";
 import { extractEventTrace } from "../tables/eventTrace.ts";
 import { createSchemaSql } from "./ddl.ts";
 import type { ExtractDb, OpenDb } from "./index.ts";
@@ -23,8 +22,6 @@ import * as t from "./schema.ts";
 export interface PopulateResult {
   /** Row count per table, measured after the commit. */
   readonly tables: Readonly<Record<string, number>>;
-  /** Enemy placement records dropped because their class id did not resolve. */
-  readonly unresolvedEnemyClasses: number;
 }
 
 export async function populate(handle: OpenDb, rom: ParsedRom): Promise<PopulateResult> {
@@ -42,10 +39,6 @@ export async function populate(handle: OpenDb, rom: ParsedRom): Promise<Populate
     await insertStory(db, rom);
     await insertEventTrace(db, rom);
     await insertWorldData(db, rom);
-    const unresolvedEnemyClasses = await insertEnemySamples(db, rom);
-    await db
-      .insert(t.meta)
-      .values({ key: "enemy.unresolvedClasses", value: String(unresolvedEnemyClasses) });
     sqlite.exec("COMMIT");
 
     // Row counts measured, not tallied: the number reported is the number
@@ -55,7 +48,7 @@ export async function populate(handle: OpenDb, rom: ParsedRom): Promise<Populate
       const row = await db.select({ n: sql<number>`count(*)` }).from(table).get();
       tables[getTableConfig(table).name] = row?.n ?? 0;
     }
-    return { tables, unresolvedEnemyClasses };
+    return { tables };
   } catch (error) {
     sqlite.exec("ROLLBACK");
     throw error;
@@ -491,51 +484,4 @@ async function insertWorldData(db: ExtractDb, rom: ParsedRom): Promise<void> {
     }
   }
 
-}
-
-/**
- * Both autolevel modes, so normal-vs-hard is a WHERE clause, not a re-run.
- * Returns the unresolved-class count for meta.
- */
-async function insertEnemySamples(db: ExtractDb, rom: ParsedRom): Promise<number> {
-  let unresolved = 0;
-  for (const mode of ["normal", "hard"] as const) {
-    const { samples, unresolvedClass } = collectEnemyStats({
-      rom: rom.rom,
-      layout: rom.layout,
-      eventScripts: rom.eventScripts,
-      chapters: rom.chapters,
-      condSlots: rom.condSlots,
-      classes: rom.classes,
-      units: rom.units,
-      items: rom.items,
-      hard: mode === "hard",
-    });
-    unresolved = unresolvedClass;
-    for (const s of samples) {
-      await db.insert(t.derivedEnemySamples).values({
-        mode,
-        mapIndex: s.mapIndex,
-        chapterNumber: s.chapterNumber,
-        unitId: s.unitId,
-        classId: s.classId,
-        level: s.level,
-        grow: s.grow === 1,
-        routine: s.routine,
-        promoted: s.promoted,
-        classBaseSpd: s.classBaseSpd,
-        unitSpdDelta: s.unitSpdDelta,
-        spdLo: s.spd.lo,
-        spdHi: s.spd.hi,
-        spdMean: s.spd.mean,
-        con: s.con,
-        weight: s.weight,
-        weightFirst: s.weightFirst,
-        asLo: s.as.lo,
-        asHi: s.as.hi,
-        asMean: s.as.mean,
-      });
-    }
-  }
-  return unresolved;
 }
