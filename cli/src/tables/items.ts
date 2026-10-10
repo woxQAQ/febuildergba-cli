@@ -64,8 +64,9 @@
  */
 
 import { RomBuffer } from "../rom/RomBuffer.ts";
-import type { ItemLayout } from "../data/layouts.ts";
+import type { ItemLayout, PromotionItemLayout } from "../data/layouts.ts";
 import { resolveTableSlot } from "../data/layouts.ts";
+import { parseKeyedTable, readTextFile, resolveDataFile } from "../config/data.ts";
 import type { TextContext, TextPointerKind } from "../text/huffman.ts";
 import {
   classifyTextPointer,
@@ -174,7 +175,33 @@ export interface Item {
   weaponRank: number;
   weaponRankLetter: string;
   iconId: number;
+  /**
+   * `+30`: the item's **use-effect code**, or 0 for "no use effect".
+   *
+   * `ItemForm.B30_ValueChanged` treats this byte as the thing that decides
+   * what using the item does, and its combo box is fed by the
+   * `item_staff_use_effect_*` resource. See {@link staffEffectName}.
+   */
   staffEffect: number;
+  /** Name of {@link staffEffect} from the resource table, or `""` when unknown. */
+  staffEffectName: string;
+  /**
+   * Whether `staffEffect` is one of the codes the game treats as a promotion.
+   *
+   * `ItemForm.IsPromotionItemFE8` (ItemForm.cs:954) accepts exactly
+   * `{0x19..0x1D} U {0x2D} U {0x2F..0x32}`. That is the whole "which items
+   * promote?" answer - it is a code test, not a scan of a table.
+   */
+  isPromotionItem: boolean;
+  /**
+   * Class ids this item promotes, from the class list belonging to its effect
+   * code, or `null` when the ROM has no promotion tables / the effect is not a
+   * promotion code. See {@link readPromotionTables}.
+   *
+   * Read-only because it is handed out straight from {@link PromotionTables};
+   * callers only ever iterate it.
+   */
+  promotionClasses: readonly number[] | null;
   damageBonus: number;
   wexp: number;
   /** `+26`: price **per use**. */
@@ -197,6 +224,55 @@ export interface ItemTable {
 export interface ItemReadResult {
   table: ItemTable | null;
   items: Item[];
+}
+
+/**
+ * The use-effect codes the game itself treats as promotions.
+ *
+ * Verbatim from `ItemForm.IsPromotionItemFE8` (ItemForm.cs:954):
+ *
+ * ```csharp
+ * if (itemEffectID >= 0x19 && itemEffectID <= 0x1D) return true;
+ * if (itemEffectID >= 0x2F && itemEffectID <= 0x32) return true;
+ * if (itemEffectID == 0x2D) return true;
+ * ```
+ */
+export const PROMOTION_EFFECT_CODES: ReadonlySet<number> = new Set([
+  0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x2d, 0x2f, 0x30, 0x31, 0x32,
+]);
+
+/** effect code -> class ids that item promotes. */
+export type PromotionTables = ReadonlyMap<number, readonly number[]>;
+
+/** Longest promotion list we will read; the terminator is a 0 byte. */
+const PROMOTION_LIMIT = 0x100;
+
+/**
+ * Resolve every promotion item's class list.
+ *
+ * Each {@link PromotionItemLayout} names a slot holding a GBA pointer; the
+ * pointed-to data is a `0`-terminated `u8` list of class ids. A slot whose
+ * value does not resolve yields no entry, so a missing table degrades to
+ * "this effect promotes nobody" rather than to a wrong answer.
+ */
+export function readPromotionTables(
+  rom: RomBuffer,
+  promotion: readonly PromotionItemLayout[],
+): PromotionTables {
+  const out = new Map<number, readonly number[]>();
+  for (const entry of promotion) {
+    if (!rom.isSafeOffset(entry.slot + 4)) continue;
+    const offset = rom.p32(entry.slot);
+    if (!rom.isSafeOffset(offset)) continue;
+    const classes: number[] = [];
+    for (let i = 0; i < PROMOTION_LIMIT && offset + i < rom.length; i++) {
+      const classId = rom.u8(offset + i);
+      if (classId === 0) break;
+      classes.push(classId);
+    }
+    out.set(entry.effectId, classes);
+  }
+  return out;
 }
 
 /** Decode an item name, using the item-font alphabet for un-huffman strings. */
@@ -227,7 +303,21 @@ function readItemName(
   return { name, raw: decoded, kind, unknown: [] };
 }
 
-export function readItems(rom: RomBuffer, layout: ItemLayout, text: TextContext): ItemReadResult {
+export function readItems(
+  rom: RomBuffer,
+  layout: ItemLayout,
+  text: TextContext,
+  /**
+   * `staff_effect` code -> display name, from the `item_staff_use_effect_*`
+   * resource. `null` leaves every {@link Item.staffEffectName} empty.
+   */
+  effectNames: ReadonlyMap<number, string> | null = null,
+  /**
+   * Promotion class lists by effect code, from {@link readPromotionTables}.
+   * `null` leaves every {@link Item.promotionClasses} empty.
+   */
+  promotions: PromotionTables | null = null,
+): ItemReadResult {
   const slotOffset = resolveTableSlot(rom, layout.slot);
   const tableOffset = rom.p32(slotOffset);
   if (!rom.isSafeOffset(tableOffset)) return { table: null, items: [] };
@@ -252,6 +342,7 @@ export function readItems(rom: RomBuffer, layout: ItemLayout, text: TextContext)
     const unitPrice = rom.u16(addr + 26);
     const rank = rom.u8(addr + 28);
     const type = rom.u8(addr + 7);
+    const staffEffect = rom.u8(addr + 30);
 
     const nm = readItemName(rom, nameTextId, text);
     const desc =
@@ -285,7 +376,10 @@ export function readItems(rom: RomBuffer, layout: ItemLayout, text: TextContext)
       weaponRank: rank,
       weaponRankLetter: weaponRankLetter(rank),
       iconId: rom.u8(addr + 29),
-      staffEffect: rom.u8(addr + 30),
+      staffEffect,
+      staffEffectName: effectNames?.get(staffEffect) ?? "",
+      isPromotionItem: PROMOTION_EFFECT_CODES.has(staffEffect),
+      promotionClasses: promotions?.get(staffEffect) ?? null,
       damageBonus: rom.u8(addr + 31),
       wexp: rom.u8(addr + 32),
       unitPrice,
@@ -337,6 +431,31 @@ function readEffectiveness(rom: RomBuffer, pointer: number): number[] | null {
     const classId = rom.u8(offset + i);
     if (classId === 0) break;
     out.push(classId);
+  }
+  return out;
+}
+
+/**
+ * The `+30` use-effect code table, from the vendored
+ * `item_staff_use_effect_<game>*.txt` resource.
+ *
+ * `ItemForm` feeds its `L_30_COMBO` from the same file
+ * (`InputFormRef.LoadComboResource(L_30_COMBO, g_item_staff_use_effect_List)`),
+ * and the keys are hex: `0A` = ワープ, `19` = 英雄の証, `2D` = マスタープルフ.
+ * Codes the file does not name stay unnamed rather than becoming "unknown".
+ */
+export function loadItemEffectNames(
+  configDir: string,
+  game: string,
+  language?: string,
+): Map<number, string> {
+  const path = resolveDataFile(configDir, "item_staff_use_effect_", game, language);
+  const out = new Map<number, string>();
+  if (path === null) return out;
+  for (const entry of parseKeyedTable(readTextFile(path))) {
+    const code = Number.parseInt(entry.key, 16);
+    if (Number.isNaN(code)) continue;
+    out.set(code, entry.name);
   }
   return out;
 }

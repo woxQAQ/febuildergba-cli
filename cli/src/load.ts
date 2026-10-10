@@ -46,7 +46,9 @@ import { buildPlayOrder, isRealMap, readAllTransitions } from "./tables/storyPat
 import type { ForceSortieTable } from "./tables/forceSortie.ts";
 import { readForceSortie } from "./tables/forceSortie.ts";
 import type { Item, ItemReadResult } from "./tables/items.ts";
-import { buildItemMap, readItems } from "./tables/items.ts";
+import { buildItemMap, loadItemEffectNames, readItems, readPromotionTables } from "./tables/items.ts";
+import type { SkillReadResult } from "./tables/skills.ts";
+import { readSkills } from "./tables/skills.ts";
 import type { ShopReadResult } from "./tables/shops.ts";
 import { readShops } from "./tables/shops.ts";
 import type { ChapterObjects } from "./tables/mapObjects.ts";
@@ -113,6 +115,11 @@ export interface ParsedRom extends RomHandle {
   shopData: ShopReadResult | null;
   /** Chests, villages, doors and seize points, one entry per chapter. */
   chapterObjects: ChapterObjects[];
+  /**
+   * Skill tables, or `null` when the ROM carries no decodable skill system.
+   * See `tables/skills.ts` - `null` means "no skills", not "parse failed".
+   */
+  skills: SkillReadResult | null;
 }
 
 export interface ParseOptions {
@@ -336,15 +343,32 @@ export function parseRom(handle: RomHandle, options: ParseOptions = {}): ParsedR
   const forceSortie = readForceSortie(buffer, layout);
 
   // Items come first: shop entries are priced through them, and map objects
-  // only need the chapter list.
+  // only need the chapter list. The `+30` use-effect names come from
+  // `config/data`; the promotion class lists come from the ROM itself.
+  const itemEffectNames = configDir === null ? null : loadItemEffectNames(configDir, game, language);
+  const promotionTables =
+    layout.promotion === null ? null : readPromotionTables(buffer, layout.promotion);
   const itemData: ItemReadResult | null =
-    layout.item === null ? null : readItems(buffer, layout.item, text);
+    layout.item === null
+      ? null
+      : readItems(buffer, layout.item, text, itemEffectNames, promotionTables);
   const items = itemData?.items ?? [];
   const chapterObjects = readAllObjects(buffer, layout, chapters);
   const shopData =
     layout.shop === null || items.length === 0
       ? null
       : readShops(buffer, layout.shop, chapterObjects, buildItemMap(items));
+
+  // Skills last: the tables are independent of everything above, and this is
+  // the only reader that searches the ROM for signatures rather than
+  // dereferencing a known slot.
+  const skills = readSkills({
+    rom: buffer,
+    skillSystem: handle.identity.skillSystem,
+    unitCount: units.length,
+    classCount: classes.length,
+    text,
+  });
 
   return {
     ...handle,
@@ -364,5 +388,6 @@ export function parseRom(handle: RomHandle, options: ParseOptions = {}): ParsedR
     items,
     shopData,
     chapterObjects,
+    skills,
   };
 }

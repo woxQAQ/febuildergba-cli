@@ -196,6 +196,72 @@ export interface MapLayout {
   talkCondSize: number;
   /** `eventunit_data_size`: bytes per unit-placement record. */
   unitDataSize: number;
+  /**
+   * Byte offset of the per-chapter **difficulty adjustment** word, or `null`
+   * when it has not been transcribed for this game.
+   *
+   * A `u16` whose three nibbles are, per `MapSettingDifficultyForm`:
+   *
+   *     bits 0..3   easy  penalty   - enemy levels subtracted on "easy"
+   *     bits 4..7   hard  boost     + enemy levels added on "hard"
+   *     bits 8..11  normal penalty  - enemy levels subtracted on "normal"
+   *
+   * `MapSettingDifficultyForm.SetDifficultyValue` reads exactly those three
+   * fields, and `GetDiffcultyText` prints them as `Hard:+h Normal:-n Easy:-e`.
+   * The editor is reached from the label with
+   * `AccessibleDescription = "@MAPSETTING_HARD_BOOST"`, whose tooltip is
+   * 「難易度でハードを選んだ場合に、敵に与える強化ボーナス値を指定します。」
+   * (InputFormRef.cs:12129) - a **level** bonus applied to enemies, not a stat
+   * bonus. Confirmed on `dream-of-five.gba`: chapter 1 carries `0x10` (hard +1)
+   * and chapter 3 `0x234` (hard +2, normal -3, easy -4).
+   *
+   * Offset 20 is the `W20` numeric control in every map-setting form that has
+   * this field. `RomToUI` derives the offset from the digits in a control's
+   * name - through `U.atoi`, which is **decimal**, so `W20` is `addr + 20` =
+   * `+0x14` - and the leading letter picks the width (`W` = `u16`,
+   * `InputFormRef.cs:5154`). The label beside it is 難易度補正:
+   * `MapSettingForm.Designer.cs` `J_20_DIFFCULTY`, `MapSettingFE7UForm` and
+   * `MapSettingFE7Form` `J_20`. `check-upstream.ts` re-derives that pairing from
+   * the designer files, so this offset cannot silently rot.
+   *
+   * **FE6 is different, not merely unmeasured.** It has no 難易度補正 label and
+   * no `W20`; instead `MapSettingFE6Form` carries a lone `B19` (a `u8` at
+   * offset 19) captioned ハードブースト, sharing the `@MAPSETTING_HARD_BOOST`
+   * tooltip but with no easy/normal penalty nibbles. A single byte cannot hold
+   * this encoding, so `null` is the honest value for FE6 rather than 19.
+   */
+  difficultyPos: number | null;
+}
+
+/**
+ * A promotion item's target-class list.
+ *
+ * FE8 does **not** decide promotions from the item record alone. There are ten
+ * `RomInfo.cc_item_*_pointer` slots, each holding a GBA pointer to a
+ * `0`-terminated list of **class ids** - the classes that item can promote
+ * (`ItemPromotionForm.Init`: block size 1, `u8(addr) != 0`;
+ * `ITEM_LIST_SelectedIndexChanged` swaps the list per item).
+ *
+ * Which item uses which list is keyed by the item's `+30` byte - its
+ * **use-effect code** - not by item id: `ItemForm.B30_ValueChanged` calls
+ * `IsPromotionItemFE8(B30.Value)`, whose accepted set is exactly
+ * `{0x19..0x1D} U {0x2D} U {0x2F..0x32}` (ItemForm.cs:954). That is the same
+ * ten codes the `item_staff_use_effect_*` table names (英雄の証, 騎士の勲章,
+ * オリオンの矢, 天空のムチ, 導きの指輪, マスタープルフ, ダミー, 覇者の証,
+ * 月の腕輪, 太陽の腕輪), so the pairing is effect code -> slot, and an item id
+ * is irrelevant (a hack renumbers items freely).
+ *
+ * Verified on `dream-of-five.gba`: the item named `Crusader's Sigil` has
+ * `+30 == 0x1A`, and slot `0x293A0` resolves to the single class `1`
+ * (`Ironclad`); `Master Seal` with `+30 == 0x2D` resolves to 31 classes.
+ */
+export interface PromotionItemLayout {
+  /** Slot holding the GBA pointer to this item's class list. */
+  slot: number;
+  /** The `+30` use-effect code that makes an item a promotion item. */
+  effectId: number;
+  /** FEBuilderGBA's `RomInfo` field name, for traceability. */
+  ref: string;
 }
 
 /**
@@ -258,6 +324,11 @@ export interface GameLayout {
   forceSortie: ForceSortieLayout | null;
   /** Item table, or `null` when it has not been transcribed for this game. */
   item: ItemLayout | null;
+  /**
+   * Promotion-item class lists keyed by use-effect code, or `null` when the
+   * game has not been transcribed. See {@link PromotionItemLayout}.
+   */
+  promotion: readonly PromotionItemLayout[] | null;
   /** Shop sources, or `null` when unknown for this game. */
   shop: ShopLayout | null;
 }
@@ -314,7 +385,22 @@ const FE8U: GameLayout = {
     turnCondSize: 12,
     talkCondSize: 16,
     unitDataSize: 20,
+    difficultyPos: 0x14,
   },
+  promotion: [
+    // `ROMFE8U.cs:133-142 cc_item_*_pointer`, paired with the `+30` use-effect
+    // code each list belongs to. See `PromotionItemLayout`.
+    { effectId: 0x19, slot: 0x29398, ref: "cc_item_hero_crest_pointer" },
+    { effectId: 0x1a, slot: 0x293a0, ref: "cc_item_knight_crest_pointer" },
+    { effectId: 0x1b, slot: 0x293a8, ref: "cc_item_orion_bolt_pointer" },
+    { effectId: 0x1c, slot: 0x293b0, ref: "cc_item_elysian_whip_pointer" },
+    { effectId: 0x1d, slot: 0x293b8, ref: "cc_item_guiding_ring_pointer" },
+    { effectId: 0x2d, slot: 0x293c0, ref: "cc_item_master_seal_pointer" },
+    { effectId: 0x2f, slot: 0x293d8, ref: "cc_item_fallen_contract_pointer" },
+    { effectId: 0x30, slot: 0x29408, ref: "cc_item_ocean_seal_pointer" },
+    { effectId: 0x31, slot: 0x291d0, ref: "cc_item_moon_bracelet_pointer" },
+    { effectId: 0x32, slot: 0x29214, ref: "cc_item_sun_bracelet_pointer" },
+  ],
   forceSortie: { slot: 0x8483c, recordSize: 4, termination: "terminator" },
   item: {
     // `U.FindROMPointer(rom, addr => rom.u32(0xC) == 0, candidates)`.
@@ -399,9 +485,13 @@ const FE8J: GameLayout = {
     turnCondSize: 12,
     talkCondSize: 16,
     unitDataSize: 20,
+    // `MapSettingForm` (FE8) reads `W20` -> `+0x14`, same as FE8U. Unverified
+    // on a real FE8J ROM.
+    difficultyPos: 0x14,
   },
   forceSortie: { slot: 0x86b08, recordSize: 4, termination: "terminator" },
   item: null,
+  promotion: null,
   shop: null,
 };
 
@@ -434,12 +524,17 @@ const FE7U: GameLayout = {
     turnCondSize: 16,
     talkCondSize: 16,
     unitDataSize: 16,
+    // `MapSettingFE7UForm` labels the same `W20` control 難易度補正 with
+    // `AccessibleDescription = "@MAPSETTING_HARD_BOOST"`, so the field is at
+    // `+0x14` with the same three-nibble encoding. Unverified on a real ROM.
+    difficultyPos: 0x14,
   },
   // `EventForceSortieFE7Form.Init` hardcodes `i < 23` and labels record `i`
   // with `GetMapName(i + 0x17)`, i.e. the table is a dense array over map ids
   // 0x17..0x2D with no terminator. Not verified against a real FE7 ROM.
   forceSortie: { slot: 0x8ddcc, recordSize: 4, termination: "fixed", count: 23, mapIdBase: 0x17 },
   item: null,
+  promotion: null,
   shop: null,
 };
 
@@ -473,9 +568,11 @@ const FE7J: GameLayout = {
     turnCondSize: 16,
     talkCondSize: 16,
     unitDataSize: 16,
+    difficultyPos: 0x14, // `MapSettingFE7Form.J_20`, same as FE7U. Unverified.
   },
   forceSortie: { slot: 0x8e6f8, recordSize: 4, termination: "fixed", count: 23, mapIdBase: 0x17 },
   item: null,
+  promotion: null,
   shop: null,
 };
 
@@ -512,10 +609,15 @@ const FE6J: GameLayout = {
     turnCondSize: 12,
     talkCondSize: 12,
     unitDataSize: 16,
+    // FE6 has a *separate* `B19` byte (a u8 at offset 19) captioned
+    // ハードブースト; it has no 難易度補正 word at all, so the packed encoding
+    // documented on `difficultyPos` does not apply. See that field's doc.
+    difficultyPos: null,
   },
   // `ROMFE6JP.cs` sets `event_force_sortie_pointer = 0x0` - FE6 has no table.
   forceSortie: null,
   item: null,
+  promotion: null,
   shop: null,
 };
 

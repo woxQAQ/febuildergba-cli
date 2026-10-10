@@ -10,14 +10,26 @@
  *
  * ## Key encoding
  *
- * A key is two hex digits. `LoadCheckboxesResource` decodes it as:
+ * A key is two hex digits, read as one number. `LoadCheckboxesResource`
+ * dispatches on that number's **range**, not on its high nibble directly:
  *
- *   - **high nibble** selects the byte: `1` -> `+40`, `2` -> `+41`,
- *     `3` -> `+42`, `4` -> `+43`
- *   - **low nibble** selects the bit: `1` -> `0x01`, `2` -> `0x02`, ... `8` -> `0x80`
+ *   - `0x01..0x0F` -> the `L_40_BIT_` control, i.e. byte `+40`
+ *   - `0x10..0x1F` -> `L_41_BIT_`, byte `+41`
+ *   - `0x20..0x2F` -> `L_42_BIT_`, byte `+42`
+ *   - `0x30..0x3F` -> `L_43_BIT_`, byte `+43`
  *
- * So `13` = byte `+41`, mask `0x04` = the cavalry icon flag, and `34` = byte
- * `+43`, mask `0x08` = Summoning.
+ * and the **low** nibble selects the bit: `1` -> `0x01`, `2` -> `0x02`, ... `8`
+ * -> `0x80`. So the byte offset is `40 + (key >> 4)` - the high nibble is
+ * *one below* the byte index, because `0x01` and not `0x11` is the first byte's
+ * first bit. `GetInfoByBitFlag` (InputFormRef.cs:7453) states the same thing as
+ * one expression: `shift = (key & 0xf) - 1 + ((key & 0xf0) >> 4) * 8`.
+ *
+ * Hence `11` = byte `+41`, mask `0x01` - which is exactly the promoted test
+ * upstream performs as `u8(addr + 41) & 0x01` (`ClassForm.isHighClassAddr`).
+ * `13` = byte `+41`, mask `0x04`, the cavalry icon flag. Those two are the
+ * cross-check: if this decoding ever drifts by one byte, `promoted` stops
+ * matching `isHighClassAddr`. (`34` = byte `+43`, mask `0x08` is Summoning in
+ * FE8 and 敵アイテムドロップ in FE7 - see {@link CLASS_FLAG_KEYS}.)
  *
  * ## Why this matters
  *
@@ -36,11 +48,34 @@ export const CLASS_ABILITY_BASE_OFFSET = 40;
 export const CLASS_ABILITY_BYTE_COUNT = 4;
 
 /**
- * Stable identifiers for the flags we actually reason about.
+ * Stable identifiers for the flags we actually reason about, **for FE8**.
  *
  * Keyed by the two-hex-digit key from the config file so the mapping is
  * auditable against the source. Names are ours; the display strings come from
  * the file.
+ *
+ * ## These ids are per-game, not universal
+ *
+ * `config/data` ships a **separate** `unitclass_checkbox_<game>.txt` per game,
+ * and the same key names different things. That is not cosmetic: a key whose id
+ * is taken from FE8 will silently mislabel an FE6/FE7 ROM. The divergences, read
+ * off the three vendored files:
+ *
+ *   key  FE6            FE7                 FE8
+ *   21   weaponLockRoy  weaponLock1         weaponLock1
+ *   23   manaketeLock   manaketeLock        monsterWeapon
+ *   24   zephielLock    morph               maxLevel10
+ *   28   npc            unselectable        npc
+ *   34   (unnamed)      **droppableItem**   **summon**
+ *   35   (unnamed)      weaponLockEliwood   weaponLockEirika
+ *   36   (unnamed)      weaponLockHector    weaponLockEphraim
+ *   37   (unnamed)      weaponLockLyndis    weaponLockLyn
+ *   38   (unnamed)      weaponLockAthos     weaponLockAthos
+ *
+ * `34` is the load-bearing one: in FE7 it is 敵アイテムドロップ and decides
+ * whether an enemy drops its last item, while in FE8 the drop flag moved into
+ * the placement record's `ext` (`EventUnitForm.UpdateItemDropLabel`) and the
+ * bit became Summoning. See {@link classFlagKeysFor}.
  */
 export const CLASS_FLAG_KEYS: Readonly<Record<string, string>> = {
   "01": "mountedAid", // Mounted Aid Calc
@@ -76,6 +111,45 @@ export const CLASS_FLAG_KEYS: Readonly<Record<string, string>> = {
   "37": "weaponLockLyn",
   "38": "weaponLockAthos",
 };
+
+/**
+ * Per-game overrides for the keys that do **not** share FE8's meaning.
+ *
+ * Only the divergent keys are listed; everything else falls through to
+ * {@link CLASS_FLAG_KEYS}. Keys marked `(unnamed)` in the config (FE6 leaves
+ * `32`..`38` as `??`) get an id of our own so the bit is still visible rather
+ * than silently dropped.
+ */
+const CLASS_FLAG_KEYS_BY_GAME: Readonly<Record<string, Readonly<Record<string, string>>>> = {
+  FE6: {
+    "21": "weaponLockRoy",
+    "23": "manaketeLock",
+    "24": "zephielLock",
+    "32": "flag32",
+    "33": "flag33",
+    "34": "flag34",
+    "35": "flag35",
+    "36": "flag36",
+    "37": "flag37",
+    "38": "flag38",
+  },
+  FE7: {
+    "23": "manaketeLock",
+    "24": "morph",
+    "28": "unselectable",
+    "34": "droppableItem",
+    "35": "weaponLockEliwood",
+    "36": "weaponLockHector",
+    "37": "weaponLockLyndis",
+  },
+};
+
+/** Resolve a config key to its id for a given game fragment (`FE6`/`FE7`/`FE8`). */
+export function classFlagKeysFor(game: string): Readonly<Record<string, string>> {
+  const override = CLASS_FLAG_KEYS_BY_GAME[game];
+  if (override === undefined) return CLASS_FLAG_KEYS;
+  return { ...CLASS_FLAG_KEYS, ...override };
+}
 
 export interface ClassFlagDef {
   /** Raw key from the config file, e.g. `13`. */
@@ -127,11 +201,12 @@ export function loadClassFlags(configDir: string, game: string, language?: strin
   const path = resolveDataFile(configDir, "unitclass_checkbox_", game, language);
   if (path === null) return [];
 
+  const ids = classFlagKeysFor(game);
   const out: ClassFlagDef[] = [];
   for (const entry of parseKeyedTable(readTextFile(path))) {
     const decoded = decodeFlagKey(entry.key);
     if (decoded === null) continue;
-    const id = CLASS_FLAG_KEYS[entry.key] ?? `flag${entry.key}`;
+    const id = ids[entry.key] ?? `flag${entry.key}`;
     out.push({ key: entry.key, id, label: entry.name, ...decoded });
   }
   return out;

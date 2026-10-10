@@ -14,14 +14,15 @@
  * of the C# checkout**. A minimal subset is copied into `cli/data/` so this
  * project stands alone: cloning `cli/` on its own is enough to parse a ROM.
  *
- * The vendored set is exactly what the parser consumes - three prefixes, each
+ * The vendored set is exactly what the parser consumes - four prefixes, each
  * for FE6 / FE7 / FE8, in all three languages (bare = Japanese, `.en`, `.zh`):
  *
- *   - `unitclass_checkbox_<game>*.txt` - class ability bit names
- *   - `event_<game>*.txt`              - event-script opcode patterns
- *   - `eventcond_<game>*.txt`          - chapter condition slot names
+ *   - `unitclass_checkbox_<game>*.txt`      - class ability bit names
+ *   - `event_<game>*.txt`                   - event-script opcode patterns
+ *   - `eventcond_<game>*.txt`               - chapter condition slot names
+ *   - `item_staff_use_effect_<game>*.txt`   - item `+30` use-effect code names
  *
- * To refresh them after an FEBuilderGBA update, re-copy those 27 files from
+ * To refresh them after an FEBuilderGBA update, re-copy those 36 files from
  * `FEBuilderGBA/FEBuilderGBA/bin/Debug/config/data/` into `cli/data/`.
  *
  * ## File format

@@ -68,6 +68,25 @@ export interface TracedInstruction {
   giveUnitId: number | null;
 }
 
+/**
+ * ターン前指定 (`+10`): which side's turn the event fires on.
+ *
+ * Upstream knows exactly three encodings - `EventCondForm.DrawEventListTurn`
+ * tests `0x00`, `0x40`, `0x80` and prints 自ターン / 友軍ターン / 敵軍ターン -
+ * so anything else is reported as `null` rather than guessed at.
+ */
+export type TurnPhase = "player" | "ally" | "enemy";
+
+/** The turn window a `TURN` record is active over. */
+export interface TurnWindow {
+  /** 開始ターン (`+8`). */
+  start: number;
+  /** 終了ターン (`+9`). */
+  end: number;
+  /** ターン前指定 (`+10`), or `null` for an unrecognised byte. */
+  phase: TurnPhase | null;
+}
+
 /** One condition-slot entry of one chapter, linked to its script. */
 export interface ChapterEventSlot {
   mapIndex: number;
@@ -76,6 +95,18 @@ export interface ChapterEventSlot {
   /** Row number within a table-kind slot; 0 for direct slots. */
   position: number;
   scriptId: number | null;
+  /**
+   * `TURN` only; `null` for every other slot kind, whose records carry no turn
+   * fields.
+   *
+   * Upstream prints this as a *range* only when `start < end` and as a single
+   * turn otherwise (`EventCondForm.DrawEventListTurn`), i.e. `end <= start`
+   * means "turn `start`, once". That is the game's own condition, so the two
+   * bytes are kept verbatim rather than normalised into one number.
+   */
+  turn: TurnWindow | null;
+  /** `TURN` only: 達成フラグ (`+2`), the flag set once the event has run. */
+  condFlag: number | null;
 }
 
 export interface TracedBlockUnit {
@@ -86,8 +117,34 @@ export interface TracedBlockUnit {
   classId: number;
   level: number;
   side: UnitSide;
+  /** 0 = fixed stats, 1 = grow to `level` on the class's growths. */
+  autolevel: number;
   x: number;
   y: number;
+  /**
+   * `+12..15`: the unit's four starting items, `0` = empty slot.
+   *
+   * The event unit block is **the same record** the deployment blocks use -
+   * `EventUnitForm.Designer.cs` labels `B12..B15` 所持品1..4 and
+   * `DrawItemIconOnly` reads them at `addr + 12 + n` - so the event layer is
+   * the only place an *enemy's* equipment lives. The deployment blocks hold
+   * player/ally units only (see `docs/chapters-and-events.md` §3.19).
+   *
+   * Position 0 is not necessarily the equipped weapon: GBA FE picks the
+   * equipped weapon at battle time from what the unit can use, there is no
+   * equip slot in the record. A consumer that wants "attack power" has to
+   * join `items` and choose.
+   */
+  items: number[];
+  /**
+   * Decoded `ext` of the packed coordinate (`+4` bits 12-14), FE8 only,
+   * `null` on FE6/FE7 whose coordinate word is a plain two-byte x/y.
+   *
+   * Bit `0x2` is アイテムドロップ (`EventUnitForm.UpdateItemDropLabel`,
+   * `EventUnitForm.cs:2575`): the unit drops its item on death. The other
+   * bits are the pre-placement animation/pose selector.
+   */
+  ext: number | null;
 }
 
 export interface EventTrace {
@@ -103,6 +160,14 @@ export interface EventTrace {
 const MAX_CONSECUTIVE_UNKNOWNS = 10;
 /** Per-script instruction ceiling. */
 const MAX_SCRIPT_INSTRUCTIONS = 4000;
+
+/** Decode ターン前指定; `null` for a byte upstream does not recognise. */
+function turnPhase(byte: number): TurnPhase | null {
+  if (byte === 0x00) return "player";
+  if (byte === 0x40) return "ally";
+  if (byte === 0x80) return "enemy";
+  return null;
+}
 
 export function extractEventTrace(
   rom: RomBuffer,
@@ -152,8 +217,11 @@ export function extractEventTrace(
         classId: u.classId,
         level: u.level,
         side: u.side,
+        autolevel: u.autolevel,
         x: u.prePlacementCoord.x,
         y: u.prePlacementCoord.y,
+        items: u.items,
+        ext: u.prePlacementCoord.ext,
       });
     }
     return id;
@@ -254,13 +322,22 @@ export function extractEventTrace(
     if (map === null || chapter.condTableAddr === 0) continue;
     const isFe7 = layout.version === "FE7U" || layout.version === "FE7J";
 
-    const link = (slotIndex: number, slotKind: string, position: number, scriptAddr: number): void => {
+    const link = (
+      slotIndex: number,
+      slotKind: string,
+      position: number,
+      scriptAddr: number,
+      /** `TURN` records only: their turn window and flag. */
+      extra: { turn: TurnWindow; condFlag: number } | null = null,
+    ): void => {
       trace.chapterSlots.push({
         mapIndex: chapter.index,
         slotIndex,
         slotKind,
         position,
         scriptId: scriptIdOf(scriptAddr),
+        turn: extra === null ? null : extra.turn,
+        condFlag: extra === null ? null : extra.condFlag,
       });
     };
 
@@ -272,10 +349,22 @@ export function extractEventTrace(
         case "TURN": {
           for (let a = addr, pos = 0; ; a += map.turnCondSize, pos++) {
             if (!rom.isSafeOffset(a + map.turnCondSize)) break;
+            // Upstream's TURN terminator is the whole `u32` at +0, not just its
+            // first byte (`EventCondForm.InitN02`, `u32(addr + 0) != 0`) - the
+            // ALWAYS slot below already matches that shape.
+            if (rom.u32(a) === 0) break;
             const type = rom.u8(a);
-            if (type === 0) break;
             const event = rom.p32(a + 4);
-            if (rom.isSafeOffset(event)) link(slot.index, slot.kind, pos, event);
+            if (rom.isSafeOffset(event)) {
+              link(slot.index, slot.kind, pos, event, {
+                turn: {
+                  start: rom.u8(a + 8),
+                  end: rom.u8(a + 9),
+                  phase: turnPhase(rom.u8(a + 10)),
+                },
+                condFlag: rom.u16(a + 2),
+              });
+            }
             // "信じられないがFE7は12バイトの短いターンイベントが存在する"
             if (isFe7 && type === 1) a -= map.turnCondSize - 12;
           }

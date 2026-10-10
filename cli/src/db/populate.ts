@@ -15,6 +15,8 @@ import { getTableConfig } from "drizzle-orm/sqlite-core";
 
 import type { ParsedRom } from "../load.ts";
 import { extractEventTrace } from "../tables/eventTrace.ts";
+import type { EventTrace } from "../tables/eventTrace.ts";
+import { buildUnitStats } from "../tables/unitStats.ts";
 import { createSchemaSql } from "./ddl.ts";
 import type { ExtractDb, OpenDb } from "./index.ts";
 import * as t from "./schema.ts";
@@ -37,7 +39,13 @@ export async function populate(handle: OpenDb, rom: ParsedRom): Promise<Populate
     await insertItemsAndTerrain(db, rom);
     await insertChapters(db, rom);
     await insertStory(db, rom);
-    await insertEventTrace(db, rom);
+    await insertSkills(db, rom);
+    // The trace is walked once and consumed twice: it is the raw event layer,
+    // and it is also the only route to "which units appear in which chapter",
+    // which `derived_unit_stats` needs.
+    const trace = extractEventTrace(rom.rom, rom.layout, rom.chapters, rom.condSlots, rom.eventScripts);
+    await insertEventTrace(db, rom, trace);
+    await insertUnitStats(db, rom, trace);
     await insertWorldData(db, rom);
     sqlite.exec("COMMIT");
 
@@ -64,6 +72,10 @@ async function insertMeta(db: ExtractDb, rom: ParsedRom): Promise<void> {
     { key: "rom.version", value: rom.layout.version },
     { key: "rom.displayName", value: rom.layout.displayName },
     { key: "rom.isMultibyte", value: String(rom.layout.text.isMultibyte) },
+    // Which skill-system patch family the ROM carries, or "none". Detection
+    // only - it gates how the rest of the ROM should be interpreted (a
+    // patched ROM relocates other tables), it is not skill data.
+    { key: "rom.skillSystem", value: rom.identity.skillSystem },
     { key: "rom.notes", value: JSON.stringify(rom.identity.notes) },
     { key: "config.dir", value: rom.configDir ?? "" },
     { key: "config.language", value: rom.configLanguage ?? "en" },
@@ -280,6 +292,8 @@ async function insertItemsAndTerrain(db: ExtractDb, rom: ParsedRom): Promise<voi
       weaponRank: i.weaponRank,
       iconId: i.iconId,
       staffEffect: i.staffEffect,
+      staffEffectName: i.staffEffectName,
+      isPromotionItem: i.isPromotionItem,
       damageBonus: i.damageBonus,
       wexp: i.wexp,
       unitPrice: i.unitPrice,
@@ -292,6 +306,16 @@ async function insertItemsAndTerrain(db: ExtractDb, rom: ParsedRom): Promise<voi
      */
     for (const classId of new Set(i.effectiveness ?? [])) {
       await db.insert(t.itemEffectiveness).values({ itemId: i.id, classId });
+    }
+    /**
+     * The class list is the same for every item sharing an effect code; rows
+     * are per item so a query can ask "can this item promote this class"
+     * without first mapping item -> code.
+     */
+    for (const classId of new Set(i.promotionClasses ?? [])) {
+      await db
+        .insert(t.itemPromotions)
+        .values({ itemId: i.id, classId, effectCode: i.staffEffect });
     }
   }
 
@@ -313,6 +337,10 @@ async function insertChapters(db: ExtractDb, rom: ParsedRom): Promise<void> {
       titleTextId: c.titleTextId,
       title: c.title,
       weatherId: c.weatherId,
+      difficultyRaw: c.difficultyRaw,
+      hardBoost: c.hardBoost,
+      normalPenalty: c.normalPenalty,
+      easyPenalty: c.easyPenalty,
       deploySlots: c.deploySlots,
       deploySlotsHard: c.deploySlotsHard,
     });
@@ -374,12 +402,71 @@ async function insertStory(db: ExtractDb, rom: ParsedRom): Promise<void> {
 }
 
 /**
+ * Skill tables. Empty for a ROM without the patch, which is why the
+ * `skills.classSkillExtends` meta flag is written either way - it is the only
+ * thing that distinguishes "no skill system" from "a skill system whose learn
+ * lists carry no difficulty bits".
+ */
+async function insertSkills(db: ExtractDb, rom: ParsedRom): Promise<void> {
+  const skills = rom.skills;
+  if (skills === null) {
+    await db.insert(t.meta).values({ key: "skills.classSkillExtends", value: "false" });
+    return;
+  }
+  await db.insert(t.meta).values({
+    key: "skills.classSkillExtends",
+    value: String(skills.classSkillExtends),
+  });
+
+  for (const s of skills.skills) {
+    await db.insert(t.skills).values({
+      id: s.id,
+      nameTextId: s.nameTextId,
+      name: s.name,
+      description: s.description,
+      text: s.text,
+    });
+  }
+  for (const a of skills.unitSkills) {
+    await db.insert(t.unitSkills).values({ unitId: a.ownerId, skillId: a.skillId });
+  }
+  for (const a of skills.classSkills) {
+    await db.insert(t.classSkills).values({ classId: a.ownerId, skillId: a.skillId });
+  }
+  for (const l of skills.unitLearns) {
+    await db.insert(t.unitSkillLearn).values({
+      unitId: l.ownerId,
+      position: l.position,
+      level: l.level,
+      skillId: l.skillId,
+      rawLevel: l.rawLevel,
+      playerOnly: l.playerOnly,
+      enemyOnly: l.enemyOnly,
+      bothSides: l.bothSides,
+      hardOnly: l.hardOnly,
+    });
+  }
+  for (const l of skills.classLearns) {
+    await db.insert(t.classSkillLearn).values({
+      classId: l.ownerId,
+      position: l.position,
+      level: l.level,
+      skillId: l.skillId,
+      rawLevel: l.rawLevel,
+      playerOnly: l.playerOnly,
+      enemyOnly: l.enemyOnly,
+      bothSides: l.bothSides,
+      hardOnly: l.hardOnly,
+    });
+  }
+}
+
+/**
  * The raw event layer: scripts, instructions, slot links and load blocks.
  * Walk-based derivations (transitions, recruits, gold, joins) are views over
  * these tables - nothing derived is inserted here.
  */
-async function insertEventTrace(db: ExtractDb, rom: ParsedRom): Promise<void> {
-  const trace = extractEventTrace(rom.rom, rom.layout, rom.chapters, rom.condSlots, rom.eventScripts);
+async function insertEventTrace(db: ExtractDb, rom: ParsedRom, trace: EventTrace): Promise<void> {
   for (const script of trace.scripts) {
     await db.insert(t.eventScripts).values({
       id: script.id,
@@ -409,6 +496,10 @@ async function insertEventTrace(db: ExtractDb, rom: ParsedRom): Promise<void> {
       slotKind: slot.slotKind,
       position: slot.position,
       scriptId: slot.scriptId,
+      turnStart: slot.turn?.start ?? null,
+      turnEnd: slot.turn?.end ?? null,
+      turnPhase: slot.turn?.phase ?? null,
+      condFlag: slot.condFlag,
     });
   }
   for (let id = 0; id < trace.loadBlockCount; id++) {
@@ -422,8 +513,54 @@ async function insertEventTrace(db: ExtractDb, rom: ParsedRom): Promise<void> {
       classId: u.classId,
       level: u.level,
       side: u.side,
+      autolevel: u.autolevel === 1,
       x: u.x,
       y: u.y,
+      items: u.items,
+      ext: u.ext,
+    });
+  }
+}
+
+/**
+ * The stats each unit enters each chapter with, at each difficulty.
+ *
+ * Pure arithmetic over tables that are already parsed, so it lives beside the
+ * insert rather than in the reader - but see `tables/unitStats.ts` for why it
+ * is materialized instead of left to the query layer.
+ */
+async function insertUnitStats(db: ExtractDb, rom: ParsedRom, trace: EventTrace): Promise<void> {
+  const rows = buildUnitStats({
+    units: rom.units,
+    classes: rom.classes,
+    chapters: rom.chapters,
+    trace,
+  });
+  for (const r of rows) {
+    await db.insert(t.derivedUnitStats).values({
+      mapIndex: r.mapIndex,
+      difficulty: r.difficulty,
+      source: r.source,
+      sourceId: r.sourceId,
+      position: r.position,
+      unitId: r.unitId,
+      classId: r.classId,
+      side: r.side,
+      shownLevel: r.shownLevel,
+      levelDelta: r.levelDelta,
+      level: r.level,
+      levelUnderflow: r.levelUnderflow,
+      autolevel: r.autolevel,
+      growLevel: r.growLevel,
+      promoted: r.promoted,
+      statHp: r.stats.hp,
+      statStr: r.stats.str,
+      statSkl: r.stats.skl,
+      statSpd: r.stats.spd,
+      statDef: r.stats.def,
+      statRes: r.stats.res,
+      statLck: r.stats.lck,
+      statCon: r.stats.con,
     });
   }
 }

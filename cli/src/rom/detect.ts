@@ -6,6 +6,8 @@
 
 import { RomBuffer } from "./RomBuffer.ts";
 import { hex } from "../format.ts";
+import type { SkillSystem } from "./skillSystem.ts";
+import { detectSkillSystem } from "./skillSystem.ts";
 export type GameVersion = "FE6J" | "FE7J" | "FE7U" | "FE8J" | "FE8U";
 
 /** FEBuilderGBA reads 6 bytes here: 4-byte game code + 2-byte maker code. */
@@ -45,6 +47,15 @@ export interface RomIdentity {
   size: number;
   /** Human-readable note about anything unusual, e.g. a size that is not a power of two. */
   notes: string[];
+  /**
+   * Which skill-system patch family the ROM carries, or `"none"`.
+   *
+   * This is identification only - the *presence* of a skill system changes how
+   * the game must be read (a patched ROM moves item and effectiveness tables
+   * too), so consumers need to know before they interpret anything. No skill
+   * is decoded yet; see `skillSystem.ts`.
+   */
+  skillSystem: SkillSystem;
 }
 
 /** The ROM must at least contain the header we read. */
@@ -72,6 +83,9 @@ export function detectVersion(rom: RomBuffer): RomIdentity {
         `File is only ${rom.length} bytes; a GBA ROM header needs at least ` +
           `${MIN_HEADER_SIZE} (${hex(MIN_HEADER_SIZE)}).`,
       ],
+      // Nothing to probe yet, and `none` is the honest answer for a file we
+      // cannot even trust a version from.
+      skillSystem: "none",
     };
   }
 
@@ -99,5 +113,13 @@ export function detectVersion(rom: RomBuffer): RomIdentity {
     notes.push(`ROM length ${hex(rom.length)} is not a power of two (expanded/repacked ROM).`);
   }
 
-  return { gameCode, title, version, sizeOk, size: rom.length, notes };
+  return {
+    gameCode,
+    title,
+    version,
+    sizeOk,
+    size: rom.length,
+    notes,
+    skillSystem: detectSkillSystem(rom, version),
+  };
 }

@@ -4,7 +4,7 @@
  *
  *   1. `src/data/layouts.ts` - the per-game pointer tables, transcribed by eye
  *      from `FEBuilderGBA/FEBuilderGBA/ROMFE*.cs`.
- *   2. `cli/data/*.txt` - the 27 vendored `config/data` files, copied there by
+ *   2. `cli/data/*.txt` - the 36 vendored `config/data` files, copied there by
  *      hand so `cli/` stands alone.
  *
  * Both used to be maintained on discipline alone: the C# checkout sitting in
@@ -41,7 +41,12 @@ const VENDORED_DATA = join(CLI_ROOT, "data");
 const STAMP_FILE = join(VENDORED_DATA, "UPSTREAM.txt");
 
 /** The `config/data` families `cli/data/` vendors - see `src/config/data.ts`. */
-const VENDORED_PREFIXES: readonly string[] = ["unitclass_checkbox_", "event_", "eventcond_"];
+const VENDORED_PREFIXES: readonly string[] = [
+  "unitclass_checkbox_",
+  "event_",
+  "eventcond_",
+  "item_staff_use_effect_",
+];
 
 /** `ROMFE8U.cs` and friends. The C# file each game's constants live in. */
 const CS_FILE: Readonly<Record<GameVersion, string>> = {
@@ -50,6 +55,18 @@ const CS_FILE: Readonly<Record<GameVersion, string>> = {
   FE7U: "ROMFE7U.cs",
   FE8J: "ROMFE8JP.cs",
   FE8U: "ROMFE8U.cs",
+};
+
+/**
+ * The map-setting editor each game opens. FE8J and FE8U share one form, which
+ * is why they cannot disagree about the difficulty field's offset.
+ */
+const MAPSETTING_DESIGNER: Readonly<Record<GameVersion, string>> = {
+  FE6J: "MapSettingFE6Form.Designer.cs",
+  FE7J: "MapSettingFE7Form.Designer.cs",
+  FE7U: "MapSettingFE7UForm.Designer.cs",
+  FE8J: "MapSettingForm.Designer.cs",
+  FE8U: "MapSettingForm.Designer.cs",
 };
 
 const hex = (n: number): string => `0x${n.toString(16).toUpperCase()}`;
@@ -323,9 +340,89 @@ function checkLayouts(csDir: string): Problem[] {
   return problems;
 }
 
+/** The leading decimal run in a control name, e.g. `20` out of `J_20_DIFFCULTY`. */
+const U_ATOI_DIGITS = /\d+/;
+
+/**
+ * Check the one layout field whose C# anchor is a *designer file* rather than a
+ * `ROMFE*.cs` constant: `map.difficultyPos`, the offset of the 難易度補正 word.
+ *
+ * Upstream never writes this offset down as a number. Each map-setting form has
+ * a numeric control named e.g. `W20`, and `InputFormRef.RomToUI` builds the
+ * field address from the digits in that name (`U.atoi`, decimal - *not* hex,
+ * which is the trap) with the leading letter choosing the width (`W` = `u16`).
+ * So the only machine-checkable statement of "offset 0x14 is the difficulty
+ * field" is the pairing of that control with the 難易度補正 *label* beside it.
+ *
+ * Two directions are enforced, because "we measured nothing" and "there is
+ * nothing to measure" are different claims: a game we set to `null` must have
+ * no such label, and a game we set to a number must have exactly one.
+ */
+function checkMapSettingDifficulty(csDir: string): Problem[] {
+  const problems: Problem[] = [];
+
+  for (const version of Object.keys(MAPSETTING_DESIGNER) as GameVersion[]) {
+    const name = MAPSETTING_DESIGNER[version];
+    const path = join(csDir, name);
+    if (!existsSync(path)) {
+      problems.push({ where: `difficulty ${version}`, detail: `${name} is missing` });
+      continue;
+    }
+    const source = readFileSync(path, "utf8");
+
+    // `this.J_20_DIFFCULTY.Text = "難易度補正";` -> control J_20_DIFFCULTY.
+    const labels = [...source.matchAll(/this\.([A-Za-z_][A-Za-z0-9_]*)\.Text = "難易度補正"/g)].map(
+      (m) => m[1] as string,
+    );
+    const offsets = new Set(
+      labels.map((label) => Number(U_ATOI_DIGITS.exec(label)?.[0] ?? Number.NaN)),
+    );
+
+    const ours = LAYOUTS[version].map?.difficultyPos ?? null;
+
+    if (ours === null) {
+      if (labels.length > 0) {
+        problems.push({
+          where: `difficulty ${version}`,
+          detail: `cli says none, but ${name} labels ${labels.join(", ")} 難易度補正`,
+        });
+      }
+      continue;
+    }
+    if (offsets.size !== 1) {
+      problems.push({
+        where: `difficulty ${version}`,
+        detail:
+          labels.length === 0
+            ? `cli says ${showNum(ours)}, but no 難易度補正 label in ${name}`
+            : `cli says ${showNum(ours)}, but ${name} labels ${[...offsets].join(", ")}`,
+      });
+      continue;
+    }
+    const theirs = [...offsets][0] as number;
+    if (theirs !== ours) {
+      problems.push({
+        where: `difficulty ${version}: difficultyPos`,
+        detail: `cli says ${showNum(ours)}, upstream says ${showNum(theirs)}`,
+      });
+      continue;
+    }
+    // The offset is only the difficulty field if the numeric control that reads
+    // it is the `W` (u16) one - a `B20` would make it a byte.
+    if (!source.includes(`.Name = "W${theirs}"`)) {
+      problems.push({
+        where: `difficulty ${version}: difficultyPos`,
+        detail: `offset ${theirs} has no W${theirs} (u16) control in ${name}`,
+      });
+    }
+  }
+
+  return problems;
+}
+
 function checkConfigData(upstreamData: string): Problem[] {
   const problems: Problem[] = [];
-  // Exactly the three prefixes `config/data.ts` documents, so the provenance
+  // Exactly the four prefixes `config/data.ts` documents, so the provenance
   // stamp sitting alongside them is not mistaken for a vendored resource.
   const files = readdirSync(VENDORED_DATA).filter(
     (f) => f.endsWith(".txt") && VENDORED_PREFIXES.some((p) => f.startsWith(p)),
@@ -387,12 +484,17 @@ function main(): void {
   }
 
   const commit = submoduleCommit(submodule);
-  const problems = [...checkLayouts(csDir), ...checkConfigData(upstreamData)];
+  const problems = [
+    ...checkLayouts(csDir),
+    ...checkMapSettingDifficulty(csDir),
+    ...checkConfigData(upstreamData),
+  ];
 
   if (problems.length === 0) {
     console.log(`layouts: ${Object.keys(CS_FILE).length} games agree with ROMFE*.cs`);
+    console.log("difficulty: 4 games match the map-setting designer labels");
   } else {
-    console.log(`layouts / config/data: ${problems.length} difference(s)`);
+    console.log(`layouts / difficulty / config/data: ${problems.length} difference(s)`);
     for (const p of problems) console.log(`  ${p.where}: ${p.detail}`);
   }
 

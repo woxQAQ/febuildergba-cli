@@ -497,6 +497,24 @@ export interface Chapter {
    * weather; the game maps ids to rain / snow / sandstorm etc.
    */
   weatherId: number;
+  /**
+   * The raw `u16` at `layout.map.difficultyPos` (+0x14), or 0 when the game has
+   * no difficulty field transcribed.
+   */
+  difficultyRaw: number;
+  /**
+   * Enemy **level** bonus on hard mode: `(difficultyRaw & 0xF0) >> 4`.
+   *
+   * This is the "hard boost" - the number of extra levels every enemy starts
+   * with when the game is played on the hard difficulty. It is what makes
+   * "is my team strong enough for chapter N" answerable: an enemy's effective
+   * level is `level + hardBoost` before autolevel and class bases are applied.
+   */
+  hardBoost: number;
+  /** Enemy level penalty on normal: `(difficultyRaw >> 8) & 0xF`. */
+  normalPenalty: number;
+  /** Enemy level penalty on easy: `difficultyRaw & 0xF`. */
+  easyPenalty: number;
   /** File offset of the event-condition table (0 when unresolved). */
   condTableAddr: number;
   /** The 20 raw pointer values from the condition table. */
@@ -563,6 +581,10 @@ export function readChapters(
   for (const record of table.records) {
     const titleTextId = rom.u16(record.addr + 0x70);
     const chapterNumberRaw = rom.u16(record.addr + 0x80);
+    // `MapSettingDifficultyForm`: bits 0-3 easy penalty, 4-7 hard boost,
+    // 8-11 normal penalty. All three are enemy **level** deltas.
+    const difficultyRaw =
+      map.difficultyPos === null ? 0 : rom.u16(record.addr + map.difficultyPos);
     const chapter: Chapter = {
       index: record.index,
       mapSettingAddr: record.addr,
@@ -572,6 +594,10 @@ export function readChapters(
       title: text === null ? "" : decodeTextId(rom, titleTextId, text),
       eventPlist: record.eventPlist,
       weatherId: record.weather,
+      difficultyRaw,
+      hardBoost: (difficultyRaw & 0xf0) >> 4,
+      normalPenalty: (difficultyRaw & 0xf00) >> 8,
+      easyPenalty: difficultyRaw & 0x0f,
       condTableAddr: 0,
       condPointers: [],
       playerPlacementAddr: 0,
@@ -643,19 +669,70 @@ export function readChapters(
 export type LoadKind = "recruit" | "load" | "cutscene" | "other";
 
 /**
+ * Byte at index `i` of a pattern, or -1 when the pattern is too short.
+ *
+ * `Number.parseInt("")` is `NaN`, and every comparison against `NaN` is false -
+ * which silently turns a short pattern into "other" rather than flagging it.
+ */
+function patternByte(pattern: string, i: number): number {
+  if (i < 0) return -1;
+  const at = i * 2;
+  if (at + 2 > pattern.length) return -1;
+  return Number.parseInt(pattern.slice(at, at + 2), 16);
+}
+
+/** `4005` - the composite-instruction prefix ("do X, then Y"). */
+const COMPOSITE_HEAD = [0x40, 0x05] as const;
+
+/**
+ * The unit pointer of the composite LOAD family does **not** sit after a `2C`:
+ *
+ *   `40050200XXXXXXXX400A0000AC03A608`  Load reinforcements
+ *   `40050200XXXXXXXX40050300YYYYYYYY400A0000...`
+ *                                       Extension branch LOAD (two selectors)
+ *
+ * so the pointer is preceded by a `0200` / `0300` selector instead. Both are
+ * *loads*, not recruits: they bring a block in without adding it to the party.
+ */
+const COMPOSITE_SELECTORS = new Set([0x02, 0x03]);
+
+/**
  * Classify the `POINTER_UNIT` argument at byte position `position` of an
- * opcode pattern. Every pattern in `event_FE8.txt` places the argument
- * immediately after its 2-byte opcode and 2-byte flags, so the opcode byte of
- * the owning instruction sits at `position - 3`.
+ * opcode pattern.
+ *
+ * Two shapes carry a unit block, and only one of them is the well-known
+ * `LL2C` form:
+ *
+ *   `402C0100XXXXXXXX`  LOAD1 - the block joins the party when it is ours.
+ *   `412C0100XXXXXXXX`  LOAD2 - loads an existing member.
+ *   `422C0100XXXXXXXX`  LOAD3 - cutscene-only.
+ *
+ * The other shape is the composite family above, whose argument sits four
+ * bytes into the instruction with no `2C` anywhere near it. Classifying on
+ * `2C` alone used to drop that whole family into `other` - and since
+ * `chapter_recruits` filters `load_kind != 'other'`, it threw away every
+ * reinforcement block in the ROM (190 + 18 instructions on the FE8U fixture,
+ * 210 of the 213 unreachable load blocks).
+ *
+ * `other` is therefore reserved for "a unit block we cannot place in any of
+ * these families", not for "not the LOAD1/2/3 shape".
  */
 export function classifyUnitArg(pattern: string, position: number): LoadKind {
-  const at = (position - 3) * 2;
-  const opcode = Number.parseInt(pattern.slice(at, at + 2), 16);
-  if (opcode !== 0x2c) return "other";
-  const lead = Number.parseInt(pattern.slice(at - 2, at), 16);
-  if (lead === 0x40) return "recruit";
-  if (lead === 0x41) return "load";
-  if (lead === 0x42) return "cutscene";
+  if (patternByte(pattern, position - 3) === 0x2c) {
+    const lead = patternByte(pattern, position - 4);
+    if (lead === 0x40) return "recruit";
+    if (lead === 0x41) return "load";
+    if (lead === 0x42) return "cutscene";
+    return "other";
+  }
+
+  const isCompositeHead =
+    patternByte(pattern, position - 4) === COMPOSITE_HEAD[0] &&
+    patternByte(pattern, position - 3) === COMPOSITE_HEAD[1];
+  if (isCompositeHead && COMPOSITE_SELECTORS.has(patternByte(pattern, position - 2))) {
+    return "load";
+  }
+
   return "other";
 }
 

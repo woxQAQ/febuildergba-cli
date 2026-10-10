@@ -242,6 +242,93 @@ export const classTerrainBonuses = sqliteTable(
 
 /** Mobility is the `class_roles` VIEW over classes.mount - see ddl.ts. */
 
+/**
+ * Skill-system tables. All of them are empty unless the ROM carries the FE8U
+ * `SkillSystem` patch (see `tables/skills.ts`); `meta.rom.skillSystem` records
+ * which family was detected, and `meta.skills.classSkillExtends` whether the
+ * learn-list level byte carries the player/enemy/hard flags.
+ */
+export const skills = sqliteTable("skills", {
+  /** Skill id 0..254; id 0 is the empty slot every name-less id reads as. */
+  id: integer("id").primaryKey(),
+  /** Text id from the ROM's `TEXT` table; 0 = no text. */
+  nameTextId: integer("name_text_id").notNull(),
+  /** Text before the first `:` - FEBuilderGBA's name rule. `""` when none. */
+  name: text("name").notNull(),
+  /**
+   * Text after the first `:`, trimmed. The ROM's format is `Name:Description`,
+   * and this half is where a patch states what the skill does. `""` when the
+   * string has no colon.
+   */
+  description: text("description").notNull(),
+  /** The full decoded string; the fallback when {@link name} is `""`. */
+  text: text("text").notNull(),
+});
+
+/**
+ * Innate skill per unit. The assignment table is **one byte per unit id**, so
+ * a unit has at most one; rows exist only for non-zero ids.
+ */
+export const unitSkills = sqliteTable(
+  "unit_skills",
+  {
+    unitId: integer("unit_id").notNull(),
+    skillId: integer("skill_id").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.unitId] })],
+);
+
+/** Innate skill per class. Same one-byte table shape as {@link unitSkills}. */
+export const classSkills = sqliteTable(
+  "class_skills",
+  {
+    classId: integer("class_id").notNull(),
+    skillId: integer("skill_id").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.classId] })],
+);
+
+/**
+ * Skills a unit learns by levelling, from the per-unit pointer list.
+ *
+ * With the class-skill extension the level byte's high bits gate the skill by
+ * side and difficulty; without it they are always false and `level` is the
+ * whole byte. `raw_level` is kept because a byte of `0xFF` sets all four flags
+ * at once in upstream's UI.
+ */
+export const unitSkillLearn = sqliteTable(
+  "unit_skill_learn",
+  {
+    unitId: integer("unit_id").notNull(),
+    position: integer("position").notNull(),
+    level: integer("level").notNull(),
+    skillId: integer("skill_id").notNull(),
+    rawLevel: integer("raw_level").notNull(),
+    playerOnly: integer("player_only", { mode: "boolean" }).notNull(),
+    enemyOnly: integer("enemy_only", { mode: "boolean" }).notNull(),
+    bothSides: integer("both_sides", { mode: "boolean" }).notNull(),
+    hardOnly: integer("hard_only", { mode: "boolean" }).notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.unitId, t.position] })],
+);
+
+/** Skills a class learns by levelling. Same shape as {@link unitSkillLearn}. */
+export const classSkillLearn = sqliteTable(
+  "class_skill_learn",
+  {
+    classId: integer("class_id").notNull(),
+    position: integer("position").notNull(),
+    level: integer("level").notNull(),
+    skillId: integer("skill_id").notNull(),
+    rawLevel: integer("raw_level").notNull(),
+    playerOnly: integer("player_only", { mode: "boolean" }).notNull(),
+    enemyOnly: integer("enemy_only", { mode: "boolean" }).notNull(),
+    bothSides: integer("both_sides", { mode: "boolean" }).notNull(),
+    hardOnly: integer("hard_only", { mode: "boolean" }).notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.classId, t.position] })],
+);
+
 export const terrains = sqliteTable("terrains", {
   /** Terrain id 0..0x40; also the movement-cost index space. */
   id: integer("id").primaryKey(),
@@ -328,7 +415,12 @@ export const items = sqliteTable("items", {
   rangeMax: integer("range_max").notNull(),
   weaponRank: integer("weapon_rank").notNull(),
   iconId: integer("icon_id").notNull(),
+  /** `+30`: the use-effect code. See `items.ts`. */
   staffEffect: integer("staff_effect").notNull(),
+  /** Display name of {@link staffEffect}, or `""` when the code table lacks it. */
+  staffEffectName: text("staff_effect_name").notNull(),
+  /** Whether `staff_effect` is one of the ten promotion codes. */
+  isPromotionItem: integer("is_promotion_item", { mode: "boolean" }).notNull(),
   damageBonus: integer("damage_bonus").notNull(),
   wexp: integer("wexp").notNull(),
   /** Price per use; buy = uses * unit_price, sell = buy / 2. */
@@ -349,8 +441,29 @@ export const itemEffectiveness = sqliteTable(
   ],
 );
 
-export const shops = sqliteTable("shops", {
-  id: integer("id").primaryKey(),
+/**
+ * Promotion items: which classes an item promotes.
+ *
+ * The list comes from the ROM's per-effect-code class table
+ * (`readPromotionTables`), attached to every item whose `staff_effect` is that
+ * code - so the same class list repeats across items that share a code, which
+ * is exactly how the game reads it.
+ */
+export const itemPromotions = sqliteTable(
+  "item_promotions",
+  {
+    itemId: integer("item_id").notNull(),
+    classId: integer("class_id").notNull(),
+    /** The `staff_effect` code the list was taken from. */
+    effectCode: integer("effect_code").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.itemId, t.classId] }),
+    foreignKey({ columns: [t.itemId], foreignColumns: [items.id] }),
+  ],
+);
+
+export const shops = sqliteTable("shops", {  id: integer("id").primaryKey(),
   kind: text("kind", { enum: ["weapon", "item", "secret", "prep"] }).notNull(),
   /** NULL for the prep-screen shop. */
   mapIndex: integer("map_index"),
@@ -383,6 +496,17 @@ export const chapters = sqliteTable("chapters", {
   title: text("title").notNull(),
   /** Weather id; 0 = none. */
   weatherId: integer("weather_id").notNull(),
+  /**
+   * The raw `u16` difficulty-adjustment word. Its three nibbles are decoded
+   * into the three columns below; kept so a surprising decode is traceable.
+   */
+  difficultyRaw: integer("difficulty_raw").notNull(),
+  /** Enemy **level** bonus on hard mode (`(difficulty_raw & 0xF0) >> 4`). */
+  hardBoost: integer("hard_boost").notNull(),
+  /** Enemy level penalty on normal (`(difficulty_raw >> 8) & 0xF`). */
+  normalPenalty: integer("normal_penalty").notNull(),
+  /** Enemy level penalty on easy (`difficulty_raw & 0xF`). */
+  easyPenalty: integer("easy_penalty").notNull(),
   /** Deployment slot count, normal mode. */
   deploySlots: integer("deploy_slots").notNull(),
   deploySlotsHard: integer("deploy_slots_hard").notNull(),
@@ -453,6 +577,75 @@ export const derivedPlayOrder = sqliteTable("derived_play_order", {
   role: text("role", { enum: ["main", "side"] }).notNull(),
   playable: integer("playable", { mode: "boolean" }).notNull(),
 });
+
+/**
+ * The stats each unit actually enters each chapter with, per difficulty.
+ *
+ * A ROM stores *inputs* to this - unit, class, level, a grow flag - and the
+ * game computes the seven numbers when the map loads. This table is that
+ * computation, ported from FEBuilderGBA's own simulator; see
+ * `tables/unitStats.ts` for the algorithm and the field-by-field provenance.
+ *
+ * It is materialized rather than a view because the arithmetic is not SQL's:
+ * C# `Math.Round` is banker's rounding and the growth is a double product, so
+ * a `ROUND()` view would disagree with the reference on ties.
+ *
+ * The difficulty column is not decoration: enemy levels are adjusted per
+ * difficulty before the growth runs (`hard_boost` / `normal_penalty` /
+ * `easy_penalty`), so the same enemy has different stats on the three
+ * settings. Rows exist for all three whether or not they differ.
+ */
+export const derivedUnitStats = sqliteTable(
+  "derived_unit_stats",
+  {
+    mapIndex: integer("map_index").notNull(),
+    difficulty: text("difficulty", { enum: ["easy", "normal", "hard"] }).notNull(),
+    /** Where the unit comes from: the initial block, or an event load. */
+    source: text("source", { enum: ["placement", "event"] }).notNull(),
+    /**
+     * The block within the source: 0 = normal placement block (slot 10),
+     * 1 = hard placement block (slot 11), or the `load_blocks.id` for `event`.
+     */
+    sourceId: integer("source_id").notNull(),
+    /** Row number within that block. */
+    position: integer("position").notNull(),
+    unitId: integer("unit_id").notNull(),
+    /** Resolved: a record's class id of 0 means the unit's own class. */
+    classId: integer("class_id").notNull(),
+    side: text("side", { enum: ["player", "ally", "enemy", "removed"] }).notNull(),
+    /** The level the record stores, before the difficulty adjustment. */
+    shownLevel: integer("shown_level").notNull(),
+    /** Enemy level adjustment for this difficulty; 0 for every other side. */
+    levelDelta: integer("level_delta").notNull(),
+    /** `shown_level + level_delta`, deliberately not clamped. */
+    level: integer("level").notNull(),
+    /**
+     * `level < 0`. The reference warns this underflows in-game and makes the
+     * enemy the strongest unit possible - a hack bug worth surfacing, which is
+     * why the level is stored raw instead of clamped.
+     */
+    levelUnderflow: integer("level_underflow", { mode: "boolean" }).notNull(),
+    /** The record's grow flag: 0 = fixed stats, 1 = grown on class growths. */
+    autolevel: integer("autolevel", { mode: "boolean" }).notNull(),
+    /** The level the growth ran to: `level + 10` when promoted. */
+    growLevel: integer("grow_level").notNull(),
+    /** Either the unit's or the class's promoted bit (`+41` bit 0). */
+    promoted: integer("promoted", { mode: "boolean" }).notNull(),
+    statHp: integer("stat_hp").notNull(),
+    statStr: integer("stat_str").notNull(),
+    statSkl: integer("stat_skl").notNull(),
+    statSpd: integer("stat_spd").notNull(),
+    statDef: integer("stat_def").notNull(),
+    statRes: integer("stat_res").notNull(),
+    statLck: integer("stat_lck").notNull(),
+    /** No growth exists for constitution; this is `unit delta + class base`. */
+    statCon: integer("stat_con").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.mapIndex, t.difficulty, t.source, t.sourceId, t.position] }),
+    foreignKey({ columns: [t.mapIndex], foreignColumns: [chapters.mapIndex] }),
+  ],
+);
 
 export const mapObjects = sqliteTable("map_objects", {
   mapIndex: integer("map_index").notNull(),
@@ -550,6 +743,29 @@ export const chapterEventSlots = sqliteTable(
     /** Row number within a table-kind slot; 0 for direct (START/END) slots. */
     position: integer("position").notNull(),
     scriptId: integer("script_id"),
+    /**
+     * `TURN` only: 開始ターン, the record's `+8` byte. NULL for every other
+     * slot kind, whose records have no turn fields.
+     *
+     * `end <= start` means "turn `start`, once" - upstream prints a range only
+     * when `start < end` (`EventCondForm.DrawEventListTurn`).
+     *
+     * **Values are stored verbatim, and some are sentinels.** Both fixtures
+     * carry a handful of records with `start` around 112-255, far beyond any
+     * reachable turn count, which is a hack convention for "do not fire on a
+     * turn; something else triggers this". Filtering those out is a query-time
+     * decision, not something to bake in here.
+     */
+    turnStart: integer("turn_start"),
+    /** `TURN` only: 終了ターン (`+9`). `0` means "no end", i.e. a single turn. */
+    turnEnd: integer("turn_end"),
+    /**
+     * `TURN` only: ターン前指定 (`+10`), which side's turn fires the event.
+     * `EventCondForm.DrawEventListTurn` recognises exactly 0x00 / 0x40 / 0x80.
+     */
+    turnPhase: text("turn_phase", { enum: ["player", "ally", "enemy"] }),
+    /** `TURN` only: 達成フラグ (`+2`), set once the event has run. */
+    condFlag: integer("cond_flag"),
   },
   (t) => [
     primaryKey({ columns: [t.mapIndex, t.slotIndex, t.position] }),
@@ -577,8 +793,24 @@ export const loadBlockUnits = sqliteTable(
     classId: integer("class_id").notNull(),
     level: integer("level").notNull(),
     side: text("side", { enum: ["player", "ally", "enemy", "removed"] }).notNull(),
+    /** 0 = fixed stats, 1 = grow to `level` on the class's growths. */
+    autolevel: integer("autolevel", { mode: "boolean" }).notNull(),
     x: integer("x").notNull(),
     y: integer("y").notNull(),
+    /**
+     * `+12..15`: the unit's four starting items, `0` = empty.
+     *
+     * This is where **enemy** equipment lives - the deployment blocks hold
+     * player/ally units only. Slot 0 is not a declared equip slot; GBA FE
+     * chooses the equipped weapon at battle time, so "attack power" is
+     * `stat_str + item.might` over the usable weapons in here.
+     */
+    items: text("items", { mode: "json" }).$type<number[]>().notNull(),
+    /**
+     * Decoded `ext` of the packed coordinate, FE8 only (NULL on FE6/FE7).
+     * Bit `0x2` = アイテムドロップ, the unit drops its item on death.
+     */
+    ext: integer("ext"),
   },
   (t) => [
     primaryKey({ columns: [t.blockId, t.position] }),
@@ -594,6 +826,11 @@ export const TABLES = [
   classAbilityFlags,
   classMovementCosts,
   classTerrainBonuses,
+  skills,
+  unitSkills,
+  classSkills,
+  unitSkillLearn,
+  classSkillLearn,
   terrains,
   affinities,
   supportBonuses,
@@ -601,6 +838,7 @@ export const TABLES = [
   supportPartners,
   items,
   itemEffectiveness,
+  itemPromotions,
   shops,
   shopItems,
   chapters,
@@ -617,4 +855,5 @@ export const TABLES = [
   loadBlockUnits,
   // Materialized inference SQL cannot express - see the module doc.
   derivedPlayOrder,
+  derivedUnitStats,
 ] as const;
