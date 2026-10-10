@@ -75,7 +75,9 @@ async function insertMeta(db: ExtractDb, rom: LoadedRom): Promise<void> {
     { key: "rom.notes", value: JSON.stringify(rom.identity.notes) },
     { key: "config.dir", value: rom.configDir ?? "" },
     { key: "config.language", value: rom.configLanguage ?? "en" },
-    { key: "playOrder.mainPath", value: JSON.stringify(rom.playOrder.mainPath) },
+    // `mainPath` is not stored: it is `derived_play_order` filtered to
+    // role='main'. `branches` and `closedLoop` are not expressible from the
+    // table, so they stay here as run-level facts.
     { key: "playOrder.branches", value: JSON.stringify(rom.playOrder.branches) },
     { key: "playOrder.closedLoop", value: JSON.stringify(rom.playOrder.closedLoop) },
   ]);

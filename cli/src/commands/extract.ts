@@ -1,4 +1,4 @@
-import { unlinkSync } from "node:fs";
+import { renameSync, unlinkSync } from "node:fs";
 import { basename, extname, resolve } from "node:path";
 
 import { openDb } from "../db/index.ts";
@@ -15,6 +15,15 @@ function defaultOutPath(romPath: string): string {
   return resolve(`${stem}.db`);
 }
 
+/** Remove `path` if it exists; any other failure is real and propagates. */
+function unlinkIfExists(path: string): void {
+  try {
+    unlinkSync(path);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+}
+
 export const extract: Command = {
   name: "extract",
   summary: "Parse the whole ROM once into a SQLite database for SQL analysis",
@@ -28,29 +37,36 @@ export const extract: Command = {
     "The schema stores facts, not presentations: names join by id, prices " +
     "are `uses * unit_price`, the old `units` roster filter is the `roster` " +
     "view. See src/db/schema.ts for the full table list and conventions.\n\n" +
-    "An existing output file is replaced: an extract is a rebuildable " +
-    "artifact, not state.\n\n" +
+    "An existing output file is replaced atomically: the extract is built " +
+    "into a scratch file next to the output and renamed over it, so a failed " +
+    "run leaves the previous database intact. The schema has no migrations - " +
+    "an extract is a rebuildable artifact, not state.\n\n" +
     "Note: this uses Node's built-in node:sqlite, which prints an " +
     "ExperimentalWarning on stderr. It is harmless.",
   run: async ({ rom, flags }) => {
     const out = flags.out ?? defaultOutPath(rom.path);
 
-    // Fresh extract: a stale db that half-survives looks like a finished one,
-    // which is worse than losing it.
-    try {
-      unlinkSync(out);
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-    }
+    // Rebuild into a scratch file, then rename over the output: a failed
+    // extract must not take the previous good database down with it. The
+    // scratch file sits next to the output so the rename stays on one
+    // filesystem.
+    const tmp = `${out}.tmp`;
+    unlinkIfExists(tmp);
 
     const started = performance.now();
-    const handle = openDb(out);
     let result;
     try {
-      result = await populate(handle, rom);
-    } finally {
-      handle.close();
+      const handle = openDb(tmp);
+      try {
+        result = await populate(handle, rom);
+      } finally {
+        handle.close();
+      }
+    } catch (error) {
+      unlinkIfExists(tmp);
+      throw error;
     }
+    renameSync(tmp, out);
     const elapsed = performance.now() - started;
 
     const rows = Object.values(result.tables).reduce((a, n) => a + n, 0);
