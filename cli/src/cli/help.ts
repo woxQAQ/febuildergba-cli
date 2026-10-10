@@ -30,11 +30,9 @@ function wrap(text: string, width: number): string[] {
 }
 
 /**
- * One block of `--flag  description` lines, all descriptions wrapped to
- * `TEXT_WIDTH` and aligned to a single shared column.
- *
- * `command` is the command whose help is being rendered - a flag can carry a
- * per-command note, so the two have to travel together.
+ * One block of `--flag  description` lines, wrapped to `TEXT_WIDTH` and aligned
+ * to one column. `command` travels with the flags because a flag can carry a
+ * per-command note.
  */
 function optionLines(
   groups: readonly (readonly FlagSpec[])[],

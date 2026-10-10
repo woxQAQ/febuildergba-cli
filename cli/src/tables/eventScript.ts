@@ -1,37 +1,23 @@
 /**
- * Event-script disassembler, ported from FEBuilderGBA's `EventScript`.
+ * Event-script disassembler, ported from FEBuilderGBA's `EventScript.cs`.
  *
- * ## Why this is needed
+ * A unit's join chapter is not stored as a number: it is implied by the
+ * chapter's event script - either the initial player placement or a recruit
+ * instruction (`402C0100` + unit-info pointer, ユニット読込 自軍ユニットは仲間に
+ * する). Finding those means walking the script byte by byte, which needs every
+ * opcode length; that table is `config/data/event_<game>.txt` (625 patterns).
  *
- * A unit's join chapter is not stored anywhere as a number. It is implied by
- * the chapter's event script: either the unit appears in the initial player
- * placement, or a script instruction recruits them (`402C0100` +
- * unit-info pointer - "ユニット読込 自軍ユニットは仲間にする").
+ * Pattern format: `<pattern>\t<description>\t<hint>\t{category}\t...`. A byte
+ * whose both nibbles are a non-hex letter is a variable; a run of the same
+ * letter is one argument of that length (`40050B00XXXXYYYY` = `40 05 0B 00`
+ * fixed, a 2-byte `X`, a 2-byte `Y`). Argument types come from the
+ * description's `[XXXX:TYPE:name]` markers, as in `ParseInfoString`
+ * (EventScript.cs:513).
  *
- * Finding those instructions means walking the script byte by byte, which means
- * knowing every opcode's length. That table is
- * `config/data/event_<game>.txt` - 625 lines of byte patterns.
- *
- * ## Pattern format
- *
- *     <pattern>\t<description>\t<hint>\t{category}\t...
- *
- * The pattern is hex nibbles where **both nibbles of a byte are a non-hex
- * letter** it is a variable: a run of the same letter is one argument whose
- * size is the run length. `40050B00XXXXYYYY` is `40 05 0B 00` fixed, then a
- * 2-byte `X` argument and a 2-byte `Y` argument.
- *
- * Argument types come from the description's `[XXXX:TYPE:name]` markers, which
- * is also how the reference finds them (`ParseInfoString`, EventScript.cs:513).
- *
- * ## Matching order
- *
- * `EventScript.Load` sorts by descending size, then fewer arguments, then
- * smaller total argument size, and `DisAseemble` returns the **first** match.
- * That ordering is load-bearing: without it a short pattern would shadow a
- * longer one that starts with the same bytes.
- *
- * Reference: FEBuilderGBA/FEBuilderGBA/EventScript.cs.
+ * `EventScript.Load` sorts by descending pattern size, then fewer arguments,
+ * then smaller total argument size, and `DisAseemble` returns the **first**
+ * match - load-bearing, or a short pattern would shadow a longer one sharing a
+ * prefix.
  */
 
 import {

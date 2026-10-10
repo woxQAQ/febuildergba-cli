@@ -1,63 +1,46 @@
 /**
- * The extract database schema, as drizzle table definitions.
+ * The extract database schema, as drizzle table definitions - the single source
+ * of truth. `ddl.ts` generates CREATE TABLE from them, `populate.ts` inserts
+ * through them, query-side consumers select through them; no hand-written SQL
+ * copy to drift.
  *
- * These definitions are the **single source of truth**: `ddl.ts` generates
- * the CREATE TABLE statements from them, `populate.ts` inserts through them,
- * and query-side consumers (`scripts/emit-mgba-units.ts`) select through
- * them. There is no hand-written SQL copy of the schema to drift away from.
+ * Two shaping principles:
+ *   - Model the game, not the ROM bytes: no file offsets, raw pointers or
+ *     extraction diagnostics as columns. What a ROM address was needed to reach
+ *     (stat-bonus tables, effectiveness lists, post-placement steps) is parsed
+ *     and modelled.
+ *   - Store facts, derive at query time: names join by id, prices are
+ *     `uses * unit_price`, usability is `wl_* > 0`. Absence is NULL or a missing
+ *     child row, never the ROM's zero-as-absence.
  *
- * Two principles decide the shape:
- *
- *   - **Model the game, not the ROM bytes.** No file offsets, no raw
- *     pointer values, no extraction diagnostics as columns. A ROM address
- *     is how we *found* the data, not what the data *is*; anything it was
- *     needed to reach (stat-bonus tables, effectiveness lists, post-placement
- *     steps) is parsed and modelled instead.
- *   - **Store facts, derive at query time.** Names join by id instead of
- *     being denormalized into rows; prices are `uses * unit_price`; weapon
- *     usability is `wl_* > 0`. Absence is modelled as NULL or a missing
- *     child row, never as the ROM's zero-as-absence convention.
- *
- * The schema has three physical layers, in decreasing order of trust:
- *
- *   1. **Raw tables** (plain names): mechanical decodes of ROM bytes or
- *      config/data files - records, lists, names. No inference.
- *   2. **Views**: derivations SQL can express, computed per query and never
- *      stored - `roster` (units carrying support data), `support_edges`
- *      (pairs deduplicated from the asymmetric `support_partners`). They
- *      cannot drift from the raw layer because they ARE the raw layer,
- *      read differently.
- *   3. **`derived_*` tables**: inference SQL cannot express even over the
- *      raw event layer - currently just `derived_play_order`, where branch
- *      splicing is a custom ordering SQL cannot express. It is materialized
- *      at extract time because the consumer cannot recompute it without the
- *      ROM and the parser. Treat it as a conclusion, not evidence.
- *
- * The walk-based derivations - `chapter_transitions`, `chapter_recruits`,
- * `chapter_recruit_units`, `chapter_gold`, `chapter_item_gives`,
- * `unit_joins`, `class_roles` - are views over the raw event layer
- * (`event_scripts` / `event_instructions` / `chapter_event_slots` /
- * `load_blocks`), so the evidence and the conclusions are both inspectable.
+ * Three physical layers, decreasing trust:
+ *   1. Raw tables (plain names): mechanical decodes of ROM bytes or config/data
+ *      files - records, lists, names. No inference.
+ *   2. Views: derivations SQL can express per query - `roster`,
+ *      `support_edges`, and the walk-based `chapter_transitions`,
+ *      `chapter_recruits`, `chapter_recruit_units`, `chapter_gold`,
+ *      `chapter_item_gives`, `unit_joins`, `class_roles` over the raw event
+ *      layer (`event_scripts` / `event_instructions` / `chapter_event_slots` /
+ *      `load_blocks`). They are the raw layer read differently, so cannot drift.
+ *   3. `derived_*` tables: inference SQL cannot express - currently only
+ *      `derived_play_order` (branch splicing is a custom ordering). Materialized
+ *      because the consumer cannot recompute it without ROM and parser; treat as
+ *      a conclusion, not evidence.
  *
  * Conventions:
+ *   - Booleans use `integer({ mode: "boolean" })` (0/1).
+ *   - Small non-joining lists (ability bytes, placement items, recruited ids)
+ *     are `text({ mode: "json" })`; joining data (effectiveness, movement
+ *     costs) is a child table.
+ *   - Ids are the game's own: unit ids 1-based, class ids 0-based, `map_index`
+ *     is the map-setting row, **not** the chapter number; those natural ids are
+ *     the primary keys, so a duplicate fails the extract loudly rather than
+ *     needing a surrogate.
+ *   - Support bonuses are the ROM's half-points (`*_half`); applied bonus at
+ *     rank C/B/A is `half * 1/2/3` (`tables/supportBonus.ts`).
  *
- *   - Booleans use `integer({ mode: "boolean" })` (stored 0/1).
- *   - Small lists that never join (ability bytes, placement items, recruited
- *     unit ids) are `text({ mode: "json" })` columns; anything that joins
- *     (effectiveness, movement costs) is a child table.
- *   - Ids are the game's own: unit ids are 1-based, class ids 0-based,
- *     `map_index` is the map-setting table row, **not** the chapter number.
- *     Primary keys are those natural ids; a duplicate id means corrupt data
- *     and fails the extract loudly instead of needing a surrogate key.
- *   - Support bonuses are stored as the ROM's half-points (`*_half` columns);
- *     the applied bonus at rank C/B/A is `half * 1/2/3` (see
- *     `tables/supportBonus.ts`).
- *
- * Empty unit slots (no name, class or level) are not extracted: they carry
- * no data and their id 0 is not unique. Their count is in `meta` as
- * `units.emptySlots`.
- *
- * (Views live in `ddl.ts`, next to the CREATE VIEW statements.)
+ * Empty unit slots (no name, class or level, non-unique id 0) are not
+ * extracted; their count is `meta` `units.emptySlots`. Views live in `ddl.ts`.
  */
 
 import { integer, primaryKey, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
@@ -134,8 +117,8 @@ export const classes = sqliteTable("classes", {
   description: text("description").notNull(),
   /**
    * REVERSE link: the class this one is promoted FROM, despite the name.
-   * Resolve direction via `sort_order` (the promoted side sorts higher) -
-   * see tables/classes.ts.
+   * Resolve direction via `sort_order` (promoted sorts higher) - see
+   * tables/classes.ts.
    */
   promotesToClassId: integer("promotes_to_class_id").notNull(),
   /** Promotion tier; each base/promoted pair shares one value. */
@@ -213,8 +196,7 @@ export const classAbilityFlags = sqliteTable(
 
 /**
  * 65 rows per class per variant, indexed by terrain id; 0xFF = impassable.
- * `rain`/`snow` rows exist only for classes that carry a weather-specific
- * table - most do not.
+ * `rain`/`snow` rows exist only for classes with a weather-specific table.
  */
 export const classMovementCosts = sqliteTable(
   "class_movement_costs",
@@ -242,10 +224,10 @@ export const classTerrainBonuses = sqliteTable(
 /** Mobility is the `class_roles` VIEW over classes.mount - see ddl.ts. */
 
 /**
- * Skill-system tables. All of them are empty unless the ROM carries the FE8U
- * `SkillSystem` patch (see `tables/skills.ts`); `meta.rom.skillSystem` records
- * which family was detected, and `meta.skills.classSkillExtends` whether the
- * learn-list level byte carries the player/enemy/hard flags.
+ * Skill-system tables; empty unless the ROM carries the FE8U `SkillSystem` patch
+ * (`tables/skills.ts`). `meta.rom.skillSystem` records the family, and
+ * `meta.skills.classSkillExtends` whether the learn-list level byte carries the
+ * player/enemy/hard flags.
  */
 export const skills = sqliteTable("skills", {
   /** Skill id 0..254; id 0 is the empty slot every name-less id reads as. */
@@ -255,9 +237,8 @@ export const skills = sqliteTable("skills", {
   /** Text before the first `:` - FEBuilderGBA's name rule. `""` when none. */
   name: text("name").notNull(),
   /**
-   * Text after the first `:`, trimmed. The ROM's format is `Name:Description`,
-   * and this half is where a patch states what the skill does. `""` when the
-   * string has no colon.
+   * Text after the first `:`, trimmed. The ROM's format is `Name:Description`;
+   * this half says what the skill does. `""` when there is no colon.
    */
   description: text("description").notNull(),
   /** The full decoded string; the fallback when {@link name} is `""`. */
@@ -265,8 +246,8 @@ export const skills = sqliteTable("skills", {
 });
 
 /**
- * Innate skill per unit. The assignment table is **one byte per unit id**, so
- * a unit has at most one; rows exist only for non-zero ids.
+ * Innate skill per unit: one byte per id, so at most one; rows only for non-zero
+ * ids.
  */
 export const unitSkills = sqliteTable(
   "unit_skills",
@@ -288,12 +269,10 @@ export const classSkills = sqliteTable(
 );
 
 /**
- * Skills a unit learns by levelling, from the per-unit pointer list.
- *
- * With the class-skill extension the level byte's high bits gate the skill by
- * side and difficulty; without it they are always false and `level` is the
- * whole byte. `raw_level` is kept because a byte of `0xFF` sets all four flags
- * at once in upstream's UI.
+ * Skills a unit learns by levelling, from the per-unit pointer list. With the
+ * class-skill extension the level byte's high bits gate side/difficulty;
+ * without it they are always false and `level` is the whole byte. `raw_level` is
+ * kept because `0xFF` sets all four flags at once in upstream's UI.
  */
 export const unitSkillLearn = sqliteTable(
   "unit_skill_learn",
@@ -340,9 +319,9 @@ export const terrains = sqliteTable("terrains", {
 });
 
 /**
- * Affinity names decoded from the ROM's own text table. Every affinity id
- * referenced by units or the bonus table gets a row; ids the ROM has no name
- * for (hacks extend past the reference's seven) have name NULL.
+ * Affinity names from the ROM's text table. Every id referenced by units or the
+ * bonus table gets a row; ids the ROM has no name for (hacks extend past seven)
+ * have name NULL.
  */
 export const affinities = sqliteTable("affinities", {
   id: integer("id").primaryKey(),
@@ -441,12 +420,10 @@ export const itemEffectiveness = sqliteTable(
 );
 
 /**
- * Promotion items: which classes an item promotes.
- *
- * The list comes from the ROM's per-effect-code class table
- * (`readPromotionTables`), attached to every item whose `staff_effect` is that
- * code - so the same class list repeats across items that share a code, which
- * is exactly how the game reads it.
+ * Promotion items: which classes an item promotes. From the ROM's
+ * per-effect-code class table (`readPromotionTables`), attached to every item
+ * whose `staff_effect` is that code - so the list repeats across items sharing a
+ * code, as the game reads it.
  */
 export const itemPromotions = sqliteTable(
   "item_promotions",
@@ -579,21 +556,19 @@ export const derivedPlayOrder = sqliteTable("derived_play_order", {
 });
 
 /**
- * The stats each unit actually enters each chapter with, per difficulty.
+ * The stats each unit enters each chapter with, per difficulty.
  *
- * A ROM stores *inputs* to this - unit, class, level, a grow flag - and the
- * game computes the seven numbers when the map loads. This table is that
- * computation, ported from FEBuilderGBA's own simulator; see
- * `tables/unitStats.ts` for the algorithm and the field-by-field provenance.
+ * A ROM stores *inputs* (unit, class, level, grow flag) and the game computes
+ * seven numbers on map load; this is that computation, ported from
+ * FEBuilderGBA's simulator (`tables/unitStats.ts` for algorithm/provenance).
  *
- * It is materialized rather than a view because the arithmetic is not SQL's:
- * C# `Math.Round` is banker's rounding and the growth is a double product, so
- * a `ROUND()` view would disagree with the reference on ties.
+ * Materialized rather than a view because the arithmetic is not SQL's: C#
+ * `Math.Round` is banker's rounding and the growth is a double product, so a
+ * `ROUND()` view would disagree on ties.
  *
- * The difficulty column is not decoration: enemy levels are adjusted per
- * difficulty before the growth runs (`hard_boost` / `normal_penalty` /
- * `easy_penalty`), so the same enemy has different stats on the three
- * settings. Rows exist for all three whether or not they differ.
+ * Enemy levels are adjusted per difficulty before the growth runs
+ * (`hard_boost`/`normal_penalty`/`easy_penalty`), so the same enemy differs
+ * across the three settings. Rows exist for all three whether or not they differ.
  */
 export const derivedUnitStats = sqliteTable(
   "derived_unit_stats",
@@ -620,9 +595,8 @@ export const derivedUnitStats = sqliteTable(
     /** `shown_level + level_delta`, deliberately not clamped. */
     level: integer("level").notNull(),
     /**
-     * `level < 0`. The reference warns this underflows in-game and makes the
-     * enemy the strongest unit possible - a hack bug worth surfacing, which is
-     * why the level is stored raw instead of clamped.
+     * `level < 0`. The reference warns this underflows in-game and maxes the
+     * enemy - a hack bug worth surfacing, so the level is stored raw, not clamped.
      */
     levelUnderflow: integer("level_underflow", { mode: "boolean" }).notNull(),
     /** The record's grow flag: 0 = fixed stats, 1 = grown on class growths. */
@@ -744,17 +718,11 @@ export const chapterEventSlots = sqliteTable(
     position: integer("position").notNull(),
     scriptId: integer("script_id"),
     /**
-     * `TURN` only: 開始ターン, the record's `+8` byte. NULL for every other
-     * slot kind, whose records have no turn fields.
-     *
-     * `end <= start` means "turn `start`, once" - upstream prints a range only
-     * when `start < end` (`EventCondForm.DrawEventListTurn`).
-     *
-     * **Values are stored verbatim, and some are sentinels.** Both fixtures
-     * carry a handful of records with `start` around 112-255, far beyond any
-     * reachable turn count, which is a hack convention for "do not fire on a
-     * turn; something else triggers this". Filtering those out is a query-time
-     * decision, not something to bake in here.
+     * `TURN` only: 開始ターン (`+8`). `NULL` for other slot kinds. `end <= start`
+     * means "turn `start`, once" - upstream prints a range only when
+     * `start < end` (`EventCondForm.DrawEventListTurn`). Values are **verbatim**:
+     * both fixtures carry `start` 112-255, an unreachable-turn hack sentinel for
+     * "do not fire on a turn"; filtering is a query-time decision.
      */
     turnStart: integer("turn_start"),
     /** `TURN` only: 終了ターン (`+9`). `0` means "no end", i.e. a single turn. */
@@ -798,12 +766,10 @@ export const loadBlockUnits = sqliteTable(
     x: integer("x").notNull(),
     y: integer("y").notNull(),
     /**
-     * `+12..15`: the unit's four starting items, `0` = empty.
-     *
-     * This is where **enemy** equipment lives - the deployment blocks hold
-     * player/ally units only. Slot 0 is not a declared equip slot; GBA FE
-     * chooses the equipped weapon at battle time, so "attack power" is
-     * `stat_str + item.might` over the usable weapons in here.
+     * `+12..15`: the unit's four starting items, `0` = empty. This is where
+     * **enemy** equipment lives (deployment blocks hold player/ally only). Slot 0
+     * is not a declared equip slot; GBA FE picks the weapon at battle time, so
+     * "attack power" is `stat_str + item.might` over the usable ones.
      */
     items: text("items", { mode: "json" }).$type<number[]>().notNull(),
     /**

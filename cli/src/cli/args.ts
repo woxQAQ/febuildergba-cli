@@ -21,13 +21,11 @@ export interface ParsedArgv {
 type OptionConfig = Record<string, { type: "string" | "boolean"; short?: string }>;
 
 /**
- * `parseArgs` config built from the flags a command accepts.
- *
- * Built from **every** flag rather than from one command's set, because
- * tokenising argv must not depend on which command it turns out to be: whether
- * `--out` swallows the next token depends only on its type, never on who is
- * reading it. Which flags the command is *allowed* to use is enforced
- * separately, from the parse's own token list - see `firstUnknownOption`.
+ * `parseArgs` config built from **every** flag, not one command's set:
+ * tokenising argv must not depend on which command it turns out to be (whether
+ * `--out` swallows the next token depends only on its type). Which flags a
+ * command may use is enforced separately from the parse's token list - see
+ * `firstUnknownOption`.
  */
 function optionConfig(flags: readonly FlagSpec[]): OptionConfig {
   const options: OptionConfig = {};

@@ -236,17 +236,11 @@ export function loadRom(path: string): RomHandle {
 }
 
 /**
- * Which classes are already promoted.
- *
- * NOT via `promotesToClassId`: in a base/promoted pair that field links the two
- * ids **both ways** (verified on FE8U - `Brawler`(1) stores 3 and `Great
- * Chief`(3) stores 1; same for 5/7, 9/11, 15/17), so it cannot break the tie.
- * `sortOrder` can: verified across 9 pairs, the **higher** value is always the
- * promoted side (Brawler=1 / Great Chief=2, Sword Pegasus=16 / Falcoknight=17,
- * Swd Mercenary=3 / Hero=4).
- *
- * My partner is whatever `promotesToClassId` names. If my partner sorts higher
- * than I do, *it* is the promoted one and I am still base.
+ * Which classes are already promoted. NOT via `promotesToClassId`: in a
+ * base/promoted pair that field links **both ways** (FE8U: `Brawler`(1)<->3,
+ * 5/7, 9/11, 15/17), so it cannot break the tie. `sortOrder` can: across 9
+ * pairs the **higher** value is the promoted side. If `promotesToClassId`'s
+ * target sorts higher than self, self is still base.
  */
 function promotedClassIdsOf(classes: readonly UnitClass[]): Set<number> {
   const byId = new Map(classes.map((c) => [c.id, c]));
@@ -259,13 +253,10 @@ function promotedClassIdsOf(classes: readonly UnitClass[]): Set<number> {
 }
 
 /**
- * Read every table the extractor persists.
- *
- * Dependencies between tables are expressed by the order of the statements:
- * units need class bases (a unit's stats are signed deltas on them), shops
+ * Read every table the extractor persists. Statement order carries the
+ * dependencies: units need class bases (stats are signed deltas on them), shops
  * need items (entries are priced through them), shops and chapters need the
- * object walk. Nothing here is memoised - `parseRom` is called once, by
- * `extract`, and reads everything.
+ * object walk. Called once, by `extract`; nothing is memoised.
  */
 export function parseRom(handle: RomHandle, options: ParseOptions = {}): ParsedRom {
   const { rom: buffer, layout, text } = handle;

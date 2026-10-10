@@ -1,46 +1,29 @@
 /**
- * Chapter-to-chapter transitions, read out of each map's END_EVENT script.
+ * Chapter-to-chapter transitions, read from each map's END_EVENT script.
  *
- * This is the only reliable way to recover a hack's main path. Chapter numbers
- * cannot answer the question: `u16(mapSetting + 0x80)` is the number the prep
- * screen shows, and it **restarts at 1 in every act**. Vision Quest's main path
- * runs 0-11, 12-16, then 18-19 as far as the numbers are concerned, yet the
- * real path threads map 16 -> 41 -> 42 -> 17 between them, so a reader that
- * groups by consecutive chapter number invents act boundaries that do not exist.
+ * The only reliable way to recover a hack's main path: `u16(mapSetting + 0x80)`
+ * is the prep-screen number and **restarts at 1 in every act**. Vision Quest's
+ * main path runs 0-11, 12-16, 18-19 numerically, yet threads map 16 -> 41 -> 42
+ * -> 17, so grouping by consecutive chapter number invents act boundaries.
  *
- * ## Where the information lives
+ * The data is in the map-setting record's END_EVENT pointer (see `chapters.ts`);
+ * on clear that script runs and its transition opcodes name the next chapter.
+ * FE8 documents four:
+ *     212AXXXX  MNCH  ワールドマップあり 次のマップへ
+ *     222AXXXX  MNC2  ワールドマップなし 次のマップへ
+ *     232AXXXX  MNC3  ワールドマップなし 次のマップへ (セーブなし)
+ *     2025XXXX  LOMA  [XX:MAPCHAPTER:章ID]マップ切り替え
+ * All four carry the `{MAP}` category token, a better signal than the
+ * description text (FE6/FE7 spell the mnemonics differently, so searching
+ * "マップ"/"JUMP" misses these).
  *
- * Every map-setting record has an END_EVENT pointer in its condition table
- * (see `chapters.ts`). When a chapter is cleared that script runs, and the
- * chapter-transition opcodes inside it name the next chapter directly. FE8's
- * table documents four:
+ * We walk the script rather than scan bytes because disassembly matches
+ * patterns **longest first**: an ad-hoc byte scan desynchronises on the first
+ * variable-length operand and turns the rest to noise. This goes through
+ * {@link disassemble} / {@link isExitCode} as the reference does.
  *
- * ```txt
- * 212AXXXX  MNCH  ワールドマップあり 次のマップへ   (world map, next chapter)
- * 222AXXXX  MNC2  ワールドマップなし 次のマップへ (no world map, next chapter)
- * 232AXXXX  MNC3  ワールドマップなし 次のマップへ (セーブなし / no save)
- * 2025XXXX  LOMA  [XX:MAPCHAPTER:章ID]マップ切り替え  (switch to a map)
- * ```
- *
- * All four carry the `{MAP}` category token, which is a better signal than the
- * description text - the mnemonics are spelled differently from FE6/FE7, so a
- * search for "マップ" or "JUMP" in the description column finds FE6/FE7's
- * entries and misses these.
- *
- * ## Why this module walks the script instead of scanning bytes
- *
- * `EventScript.DisAseemble` matches patterns **longest first** and returns the
- * first hit. An ad-hoc byte scan desynchronises on the first variable-length
- * operand, and every instruction after that decodes to noise - an earlier
- * attempt at this produced target values of 0 for every map while still
- * "finding" plausible-looking opcodes. So the walk here goes through
- * {@link disassemble} and {@link isExitCode} exactly as the reference does.
- *
- * ## Reading the operand
- *
- * The table names each argument after a single letter taken from its pattern:
- * `222AXXXX` yields `symbol: "X"`, not `"XXXX"`. Matching on the argument's
- * `MAPCHAPTER` type is therefore more robust than on its name.
+ * The table names each argument by a single letter from its pattern
+ * (`222AXXXX` -> `symbol: "X"`), so match on the `MAPCHAPTER` type, not the name.
  */
 
 import type { RomBuffer } from "../rom/RomBuffer.ts";
@@ -238,13 +221,10 @@ export function readAllTransitions(
 }
 
 /**
- * The destinations a chapter's END_EVENT advances the story to.
- *
- * Two things are dropped. `LOMA` moves a battle around inside one map rather
- * than between chapters. A destination equal to the chapter itself is a
- * self-transition - Dream of Five's map 18 "Crossroads" names itself before the
- * chapter it actually leads to - and treating it as an edge makes the walk
- * believe it closed a loop one chapter in.
+ * The destinations a chapter's END_EVENT advances the story to. `LOMA` is
+ * dropped (moves a battle within one map); a self-destination is dropped too -
+ * Dream of Five's map 18 names itself before the chapter it leads to, and
+ * treating it as an edge makes the walk believe it closed a loop one chapter in.
  */
 export function steppingDestinations(edge: ChapterEdges): number[] {
   return [
@@ -257,23 +237,20 @@ export function steppingDestinations(edge: ChapterEdges): number[] {
 }
 
 /**
- * The map-id byte a map-setting row carries (`+0x0E`).
- *
- * A real map writes its own slot index here. Unused rows leave it 0, and hack
- * authors who copy a row to duplicate it forget to update it - which is what
- * separates the 14 padded rows in Vision Quest from its 60 real maps.
+ * The map-id byte a map-setting row carries (`+0x0E`). A real map writes its own
+ * slot index; unused rows leave 0, and authors who copy a row often forget to
+ * update it - which separates Vision Quest's 14 padded rows from its 60 maps.
  */
 export function mapIdByteOf(rom: RomBuffer, chapter: Chapter): number {
   return rom.u8(chapter.mapSettingAddr + 0x0e);
 }
 
 /**
- * Whether a map-setting row is a playable map rather than a padded slot.
- *
- * The table has one row per map *id*, so it is longer than the number of real
- * maps. A row is real when it claims its own id in the map-id byte **and**
- * deploys units. Hack authors also register the same battle twice - identical
- * start event, end event and condition table - which this does not merge.
+ * Whether a map-setting row is a playable map rather than a padded slot. The
+ * table has one row per map *id*, longer than the real maps; a row is real when
+ * it claims its own id in the map-id byte (`+0x0E`) **and** deploys units. Hack
+ * authors also register the same battle twice (identical events/conditions),
+ * which this does not merge.
  */
 export function isRealMap(rom: RomBuffer, chapter: Chapter): boolean {
   return mapIdByteOf(rom, chapter) === chapter.index && chapter.deploySlots > 0;
@@ -301,24 +278,16 @@ export interface PlayOrderStep {
 
 /**
  * The order the chapters are played in, main path and side chapters together.
+ * `chain` answers "shortest route"; this answers "sequence a playthrough sees",
+ * which unit-availability questions need. They differ by side chapters: Vision
+ * Quest's chain is 41 maps, its order 49 rows (48 playable + the final
+ * transition's non-playable stop).
  *
- * `chain` answers "what is the shortest route through the game"; this answers
- * "what is the sequence of maps a playthrough sees", which is what a question
- * about unit availability actually needs. The two differ by the side chapters:
- * Vision Quest's chain is 41 maps and its order is 49 rows, of which 48 are
- * playable and the last is the row its final transition stops on.
- *
- * ## Why a side chapter goes where it does
- *
- * At a branch the script names the next main chapter and a side chapter, and
- * the side chapter's own END_EVENT leads back into the next main chapter - so
- * the detour is played between the two. The ROM agrees: it numbers gaiden
- * chapters `N.5` (`u16(+0x80) / 2`, so the half steps are real data), and map
- * 36 "Old Habits" is chapter 5.5, i.e. it sits between 5 and 6, which is
- * exactly where the map 16 branch puts it.
- *
- * A side chapter can branch again - Vision Quest's map 63 leads either back to
- * the main path or on to map 60 - so the walk is recursive, not one level deep.
+ * A side chapter is played between the two main chapters a branch names, because
+ * its own END_EVENT leads back into the next main chapter. The ROM agrees: gaiden
+ * chapters are numbered `N.5` (`u16(+0x80) / 2`), and map 36 "Old Habits" is
+ * 5.5, exactly where the map 16 branch puts it. Side chapters can branch again
+ * (map 63 -> main path or map 60), so the walk is recursive.
  */
 export interface PlayOrder {
   /** Every map on a known path, in play order, playable rows included. */
@@ -344,22 +313,17 @@ export interface PlayOrder {
 }
 
 /**
- * Order the chapters into the sequence a playthrough sees.
+ * Order the chapters into the sequence a playthrough sees. The main path is the
+ * first-destination walk; every other destination is a detour, emitted where it
+ * hangs off the main path (where it is played, since its END_EVENT leads back
+ * into the chapter after). Destinations already on the main path are not detours
+ * - Dream of Five's map 22 names the next chapter and the one after it, and
+ * treating the second as a detour would move a main chapter to the end.
  *
- * The main path is the first-destination walk. Every *other* destination a
- * chapter names is a detour, and a detour is emitted where it hangs off the
- * main path - which is exactly where it gets played, because its own END_EVENT
- * leads back into the chapter after. Destinations already on the main path are
- * not detours: Dream of Five's map 22 names both the next chapter and the one
- * after it, and treating the second as a detour would move a main chapter to
- * the end of the game.
- *
- * Destinations that are not map rows are skipped rather than ending the walk -
- * an END_EVENT also carries `LOMA` and warp targets that name no chapter.
- *
- * Rows that cannot be played are kept in the order but marked `playable: false`
- * rather than dropped, so `steps.filter((s) => s.playable)` is the chapter list
- * while `order` stays a rank every map can be compared on.
+ * Destinations that are not map rows (LOMA, warp targets) are skipped, not
+ * fatal. Non-playable rows stay in the order as `playable: false`, so
+ * `steps.filter((s) => s.playable)` is the chapter list while `order` stays a
+ * comparable rank.
  */
 export function buildPlayOrder(
   edges: readonly ChapterEdges[],
@@ -430,27 +394,18 @@ interface MainWalk {
 /**
  * Walk the no-detour path by always taking a branch's *first* destination.
  *
- * ## Picking the start
- *
- * The obvious rule - "a map with an outgoing transition and no incoming one" -
- * picks the wrong map on real data. Vision Quest's true opening chapter, map 0
- * "A Forced Hand", *does* have an incoming edge: map 57, an unnumbered map
- * reached only after the ending, redirects to it. Requiring no incoming edge at
- * all therefore fails to find any start.
- *
- * So an incoming edge only counts when it comes from a **real, numbered**
- * chapter. Two things are filtered out:
- *
- *   - **Padded map-table rows.** Their transitions are copies of a real map's,
- *     so treating them as predecessors invents a cycle at the opening chapter.
- *   - **Unnumbered chapters.** `chapterNumber === 0` marks post-battle maps,
- *     bonus maps and skirmish-style maps, which no playthrough walks through to
- *     reach the start.
- *
- * The remaining candidates are the maps the prep screen calls chapter 1. Vision
- * Quest has four (map 0, 12, 18, 21) because its four acts each open at chapter
- * 1; the first in map-table order is the real one, and `startReason` reports the
- * choice so the caller can see it was made rather than proven.
+ * The obvious start rule - "a map with an outgoing transition and no incoming
+ * one" - picks the wrong map: Vision Quest's true opening, map 0 "A Forced
+ * Hand", *has* an incoming edge (map 57, unnumbered, reached only after the
+ * ending, redirects to it). So an incoming edge counts only from a **real,
+ * numbered** chapter. Two things are filtered out:
+ *   - padded map-table rows (their transitions copy a real map's, inventing a
+ *     cycle at the opening);
+ *   - unnumbered chapters (`chapterNumber === 0`: post-battle, bonus, skirmish),
+ *     which no playthrough walks through to the start.
+ * The remaining candidates are what the prep screen calls chapter 1; Vision
+ * Quest has four (map 0, 12, 18, 21), one per act. The first in map-table order
+ * is the real one, and `startReason` reports the choice.
  */
 function walkMainPath(
   edges: readonly ChapterEdges[],

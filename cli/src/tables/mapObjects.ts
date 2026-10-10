@@ -1,16 +1,13 @@
 /**
- * Map objects - the `CONDTYPE.OBJECT` list.
- *
- * Every chest, village, door, seize point and shop on a map is one entry in the
- * same list: **12-byte records** hanging off condition slot 2 of the chapter's
- * event-condition table, terminated by a record whose first `u32` is zero.
- * (`EventCondForm.MakePointerListBox`, EventCondForm.cs, `CONDTYPE.OBJECT`
- * branch.)
+ * Map objects - the `CONDTYPE.OBJECT` list. Every chest, village, door, seize
+ * point and shop is one entry in the same list: **12-byte records** off
+ * condition slot 2 of the chapter's event-condition table, terminated by a
+ * record whose first `u32` is zero (`EventCondForm.MakePointerListBox`).
  *
  * ```text
  * +0  u16  発生タイプ  5 = 制圧ポイントと民家, 6 = 訪問村, 7 = 宝箱,
  *                      8 = 扉, 0x0A = 店
- * +2  u16  達成フラグ  0 = repeatable; otherwise the event's achievement flag
+ * +2  u16  達成フラグ  0 = repeatable, else the event's achievement flag
  * +4  u32  overloaded:
  *            type 0x0A (shop)  -> GBA pointer to the 2-byte shop entry list
  *            type 0x07 (chest) -> item id in the LOW BYTE, gold in +6
@@ -18,30 +15,20 @@
  * +6  u16  (chest) gold amount
  * +8  u8   x
  * +9  u8   y
- * +10 u8   種類  (object type) 0x14 = chest, 0x16 = armory, 0x17 = vendor,
- *                               0x18 = secret shop, 0x10 = house,
- *                               0x12 = door, 0x20 = town centre
+ * +10 u8   種類 0x14 chest, 0x16 armory, 0x17 vendor, 0x18 secret shop,
+ *               0x10 house, 0x12 door, 0x20 town centre
  * +11 u8   unused
  * ```
  *
- * ## Why the chest branch matters
+ * Chest/village contents are the main source of money and weapons and are
+ * **not** in the event scripts: a village points at a script whose `{ITEM}`
+ * instructions carry the item, while a chest has no script - the engine reads
+ * the item id and gold straight from the record, which is why `ItemForm` gives
+ * the gold item (`item_gold_id`) price 0. `EventCondForm.cs`: 「ゴールドが入って
+ * いる宝箱を作るには、アイテムを「Gold」にしないといけません。逆に、ゴールド
+ * ではなくアイテムが入っている宝箱の場合は、ゴールドの欄は0にしてください。」
  *
- * Chest and village contents are the main way a ROM hands the player money and
- * weapons, and they are **not** in the event scripts:
- *
- *   - a **village** points at an event script, and the item it gives shows up in
- *     that script's `{ITEM}` instructions (see `tables/chapters.ts`);
- *   - a **chest** has no script at all. The engine reads the item id and gold
- *     amount straight out of the record, which is why `ItemForm` gives the gold
- *     item (`item_gold_id`) a price of 0 - a gold chest stores its value in
- *     `+6`, not in the item table.
- *
- * `EventCondForm.cs` states the invariant outright: "ゴールドが入っている宝箱を
- * 作るには、アイテムを「Gold」にしないといけません。逆に、ゴールドではなく
- * アイテムが入っている宝箱の場合は、ゴールドの欄は0にしてください。"
- *
- * Reference: `EventCondForm.cs` (FELint CONDTYPE.OBJECT branch, ~line 1100-1200),
- *            `EventCondForm.MakePointerListBox`.
+ * Reference: `EventCondForm.cs` (FELint CONDTYPE.OBJECT branch), `MakePointerListBox`.
  */
 
 import type { RomBuffer } from "../rom/RomBuffer.ts";

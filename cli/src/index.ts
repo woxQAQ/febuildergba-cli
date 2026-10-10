@@ -1,24 +1,18 @@
 #!/usr/bin/env node
 /**
- * fe-rom - GBA Fire Emblem ROM extractor.
- *
- * Parses FE6/FE7/FE8 ROMs once into a SQLite database so the data can be
- * analysed with SQL instead of re-running a parser per question:
- *
+ * fe-rom - GBA Fire Emblem ROM extractor. Parses FE6/FE7/FE8 once into a SQLite
+ * database so the data is analysed with SQL rather than a parser per question:
  *     node src/index.ts extract ../fixtures/dream-of-five.gba
  *     sqlite3 dream-of-five.db 'SELECT name FROM roster'
  *
- * Runs directly on Node >= 22.18, where TypeScript type stripping is on by
- * default (22.6 - 22.17 need `--experimental-strip-types`). The database is
- * Node's built-in `node:sqlite`; drizzle-orm supplies the typed schema over
- * it and is the one runtime dependency.
+ * Runs on Node >= 22.18 (type stripping on by default; 22.6-22.17 need
+ * `--experimental-strip-types`). Storage is Node's `node:sqlite`; drizzle-orm
+ * is the one runtime dependency.
  *
- * This file is only the shell: parse argv, load the ROM, hand both to the
- * registered command, print the result. Everything else lives in `src/cli`
- * (flags, help, output), `src/commands` (one file per command) and `src/db`
- * (the extract schema and inserts). To add a command, drop a `Command` into
- * `src/commands/` and list it in `src/commands/registry.ts` - the usage text,
- * the option parser and the dispatcher all read from that one registry.
+ * This file is the shell only: parse argv, load the ROM, hand both to the
+ * registered command, print. Adding a command is one `Command` file plus a line
+ * in `src/commands/registry.ts`; the usage text, option parser and dispatcher
+ * all read that registry.
  */
 
 import { loadRom, RomNotFoundError, UnsupportedRomError } from "./load.ts";

@@ -1,41 +1,28 @@
 /**
- * Support relationships.
- *
- * ## How this table is indexed
- *
- * There is **no** usable index for the support table. It is not ordered by unit
- * id and has no fixed length. The only way in is the support pointer stored at
- * **offset +44 of each unit record**:
- *
+ * Support relationships. There is **no** usable index: not ordered by unit id,
+ * no fixed length. The only way in is the support pointer at unit record `+44`:
  *     unitAddress + 44 -> GBA pointer -> 24-byte support record
+ * (`SupportUnitForm.cs:282`; the +44 convention is shared by FE6/FE7/FE8).
  *
- * (`SupportUnitForm.cs:282` notes this +44 convention is shared by FE6/FE7/FE8.)
+ * Records happen to sit at a 24-byte stride in `dream-of-five.gba` (62 records,
+ * 61 gaps all 0x18), but **do not rely on it**: ordering is not guaranteed and
+ * unit id order does not match address order there (unit 1 -> 0x1AEF610, unit 2
+ * -> 0x1AEF640, unit 3 -> 0x1AEF670, unit 4 -> 0x1AEF658). Stride indexing is
+ * only safe after confirming the layout on the specific ROM.
  *
- * Records happen to be packed back to back at a 24-byte stride in
- * `dream-of-five.gba` (verified: 62 records, 61 gaps, all 0x18), but **do not
- * rely on that** - nothing guarantees the ordering, and unit id order does not
- * match address order there (unit 1 -> 0x1AEF610, unit 2 -> 0x1AEF640,
- * unit 3 -> 0x1AEF670, unit 4 -> 0x1AEF658). Indexing by stride is only safe
- * after you have confirmed the layout on the specific ROM.
- *
- * ## Record layout, 24 bytes
- *
- *   +0..6   u8 x7  partner unit ids   (0 = empty slot)
+ * Record layout, 24 bytes:
+ *   +0..6   u8 x7  partner unit ids (0 = empty)
  *   +7..13  u8 x7  initial support value per partner
  *   +14..20 u8 x7  support growth per partner
  *   +21     u8     declared partner count
  *   +22..23 u8 x2  padding
+ * `SupportUnitForm.cs` bindings: partner *i* is `B{i}`, initial `B{7+i}`, growth
+ * `B{14+i}`, count `B21`.
  *
- * Bindings confirmed in `SupportUnitForm.cs`: partner *i* is `B{i}`, its
- * initial value is `B{7+i}`, its growth is `B{14+i}`, and the count is `B21`.
- *
- * ## Two things that bite
- *
- * 1. **Supports are stored twice.** A→B and B→A are separate records and both
- *    must agree. Deduplicate before building a graph or every edge doubles.
- * 2. **Trailing slots hold stale data.** Only entries whose partner id is
- *    non-zero are meaningful; values beyond that are leftovers from whoever
- *    authored the table and must be ignored.
+ * Two things that bite:
+ * 1. Supports are stored twice (A->B and B->A, both must agree); deduplicate
+ *    before building a graph or every edge doubles.
+ * 2. Trailing slots hold stale data; only non-zero partner ids are meaningful.
  *
  * Reference: FEBuilderGBA/FEBuilderGBA/SupportUnitForm.cs
  */

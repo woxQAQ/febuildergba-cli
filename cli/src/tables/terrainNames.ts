@@ -1,31 +1,21 @@
 /**
- * Terrain names.
+ * Terrain names. The ROM has a table of **65** names indexed by terrain id - the
+ * same id space the movement-cost table uses (`MoveCostForm` labels its 65 cost
+ * columns `J_0..J_64` with these names), so id 0..0x40 lines up one-to-one.
  *
- * The ROM has a table of **65** human-readable names indexed by terrain id —
- * the exact same id space the movement-cost table uses (`MoveCostForm` labels
- * its 65 cost columns `J_0`..`J_64` with these names, and `MapEditorForm`
- * prints them over the cursor). So the cost table's `0xFF`-or-not and this
- * table's id 0..0x40 line up one-to-one.
+ * Two on-disk shapes; `MapTerrainNameForm.MakeList()` delegates to
+ * `MapTerrainNameEngForm` when `!RomInfo.is_multibyte`:
+ * | release        | stride | record contents             | terminator                  |
+ * |----------------|--------|-----------------------------|-----------------------------|
+ * | JP (multibyte) | 4      | GBA pointer to a raw string | `!U.isPointerOrNULL(u32(a))` |
+ * | EN (single)    | 2      | text id                     | `u16(a) == 0`               |
  *
- * ## Two on-disk shapes
+ * FE8U/FE7U are `is_multibyte = false` (ROMFE8U.cs:460, ROMFE7U.cs:451), so the
+ * English path is what the fixture uses. The Japanese path is **raw Shift-JIS**
+ * (read with `ROM.getString`, not the text table); with no SJIS decoder, those
+ * records come back as raw bytes with `decoded: false`.
  *
- * `MapTerrainNameForm.MakeList()` short-circuits on
- * `!RomInfo.is_multibyte` and delegates to `MapTerrainNameEngForm`, and the two
- * forms read the table completely differently:
- *
- * | release        | stride | record contents             | terminator                    |
- * |----------------|--------|-----------------------------|-------------------------------|
- * | JP (multibyte) | 4      | GBA pointer to a raw string | `!U.isPointerOrNULL(u32(a))`   |
- * | EN (single)    | 2      | text id                     | `u16(a) == 0`                  |
- *
- * FE8U / FE7U are `is_multibyte = false` (ROMFE8U.cs:460, ROMFE7U.cs:451), so
- * the English path is the one that matters for the fixture ROM. The Japanese
- * path stores **raw Shift-JIS**, not Huffman-compressed text — it is read with
- * `ROM.getString`, not through the text table. This CLI has no Shift-JIS
- * decoder yet, so those records come back with the raw bytes and
- * `decoded: false` instead of a silently wrong string.
- *
- * Reference: FEBuilderGBA/FEBuilderGBA/MapTerrainNameForm.cs, MapTerrainNameEngForm.cs.
+ * Reference: `MapTerrainNameForm.cs`, `MapTerrainNameEngForm.cs`.
  */
 
 import type { RomBuffer } from "../rom/RomBuffer.ts";

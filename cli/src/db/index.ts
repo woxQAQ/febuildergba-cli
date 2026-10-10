@@ -1,20 +1,13 @@
 /**
- * Opening an extract database.
+ * Opening an extract database. drizzle has no `node:sqlite` driver, so this
+ * adapts `DatabaseSync` to drizzle's sqlite-proxy interface: drizzle builds
+ * typed SQL from `schema.ts`, the callback runs it on the built-in driver. The
+ * proxy callback is async in type only.
  *
- * drizzle has no `node:sqlite` driver, so this adapts `DatabaseSync` to
- * drizzle's sqlite-proxy interface: drizzle builds typed SQL from the schema
- * in `schema.ts`, and the callback executes it against the built-in driver.
- * The proxy callback is async in type only; everything underneath is
- * synchronous.
- *
- * Two details earn their keep:
- *
- *   - **Statement cache.** drizzle rebuilds the same SQL string for every row
- *     of a table, so the callback caches prepared statements by SQL text -
- *     without it, an extract pays a prepare per row (~30k of them).
- *   - **Value rows.** The proxy expects result rows as value arrays, in
- *     column order; `node:sqlite` returns null-prototype objects whose key
- *     order is the column order, so `Object.values` is that conversion.
+ * Two details: the callback caches prepared statements by SQL text (drizzle
+ * rebuilds the same string per row, ~30k per extract); and it returns rows as
+ * value arrays in column order, which `Object.values` gives for `node:sqlite`'s
+ * null-prototype objects.
  */
 
 import { DatabaseSync } from "node:sqlite";

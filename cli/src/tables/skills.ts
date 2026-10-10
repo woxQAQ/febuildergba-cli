@@ -1,81 +1,40 @@
 /**
- * Skill extraction for the FE8U `SkillSystem` patch.
+ * Skill extraction for the FE8U `SkillSystem` patch. Only that variant is
+ * decoded (see `rom/skillSystem.ts`); the FE8J families are unreachable.
  *
- * Only the `SkillSystem` variant is decoded (see `rom/skillSystem.ts`); the
- * FE8J families are unreachable while FE8J is unsupported.
+ * Five tables, each a **slot** resolved by signature search
+ * (`resolveSkillPointers`), one dereference to the data:
+ * | pointer        | shape                                                      |
+ * |----------------|------------------------------------------------------------|
+ * | `text`         | `u16` text id per skill id, 0..254                          |
+ * | `icon`         | 16x16 4bpp tiles, 128 bytes per skill id                    |
+ * | `anime`        | `u32` animation pointer per skill id                        |
+ * | `assignUnit`   | one `u8` skill id per **unit** id                           |
+ * | `assignClass`  | one `u8` skill id per **class** id                          |
+ * | `levelUpClass` | `u32` pointer list per class id -> `u16` learn entries       |
+ * | `levelUpUnit`  | `u32` pointer list per unit id -> `u16` learn entries        |
+ * A unit/class has **at most one** innate skill (one byte per id, 0 = none);
+ * the rest are level-up lists.
  *
- * ## The five tables
+ * A learn entry is a `u16`: low byte level, high byte skill id
+ * (`N1_InputFormRef` shows `u8(addr+1)` as skill, `u8(addr+0)` as level, block
+ * size 2). With the class-skill *extension* the level byte carries flags:
+ *     bits 0..4 level (0..31), bit 5 player-only, bit 6 enemy-only, bit 7 hard-only
+ * (`SkillAssignmentClassSkillSystemForm.cs:887-893`; `IsClassSkillExtends` gates
+ * them). Without the extension the byte is a plain level and all flags are
+ * `false`.
  *
- * Every pointer below is a **slot** resolved by signature search
- * (`resolveSkillPointers`). One dereference reaches the data:
+ * `0xFF` is a rule, not a level: upstream hides the bit panel and shows
+ * `X_LV_255` (`SkillAssignmentClassSkillSystemForm.cs:865-880`), whose label
+ * says the skill is innate only when LOADed directly into the class and is
+ * *not* gained on promotion. So {@link SkillLearn.level} keeps `255` verbatim.
  *
- * | pointer        | shape                                                    |
- * |----------------|----------------------------------------------------------|
- * | `text`         | `u16` text id per skill id, 0..254                        |
- * | `icon`         | 16x16 4bpp tiles, 128 bytes per skill id                  |
- * | `anime`        | `u32` animation pointer per skill id                      |
- * | `assignUnit`   | one `u8` skill id per **unit** id (`SkillAssignmentUnit...`)|
- * | `assignClass`  | one `u8` skill id per **class** id                        |
- * | `levelUpClass` | `u32` pointer list per class id -> `u16` learn entries     |
- * | `levelUpUnit`  | `u32` pointer list per unit id -> `u16` learn entries      |
- *
- * A unit/class therefore has **at most one** innate skill: the assignment
- * table is one byte per id, and `0` means "none". Everything else a unit can
- * learn is in the level-up lists.
- *
- * ## The level byte carries the difficulty
- *
- * A learn entry is a `u16`: **low byte = level, high byte = skill id**
- * (`N1_InputFormRef` displays `u8(addr + 1)` as the skill and
- * `u8(addr + 0)` as the level; block size 2). The level byte is not just a
- * level once the ROM carries the class-skill *extension* patch:
- *
- *     bits 0..4   level (0..31)
- *     bit  5      player units only
- *     bit  6      enemy units only
- *     bit  7      hard mode only
- *
- * `SkillAssignmentClassSkillSystemForm.cs:887-893` reads exactly those bits,
- * and `SkillConfigSkillSystemForm.IsClassSkillExtends` decides whether they
- * are meaningful. Without the extension the whole byte is a level and no flags
- * exist, so the flags are reported as `false` rather than guessed at.
- *
- * Upstream's checkboxes are tested independently, so an extended byte of
- * `0xFF` would set *all four* (`(0xFF & 96) == 96` **and** `(0xFF & 128) == 128`)
- * - but `0xFF` is never read that way, see below. The raw byte is kept so a
- * consumer can always see what was actually stored.
- *
- * ## `0xFF` is a rule, not a level
- *
- * Both paths special-case `0xFF`, and it is the one value worth knowing by
- * heart. With the extension, upstream hides the whole bit panel and shows
- * `X_LV_255` instead (`SkillAssignmentClassSkillSystemForm.cs:865-880`); without
- * it, the same panel is shown. Either way the value means the same thing, and
- * the label spells it out:
- *
- * > レベルに255が設定されています。下級職からCCして、このクラスになった場合には、
- * > このスキルを得ることはできません。このクラスでLOADされた場合にのみ、
- * > このスキルを持つことができます。
- *
- * i.e. **the skill is innate on entering the class directly, but is *not*
- * gained when promoting into it** - so a unit that promotes into the class
- * never gets it. {@link SkillLearn.level} therefore reports `255` verbatim
- * rather than clamping it to a plausible level.
- *
- * ## Names, and what a skill does
- *
- * Both come from the ROM's own text table, not a config file, because the
- * table's format is `Name:Description`. `SkillConfigSkillSystemForm.
- * SkillTextToName` decodes the text id and keeps everything before the first
- * `:`, which is why the colon is the split point and not a heuristic of ours:
- * the left half is {@link Skill.name}, the right half is
- * {@link Skill.description} - and the right half is the only place a patch
- * ever writes down what a skill *does*, so it is what a consumer should read
- * instead of guessing from the skill's name.
- *
- * When there is no `:` upstream falls back to `skill_extends_skillsystem_name_*`
- * in `config/data`; that fallback is not ported, so {@link Skill.name} is empty
- * in that case and the full decoded string is kept in {@link Skill.text}.
+ * Names come from the ROM text table (`Name:Description`), not config:
+ * `SkillConfigSkillSystemForm.SkillTextToName` keeps everything before the first
+ * `:` as {@link Skill.name}, the rest as {@link Skill.description} - the only
+ * place a patch states what a skill does. With no `:` the config fallback
+ * (`skill_extends_skillsystem_name_*`) is not ported, so `name` is empty and the
+ * full string is in {@link Skill.text}.
  */
 
 import type { RomBuffer } from "../rom/RomBuffer.ts";

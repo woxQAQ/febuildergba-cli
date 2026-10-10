@@ -1,26 +1,17 @@
 /**
- * Fire Emblem GBA text decoding.
+ * Fire Emblem GBA text decoding. Strings are Huffman-compressed: a text id
+ * indexes a table of string pointers, each string a bit stream walked through a
+ * binary tree in the ROM.
  *
- * Strings are Huffman-compressed. A text id indexes a table of string
- * pointers; each string is a bit stream walked through a binary tree stored in
- * the ROM.
+ * Line-by-line port of FEBuilderGBA's `FETextDecode.huffman_decode()`
+ * (FETextDecode.cs:327), `append_string()` (~214), `listbyte_to_string()` (~250)
+ * and `FETextEncode.RevConvertSPMoji()` (glyph post-processing). Control flow is
+ * kept close to the original rather than "cleaned up": the tree walk has subtle
+ * state (`treeData` resets only on a leaf) and corruption early-returns a naive
+ * rewrite gets wrong.
  *
- * This is a line-by-line port of FEBuilderGBA's:
- *   - `FETextDecode.huffman_decode()`   (FETextDecode.cs:327)
- *   - `FETextDecode.append_string()`    (FETextDecode.cs:~214)
- *   - `FETextDecode.listbyte_to_string()` (FETextDecode.cs:~250)
- *   - `FETextEncode.RevConvertSPMoji()` (special-glyph post-processing)
- *
- * The control flow is deliberately kept close to the original rather than
- * "cleaned up": the tree walk has subtle state (`treeData` is only reset when a
- * leaf is hit) and several early-return-on-corruption paths that a naive
- * rewrite tends to get wrong.
- *
- * ## Limits
- *
- * Shift-JIS ROMs (FE6J, FE7J, FE8J) are not supported yet: their byte stream
- * has to be interpreted as SJIS pairs, and Node has no built-in SJIS codec.
- * `decodeTextId` throws a clear error for those instead of emitting mojibake.
+ * Shift-JIS ROMs (FE6J/FE7J/FE8J) are unsupported - Node has no built-in SJIS
+ * codec. `decodeTextId` throws instead of emitting mojibake.
  */
 
 import { RomBuffer } from "../rom/RomBuffer.ts";
@@ -47,9 +38,8 @@ function isEscapeCode(code: number, beforeCode: number): boolean {
 }
 
 /**
- * Port of `append_string`. Appends the byte(s) for `code` to `out`.
- * Escape codes are emitted as the literal ASCII text `@XXXX` (4 uppercase hex
- * digits), exactly as FEBuilderGBA does.
+ * Port of `append_string`: append `code`'s byte(s) to `out`. Escape codes are
+ * emitted as literal ASCII `@XXXX` (four uppercase hex digits), as upstream does.
  */
 function appendString(out: number[], code: number, beforeCode: number): void {
   if (code === 0x00) return;
@@ -166,17 +156,13 @@ export function huffmanDecode(
 }
 
 // --------------------------------------------------------------- un-huffman
-//
-// Some hacks store strings *uncompressed*. The text table is unchanged - still
-// one 4-byte entry per id - but the pointer has 0x80000000 added to it, which
-// lands it in 0x88000000..0x8A000000. That range is outside GBA address space,
-// so it can never be confused with a normal pointer and acts as a tag.
-//
-// Because the bytes are plain, they are NOT a Huffman bit stream: they are
-// decoded by a variable-length byte walk instead.
-//
-// Reference: FETextEncode.IsUnHuffmanPatchPointer / ConvertUnHuffmanPatchToPointer,
-//            FETextDecode.UnHffmanPatchDecode / UnHffmanPatchDecodeLow.
+// Some hacks store strings *uncompressed*: the text table still holds one 4-byte
+// entry per id, but the pointer has 0x80000000 added (landing in
+// 0x88000000..0x8A000000, outside GBA space, so it is an unambiguous tag). The
+// bytes are then a variable-length byte walk, not a Huffman bit stream.
+// Reference: `FETextEncode.IsUnHuffmanPatchPointer` /
+// `ConvertUnHuffmanPatchToPointer`, `FETextDecode.UnHffmanPatchDecode` /
+// `UnHffmanPatchDecodeLow`.
 
 /** `FETextEncode.IsUnHuffmanPatchPointer`. */
 export function isUnHuffmanPatchPointer(pointer: number): boolean {
@@ -220,11 +206,9 @@ function appendAtmarkCode(out: number[], code: number): void {
 }
 
 /**
- * Port of `UnHffmanPatchDecodeLow` for Latin-1 (non-multibyte) ROMs.
- *
- * The UTF8 / SJIS-2-byte branches of the original are only reachable when the
- * ROM's `PriorityCode` is UTF8 or SJIS; for an English build it is LAT1, so
- * `AppendSJIS` degenerates to "an English SP code consumes exactly one byte".
+ * Port of `UnHffmanPatchDecodeLow` for Latin-1 (non-multibyte) ROMs. The
+ * original's UTF8/SJIS-2-byte branches need `PriorityCode` UTF8 or SJIS; an
+ * English build is LAT1, so `AppendSJIS` consumes exactly one byte.
  */
 function unHuffmanPatchDecodeLow(src: Buffer): number[] {
   const out: number[] = [];
@@ -318,12 +302,10 @@ export function unHuffmanPatchDecode(
 }
 
 /**
- * The **raw** byte run of an un-huffman string at `addr`, before the `@XXXX`
- * mangling {@link unHuffmanPatchDecodeLow} applies.
- *
- * Needed by callers that supply their own alphabet. The FE8 item-name font is
- * exactly that case: those bytes are not ASCII and not escapes, they are glyph
- * codes for a font the editor does not know. See `text/itemFont.ts`.
+ * The raw byte run of an un-huffman string at `addr`, before
+ * {@link unHuffmanPatchDecodeLow}'s `@XXXX` mangling - for callers with their own
+ * alphabet, e.g. the FE8 item-name font (glyph codes, not ASCII or escapes; see
+ * `text/itemFont.ts`).
  */
 export function unHuffmanRawBytes(rom: RomBuffer, addr: number, limit = 0x100): number[] {
   const out: number[] = [];
@@ -365,15 +347,10 @@ export function applySpecialGlyphs(text: string): string {
 }
 
 /**
- * Strip control characters that survive decoding.
- *
- * Strings routinely end with a stray control byte. When a Huffman code lands in
- * the `(code & 0xFF00) == 0x1F00` range the decoder emits it as a *raw* byte
- * rather than an `@XXXX` escape, so `applySpecialGlyphs` cannot remove it -
- * "Paladin" decodes to `Paladin\x1F`. FEBuilderGBA leaves that byte in place
- * too; for display we drop it.
- *
- * Also collapses runs of whitespace and trims.
+ * Strip control characters that survive decoding: a Huffman code in the
+ * `(code & 0xFF00) == 0x1F00` range is emitted as a raw byte, not an `@XXXX`
+ * escape, so `applySpecialGlyphs` cannot remove it ("Paladin" -> `Paladin\x1F`).
+ * Upstream leaves it; for display we drop it. Also collapses whitespace and trims.
  */
 export function sanitizeName(text: string): string {
   return text
@@ -391,13 +368,9 @@ export function sanitizeText(text: string): string {
 }
 
 /**
- * Port of `TextForm.StripAllCode` (TextForm.cs:1262): drop every `@XXXX`
- * control escape and trim the padding characters the game uses.
- *
- * This is what FEBuilderGBA calls on terrain names before showing them
- * (`MapTerrainNameForm.GetName`), so a name whose decoded form ends in a
- * control escape - e.g. the healing-floor tile, which decodes to
- * `Runes@001F` - reads as just `Runes`.
+ * Port of `TextForm.StripAllCode` (TextForm.cs:1262): drop every `@XXXX` escape
+ * and trim the game's padding, which is what FEBuilderGBA calls on terrain names
+ * (`MapTerrainNameForm.GetName`), so `Runes@001F` reads as `Runes`.
  */
 export function stripAllCodes(text: string): string {
   return text
@@ -406,17 +379,11 @@ export function stripAllCodes(text: string): string {
 }
 
 /**
- * A name ready to show: {@link sanitizeName} then {@link stripAllCodes}.
- *
- * This is the combination FEBuilderGBA uses for every name it puts in a list -
- * e.g. `StatusUnitsMenuForm.GetNameFast` returns
- * `TextForm.DirectAndStripAllCode(textid)`. It matters on real data: 17 unit
- * names in `dream-of-five.gba` decode with a trailing `@001F` escape, and a
- * roster keyed on `"Franseza@001F"` is a roster keyed on noise.
- *
- * Chapter titles are deliberately *not* put through this - the map-title
- * classifier keys on the literal `@001F` to spot the world-map encounter
- * entries, so stripping there would erase the distinction.
+ * {@link sanitizeName} then {@link stripAllCodes}: what FEBuilderGBA uses for
+ * every listed name (`StatusUnitsMenuForm.GetNameFast` returns
+ * `TextForm.DirectAndStripAllCode`). It matters: 17 unit names in
+ * `dream-of-five.gba` carry a trailing `@001F`. Chapter titles are deliberately
+ * not put through it - the map-title classifier keys on the literal `@001F`.
  */
 export function displayName(text: string): string {
   return stripAllCodes(sanitizeName(text));
@@ -460,21 +427,14 @@ export function makeTextContext(rom: RomBuffer, layout: TextLayout): TextContext
 }
 
 /**
- * Decode a text id into a display string.
- *
- * Returns `''` for ids that are out of range or point nowhere, matching
- * FEBuilderGBA's behaviour of yielding an empty string rather than failing.
- *
- * Reference: `FETextDecode.Decode()` (FETextDecode.cs:~46).
+ * Decode a text id to a display string; `''` for out-of-range or dangling ids,
+ * as FEBuilderGBA does. Reference: `FETextDecode.Decode()` (FETextDecode.cs:~46).
  */
 export function decodeTextId(rom: RomBuffer, id: number, ctx: TextContext): string {
   return applySpecialGlyphs(decodeTextIdRaw(rom, id, ctx));
 }
 
-/**
- * Same as {@link decodeTextId} but leaves `@XXXX` control codes unexpanded.
- * Useful when you need to see what the ROM actually encoded.
- */
+/** {@link decodeTextId} but leaves `@XXXX` codes unexpanded, to see the raw encoding. */
 export function decodeTextIdRaw(rom: RomBuffer, id: number, ctx: TextContext): string {
   // FE7 stores a few strings (song titles) as raw addresses rather than ids.
   if (rom.isSafePointer(id)) {
@@ -490,9 +450,8 @@ export function decodeTextIdRaw(rom: RomBuffer, id: number, ctx: TextContext): s
 }
 
 /**
- * Decode a *text-table entry value* (a pointer, possibly un-huffman tagged).
- * Split out from {@link decodeTextIdRaw} so `analysis` code can reuse it.
- *
+ * Decode a text-table entry value (a pointer, possibly un-huffman tagged);
+ * shared with {@link decodeTextIdRaw} for `analysis` code.
  * Reference: `FETextDecode.DecodeAddr()`.
  */
 export function decodeTextPointerRaw(rom: RomBuffer, pointer: number, ctx: TextContext): string {
@@ -538,9 +497,8 @@ export interface DecodedText {
 }
 
 /**
- * Like {@link decodeTextId} but also reports which storage format was used.
- * Hacks mix the two freely, so "why is this name empty?" is usually answered by
- * looking at `kind`.
+ * {@link decodeTextId} plus the storage format used; hacks mix formats freely, so
+ * "why is this name empty?" is usually answered by `kind`.
  */
 export function decodeTextIdDetailed(rom: RomBuffer, id: number, ctx: TextContext): DecodedText {
   if (rom.isSafePointer(id)) {

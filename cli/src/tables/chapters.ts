@@ -1,65 +1,44 @@
 /**
  * Chapter ("map setting") parsing: map-setting records, the event-condition
- * tables they point at, and the placement blocks those tables name.
+ * tables they point at, and the placement blocks those tables name. "Which
+ * chapter does a unit join in" is a query over this plus the raw event layer
+ * (`unit_joins` view, `db/ddl.ts`), not computed here.
  *
- * Deriving which chapter a unit joins in is a query over this data plus the
- * raw event layer; it lives in the extract database as the `unit_joins` view
- * (see `db/ddl.ts`), not in this module.
- *
- * ## The chain, step by step
- *
- *     mapSetting slot                 (0x0B5F98 for FE8U, searched)
+ *     mapSetting slot                 (0x0B5F98 FE8U, searched)
  *       -> map-setting table          (148-byte records, one per map id)
- *         record + 116 (u8)           = event plist index
+ *         record +116 (u8)            = event plist index
  *           -> event plist table      (4-byte pointer entries, `map_event_pointer`)
  *             entry                   = event-condition table
- *               20 pointer slots       (see `config/data/eventcond_<game>.txt`)
+ *               20 pointer slots       (see config/data/eventcond_<game>.txt)
  *                 slot 10 / 11        = normal / hard player placement block
  *                 slot 18 / 19        = START_EVENT / END_EVENT script
- *                 slots 0..7          = small condition records, each with a script pointer
+ *                 slots 0..7          = small condition records, each with a script ptr
  *
- * ## Two deviations from the reference, both deliberate
+ * Two deliberate deviations from the reference:
+ *   - Record count. `MapSettingForm.IsMapSettingEnd` (MapSettingForm.cs:64) ends
+ *     the table at the first record whose `u32(addr)` looks like a GBA pointer.
+ *     Vanilla `+0` is a small integer; the "Dream of Five" hack rewrote every
+ *     `+0` to a pointer into a custom map-name table (0x081C32C8, +4/record), so
+ *     the reference scan reports zero maps. We try it first, then fall back to
+ *     scanning on structure when it yields nothing and the first record passes
+ *     the structural checks (`countSource` records the path).
+ *   - Class overrides. A placement stores `unitId` at `+0`, `classId` at `+1`;
+ *     hack authors reuse one unit id as a template and vary the class (this ROM
+ *     has 12 records of `unit 2 / class 13` in one chapter). A record is *the
+ *     named character* only when `classId` is 0 (own class) or equals the
+ *     unit's class. Overrides are still reported, flagged `classOverridden`,
+ *     since a unit can legitimately join promoted.
  *
- * **Record count.** `MapSettingForm.IsMapSettingEnd` (MapSettingForm.cs:64)
- * treats a record as the end of the table as soon as `u32(addr + 0)` looks
- * like a GBA pointer. In vanilla ROMs `+0` holds a small integer, so that test
- * works. In the "Dream of Five" hack every record's `+0` was rewritten to a
- * pointer into a custom map-name table (0x081C32C8, +4 per record), so the
- * reference's own scan reports **zero** maps. We therefore run the reference's
- * test first and, only when it yields nothing while the first record passes
- * the structural checks, fall back to scanning on structure alone
- * (`countSource` records which path was taken).
+ * The table index is not the chapter number: one 148-byte record per map id,
+ * interleaved with rows no player sees as "chapter N" - unused slots (all
+ * zero), world-map/skirmish maps (`title` = the placeholder glyph `@001F`,
+ * `chapterNumber` duplicating the story chapter), bonus/debug/checkpoint maps.
+ * The authoritative number is `+0x80` (`Chapter.chapterNumber`); report the
+ * index only as an address-like handle, never as "chapter N".
  *
- * **Class overrides.** A placement record stores `unitId` at `+0` and `classId`
- * at `+1`. Hack authors reuse a single unit id as a generic template and vary
- * the class id - this ROM has 12 records of `unit 2 / class 13` in one chapter,
- * which cannot be twelve copies of the same character. A record therefore
- * counts as *the named character* only when `classId` is 0 (meaning "use the
- * unit's own class") or equals the unit's own class. Records that override the
- * class are still reported, flagged `classOverridden`, because a unit can
- * legitimately join already promoted.
- *
- * ## Chapter identity: the table index is not the chapter number
- *
- * The map-setting table has one 148-byte record per **map id**, not per story
- * chapter. A typical ROM therefore carries, interleaved with the real chapters,
- * a pile of rows that no player will ever see as "chapter N":
- *
- *   - **unused slots** - every field zero, `title` empty, `chapterNumber` 0.
- *     Often a run of them at the end of the table.
- *   - **world-map / skirmish maps** - `title` decodes to the same control-code
- *     glyph (`@001F`), and their `chapterNumber` duplicates the story chapter
- *     they are a variant of.
- *   - **bonus / debug / checkpoint maps** - `Lagdou Ruins`, `Castle Frelia`,
- *     `Act N Checkpoint`, or an author's own TODO note as the title.
- *
- * The authoritative "which chapter is this" field is `+0x80`
- * (`Chapter.chapterNumber`, see its doc comment). Report the index only as an
- * address-like handle, and never render it to a human as "chapter N".
- *
- * Reference: MapSettingForm.cs, MapPointerForm.cs, EventCondForm.cs:1564-1839,
- *            U.ParseUnitGrowLV (U.cs:1734), U.MakeFe8UnitPos (U.cs:1770),
- *            InputFormRef.cs:12097 ("@MAPSETTING_CHAPTOR_ID").
+ * Reference: `MapSettingForm.cs`, `MapPointerForm.cs`,
+ * `EventCondForm.cs:1564-1839`, `U.ParseUnitGrowLV` (U.cs:1734),
+ * `U.MakeFe8UnitPos` (U.cs:1770), `InputFormRef.cs:12097`.
  */
 
 import type { GameLayout, MapLayout } from "../data/layouts.ts";
@@ -284,14 +263,10 @@ export function parseUnitGrowAutolevel(grow: number): number {
 }
 
 /**
- * Allegiance, indexed by {@link parseUnitGrowAssign}.
- *
- * The names come straight from the combo box `L_3_UNITGROW_ASSIGN`
- * (`EventUnitForm.Designer.cs:1259-1263`): 自軍 / 友軍 / 敵軍 / 消滅.
- *
- * `removed` is not a side: a unit marked 消滅 is deleted when the map loads
- * (it is how a hack removes a unit that would otherwise still be on the
- * roster), and its wait icon renders in the "gray" palette
+ * Allegiance, indexed by {@link parseUnitGrowAssign}. Names from the combo box
+ * `L_3_UNITGROW_ASSIGN` (`EventUnitForm.Designer.cs:1259-1263`): 自軍 / 友軍 /
+ * 敵軍 / 消滅. `removed` is not a side - a 消滅 unit is deleted on map load (how
+ * a hack removes a roster unit), its wait icon rendering in the gray palette
  * (`ImageUnitWaitIconFrom.cs:173-176`).
  */
 export type UnitSide = "player" | "ally" | "enemy" | "removed";
@@ -339,8 +314,8 @@ export interface PlacedUnit {
   /** Decoded from `+3` via `U.ParseUnitGrowLV`. */
   level: number;
   /**
-   * Raw `+3`. This is the reference's `B3` and the only place a placement
-   * records its allegiance - see {@link parseUnitGrowLevel}.
+   * Raw `+3` (the reference's `B3`): the only place a placement records its
+   * allegiance - see {@link parseUnitGrowLevel}.
    */
   unitGrow: number;
   /** `+3` bits 1-2 (`U.ParseUnitGrowAssign`). */
@@ -372,12 +347,10 @@ export interface PlacedUnit {
 }
 
 /**
- * Read a placement block. Records are `layout.map.unitDataSize` bytes and the
- * block ends at the first record whose `+0` byte is zero
- * (`EventUnitForm.Init`, EventUnitForm.cs:147).
- *
- * The same reader serves player, NPC and enemy blocks - that is not a
- * convenience, it is how the game works. See `docs/chapters-and-events.md` §3.19.
+ * Read a placement block: `layout.map.unitDataSize`-byte records, ending at the
+ * first `+0 == 0` (`EventUnitForm.Init`, EventUnitForm.cs:147). The same reader
+ * serves player, NPC and enemy blocks - that mirrors the game, not convenience
+ * (`docs/chapters-and-events.md` §3.19).
  */
 export function readPlacements(
   rom: RomBuffer,
@@ -455,60 +428,38 @@ export interface Chapter {
   index: number;
   mapSettingAddr: number;
   /**
-   * `u16(addr + 0x80) / 2`: the chapter number the game itself uses.
-   *
-   * The reference labels this field "Chapter Number" (`J_128`, offset 128 =
-   * 0x80, `AccessibleDescription = "@MAPSETTING_CHAPTOR_ID"`), and describes it
-   * as (InputFormRef.cs:12097) 「章の番号です。進撃準備画面の右上に表示されます。
-   * また、エンディングに表示されるクリアターン数表示にも利用されます。」- the
-   * number shown in the prep screen and used for the ending's turn count.
-   *
-   * It is stored **doubled** so that gaiden chapters can occupy half steps:
-   * prologue = 0, `C1` = 2, … `C26` = 52, `Finale` = 54 (= 27), `Postscript` =
-   * 55 (= 27.5), `C8x` = 17 (= 8.5). Zero means "no chapter number", which is
-   * what every unused slot and every bonus map carries.
+   * `u16(addr + 0x80) / 2`: the number the game shows in the prep screen and
+   * uses for the ending's turn count (`J_128`,
+   * `AccessibleDescription = "@MAPSETTING_CHAPTOR_ID"`,
+   * `InputFormRef.cs:12097`). Stored doubled so gaiden chapters can occupy half
+   * steps: prologue 0, `C1` 2, `C26` 52, `Finale` 54 (27), `Postscript` 55
+   * (27.5). Zero = no chapter number (every unused slot and bonus map).
    */
   chapterNumber: number;
-  /**
-   * `u16(addr + 0x80)` before the halving, for callers that want to see the
-   * raw field.
-   */
+  /** `u16(addr + 0x80)` before halving. */
   chapterNumberRaw: number;
   /**
-   * `u16(addr + 0x70)`: the "map name 1" text id (the reference's `J_112_TEXT`,
-   * 「マップ名1」). This is the chapter title shown on the prep screen. The
-   * reference's `IsMapSettingEnd` treats it as one of four "is this really a
-   * map setting record" probes.
+   * `u16(addr + 0x70)`: "map name 1" text id (`J_112_TEXT`, マップ名1) - the prep
+   * screen title. One of the four "is this a map setting record" probes in
+   * `IsMapSettingEnd`.
    */
   titleTextId: number;
   /**
-   * Decoded chapter title, e.g. `C7A: ... Into the ...`. Empty when no text
-   * context was supplied, when the id is 0, or when the id does not decode.
-   *
-   * **This is what tells a real chapter from a placeholder**: unused slots have
-   * id 0 or a blank title, while world-map encounter maps decode to the
-   * placeholder glyph `@001F`.
+   * Decoded chapter title, e.g. `C7A: ... Into the ...`. Empty when there is no
+   * text context, the id is 0, or the id does not decode. Distinguishes a real
+   * chapter from a placeholder: unused slots are blank, world-map encounter maps
+   * decode to `@001F`.
    */
   title: string;
   /** Event plist index from the map setting record. */
   eventPlist: number;
-  /**
-   * Weather id from the map setting record (`u8(addr + 12)`). 0 means no
-   * weather; the game maps ids to rain / snow / sandstorm etc.
-   */
+  /** `u8(addr + 12)`; 0 = none, else the game's rain/snow/sandstorm id. */
   weatherId: number;
-  /**
-   * The raw `u16` at `layout.map.difficultyPos` (+0x14), or 0 when the game has
-   * no difficulty field transcribed.
-   */
+  /** Raw `u16` at `layout.map.difficultyPos` (+0x14); 0 when not transcribed. */
   difficultyRaw: number;
   /**
-   * Enemy **level** bonus on hard mode: `(difficultyRaw & 0xF0) >> 4`.
-   *
-   * This is the "hard boost" - the number of extra levels every enemy starts
-   * with when the game is played on the hard difficulty. It is what makes
-   * "is my team strong enough for chapter N" answerable: an enemy's effective
-   * level is `level + hardBoost` before autolevel and class bases are applied.
+   * Enemy level bonus on hard: `(difficultyRaw & 0xF0) >> 4`. Effective enemy
+   * level is `level + hardBoost` before autolevel and class bases.
    */
   hardBoost: number;
   /** Enemy level penalty on normal: `(difficultyRaw >> 8) & 0xF`. */
@@ -528,33 +479,23 @@ export interface Chapter {
   /** END_EVENT script, or 0. */
   endEventAddr: number;
   /**
-   * How many units this map lets you field - the **deployment slot count**.
-   *
-   * This is `placements.length`, i.e. the number of records in the chapter's
-   * player-unit block, and it is the same number the game itself computes:
-   * `GetChapterAllyUnitCount` (`0x08012344`) calls `GetChapterAllyUnitDataPointer`
-   * (`0x08083348`, which resolves condition slot 10 or 11 - normal vs hard - and
-   * returns `p32(slot)`) and then counts records with a 20-byte stride until
-   * `u8(+0) == 0`. That is byte-for-byte what {@link readPlacements} does.
-   *
-   * The block doubles as the slot list: chapters with a prep screen fill the
-   * unused slots with a placeholder template (this ROM uses `unit 2 / Thief`,
-   * one per distinct coordinate), which is why `placements` can hold twelve
-   * records for what looks like one character. Read the count, not the names.
+   * Deployment slot count = `placements.length`, the same number the game
+   * computes: `GetChapterAllyUnitCount` (`0x08012344`) resolves slot 10/11 via
+   * `GetChapterAllyUnitDataPointer` (`0x08083348`) and counts 20-byte records
+   * until `u8(+0) == 0` - byte-for-byte what {@link readPlacements} does. The
+   * block doubles as the slot list: prep-screen chapters fill unused slots with
+   * a placeholder template (this ROM: `unit 2 / Thief`, one per coordinate), so
+   * `placements` can hold twelve records for one character. Read the count.
    */
   deploySlots: number;
   /**
-   * Deployment slots on hard mode (condition slot 11). Equal to `deploySlots`
-   * when slot 11 points at the same block, which is the case for every chapter
-   * in this ROM **except `mapIndex 22` (`C10B: Needle's Eye`)**.
-   *
-   * That chapter's slot 11 is a 9-record block of *green allies*, not a
-   * player block, and `GetChapterAllyUnitCount` does not filter on allegiance -
-   * it counts records until `u8(+0) == 0` (`0x08012344`). So this field really
-   * does come out as 9 there, and the prep screen on hard mode would offer 9
-   * slots. The same block is *also* loaded by the chapter's start event
-   * (`402C0100` at `0x14c2128`), so the greens get placed either way; the odd
-   * part is only the slot count. Verify in-game before trusting it.
+   * Hard-mode slots (condition slot 11), equal to `deploySlots` unless slot 11
+   * points elsewhere - here only `mapIndex 22` (`C10B: Needle's Eye`), whose
+   * slot 11 is a 9-record block of green allies. `GetChapterAllyUnitCount`
+   * (`0x08012344`) does not filter allegiance, so it counts 9, and the hard prep
+   * screen would offer 9. The same block is also loaded by the start event
+   * (`402C0100` at `0x14c2128`), so the greens are placed either way; only the
+   * count is odd. Verify in-game.
    */
   deploySlotsHard: number;
   /** Units on the field at the start of the chapter. */
@@ -653,17 +594,13 @@ export function readChapters(
 // ---------------------------------------------------------------- script walking
 
 /**
- * The three "load units" instructions, distinguished by the leading byte:
- *
- *   `402C....`  LOAD1 - "ユニット読込 自軍ユニットは仲間にする" - **recruits** them.
- *   `412C....`  LOAD2 - "ユニット読込"                          - loads an existing member.
- *   `422C....`  LOAD3 - "ユニット読込 自軍ユニットのカットシーン用" - cutscene only.
- *
- * All three carry a `POINTER_UNIT` argument, but so does `40050200...` (増援分岐,
- * a reinforcement branch), whose argument points at an **enemy** block. The
- * reference's `MakeUnitPointerEventScan` collects every `POINTER_UNIT` it sees
- * because it is drawing an icon overlay; we only want army membership, so we
- * classify each argument by the instruction that owns it.
+ * The three "load units" instructions by leading byte:
+ *   `402C` LOAD1 (ユニット読込 自軍ユニットは仲間にする) - **recruits**;
+ *   `412C` LOAD2 (ユニット読込) - loads an existing member;
+ *   `422C` LOAD3 (cutscene only).
+ * `40050200...` (増援分岐) also carries a `POINTER_UNIT`, pointing at an **enemy**
+ * block. `MakeUnitPointerEventScan` collects every `POINTER_UNIT` for its icon
+ * overlay; we classify by owning instruction to get army membership only.
  */
 export type LoadKind = "recruit" | "load" | "cutscene" | "other";
 
@@ -696,25 +633,16 @@ const COMPOSITE_HEAD = [0x40, 0x05] as const;
 const COMPOSITE_SELECTORS = new Set([0x02, 0x03]);
 
 /**
- * Classify the `POINTER_UNIT` argument at byte position `position` of an
- * opcode pattern.
- *
- * Two shapes carry a unit block, and only one of them is the well-known
- * `LL2C` form:
- *
- *   `402C0100XXXXXXXX`  LOAD1 - the block joins the party when it is ours.
- *   `412C0100XXXXXXXX`  LOAD2 - loads an existing member.
- *   `422C0100XXXXXXXX`  LOAD3 - cutscene-only.
- *
- * The other shape is the composite family above, whose argument sits four
- * bytes into the instruction with no `2C` anywhere near it. Classifying on
- * `2C` alone drops that whole family into `other`, and since
- * `chapter_recruits` filters `load_kind != 'other'`, that throws away every
- * reinforcement block in the ROM (190 + 18 instructions on the FE8U fixture,
- * 210 of the 213 unreachable load blocks).
- *
- * `other` is therefore reserved for "a unit block we cannot place in any of
- * these families", not for "not the LOAD1/2/3 shape".
+ * Classify the `POINTER_UNIT` argument at byte `position` of an opcode pattern.
+ * `LL2C` is the well-known form:
+ *   `402C0100XXXXXXXX` LOAD1 (joins the party when ours)
+ *   `412C0100XXXXXXXX` LOAD2 (existing member)
+ *   `422C0100XXXXXXXX` LOAD3 (cutscene-only)
+ * The composite family above puts its argument four bytes in with no `2C`;
+ * classifying on `2C` alone drops it into `other`, and `chapter_recruits`
+ * filters `load_kind != 'other'`, throwing away every reinforcement block
+ * (190 + 18 on the FE8U fixture, 210 of 213 unreachable load blocks). So `other`
+ * means "a unit block outside these families", not "not 402C/412C/422C".
  */
 export function classifyUnitArg(pattern: string, position: number): LoadKind {
   if (patternByte(pattern, position - 3) === 0x2c) {
@@ -748,16 +676,11 @@ const GOLD_OPCODE_GAIN = 0x21;
 const GOLD_OPCODE_LOSE = 0x22;
 
 /**
- * Find gold literals anywhere inside one instruction.
- *
- * Matching on the whole `pattern` string is not enough: the ROM also carries
- * 20-byte composite forms such as `400A0000<ptr>40050300XXXX000021370000`
- * ("call a sub-event, then pay out"), where the gold literal sits at offset 8
- * *inside* the instruction. The disassembler returns that composite as one
- * instruction, so the walker never visits the gold literal as its own step -
- * the bytes have to be searched instead.
- *
- * The literal is always 4-byte aligned, so only offsets 0/4/8/... are checked.
+ * Gold literals anywhere inside one instruction: 20-byte composite forms like
+ * `400A0000<ptr>40050300XXXX000021370000` ("call a sub-event, then pay out")
+ * carry the literal at offset 8 *inside* the instruction, which the disassembler
+ * returns as one step, so the walker never visits it. Literals are 4-byte
+ * aligned; only offsets 0/4/8/... are checked.
  */
 export function findGoldLiteralsIn(code: EventCode): { offset: number; delta: number }[] {
   const b = code.bytes;
@@ -778,18 +701,16 @@ export function findGoldLiteralsIn(code: EventCode): { offset: number; delta: nu
 }
 
 /**
- * Port of `EventCondForm.MakeUnitPointerEventScan` (EventCondForm.cs:1743).
+ * Port of `EventCondForm.MakeUnitPointerEventScan` (EventCondForm.cs:1743):
+ * walk one script, follow `POINTER_EVENT` jumps, collect `POINTER_UNIT` targets.
+ * Stops on an exit code or after >10 consecutive unrecognised instructions
+ * (the reference's bail-out).
  *
- * Walks one event script, following `POINTER_EVENT` jumps and collecting
- * `POINTER_UNIT` targets. Stops on an exit code, or after more than ten
- * consecutive unrecognised instructions (the reference's own bail-out).
- *
- * `options.innerFailure` matters more than it looks. The reference aborts the
- * *caller* as soon as a sub-event ends in anything other than an exit code
- * (`if (inner !== 'exit') return inner`). In this hack almost every sub-event
- * ends in the unknown-opcode bail-out, so the faithful mode stops a script at
- * its first `400A0000` call - which hides everything after it. `'continue'`
- * keeps walking the caller, and is what the placement scan uses.
+ * `innerFailure` matters: the reference aborts the *caller* when a sub-event
+ * ends in anything but an exit (`if (inner !== 'exit') return inner`); in this
+ * hack most sub-events end in the unknown-opcode bail-out, so 'abort' stops at
+ * the first `400A0000` call and hides the rest. The placement scan uses
+ * 'continue'.
  */
 export interface WalkOptions {
   /** `'abort'` (default, reference-faithful) or `'continue'`. */

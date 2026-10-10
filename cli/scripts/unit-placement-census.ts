@@ -1,25 +1,14 @@
 /**
  * Unit-placement census: every placement block the ROM's event scripts point at,
- * grouped by the instruction that references it and by the record's allegiance.
+ * grouped by referencing instruction and record allegiance. FE8 has **no enemy
+ * placement table**: player/NPC/enemy units are the same 20-byte records, and
+ * only `+3` bits 1-2 make one an enemy, so "where are the enemies" means walking
+ * the scripts and reading allegiance (`docs/chapters-and-events.md` §3.19). This
+ * is the evidence for that and a regression check on the reader.
  *
- * ## Why this exists
- *
- * FE8 has **no enemy placement table**. Player, NPC and enemy units are all
- * 20-byte records of the same shape, and the only thing that makes one an enemy
- * is two bits inside the record (`+3` bits 1-2). Blocks are reached from event
- * scripts, so "where are the enemies" is answered by walking the scripts and
- * reading the allegiance of every record you land on. See `docs/chapters-and-events.md` §3.19.
- *
- * This script is the evidence for that claim and a regression check on the
- * reader: if the block/record counts or the validity counters move, something
- * in the parser or in the ROM changed.
- *
- * Usage:
- *
- *     node scripts/unit-placement-census.ts [rom.gba] [--chapter N]
- *
- * Default ROM is `../../fixtures/dream-of-five.gba`. `--chapter N` prints the
- * per-block detail for one map-setting index instead of the summary.
+ * Usage: node scripts/unit-placement-census.ts [rom.gba] [--chapter N]
+ * Default ROM `../../fixtures/dream-of-five.gba`; `--chapter N` prints per-block
+ * detail for one map-setting index.
  */
 
 import { loadRom, parseRom } from "../src/load.ts";

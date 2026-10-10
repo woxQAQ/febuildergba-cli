@@ -1,50 +1,33 @@
 /**
- * FE8's **item-name font** (`RomInfo.font_item_address`, FE8U = `0x58c7ec`).
- *
- * ## Why item names need their own decoder
- *
- * FE8 draws item names in the inventory with a dedicated font
- * (「アイテム名とかに使われるフォント」, the routine at `0x08004504`), and the
- * strings for that font live in their **own code space** — they are not ASCII
- * and they are not Huffman.
- *
- * `dream-of-five.gba` stores them un-compressed (the anti-Huffman patch), so
+ * FE8's **item-name font** (`RomInfo.font_item_address`, FE8U `0x58c7ec`), the
+ * dedicated inventory-item font (「アイテム名とかに使われるフォント」, routine
+ * `0x08004504`). Its strings are their own code space - neither ASCII nor
+ * Huffman. `dream-of-five.gba` stores them un-compressed (anti-Huffman patch), so
  * text id 852 is the raw bytes
  *
  * ```text
  * 49 8f 8c 8b bc ad 77 8c 8f 84        ->  "Iron Sword"
  * ```
  *
- * FEBuilderGBA has no table for this font, so it prints those bytes as
- * `@008F@008C@008B@00BC@00ADw@008C@008F@0084` - mojibake that looks like data.
- * The bytes *are* the text; they just need the item font's alphabet.
+ * FEBuilderGBA has no table for this font and prints those as
+ * `@008F@008C@008B@00BC@00ADw@008C@008F@0084`; the bytes need only this alphabet.
  *
- * ## How the table below was recovered
+ * The mapping is **empirical** (the ROM has no code->char table; a scan comes
+ * back empty), built from the item table: the first seven entries pin `a b c d e
+ * i l m n o r S t v w`; `Rapier`, `Runesword`, `Lancereaver`, `Killing Edge`,
+ * `Bolting`, `Berserk` (`0x8A=k`), `Elixir`, `Lockpick` (`0x8E=q`), `Mioritza`
+ * (`0x9A=z`), `Authority`, `Parzifal`, `Veritas`, `Wyrmslayer` (`0x99=y`,
+ * `0x90=s`) fill the rest.
  *
- * There is no code->char table anywhere in the ROM (a scan for one comes back
- * empty), so the mapping is **empirical**, built from the item table itself:
- * the first seven entries are the vanilla Iron/Slim/Steel/Silver
- * Sword/Blade pair, which pins `a`, `b`, `c`, `d`, `e`, `i`, `l`, `m`, `n`,
- * `o`, `r`, `S`, `t`, `v`, `w`; the rest follow from
- * `Rapier`, `Runesword`, `Lancereaver`, `Killing Edge`, `Bolting`,
- * `Berserk` (`0x8A = k`), `Elixir`, `Lockpick` (`0x8E = q`), `Mioritza`
- * (`0x9A = z`), `Authority`, `Parzifal`, `Veritas`, `Wyrmslayer`
- * (`0x99 = y`, `0x90 = s`) …
- *
- * ## Shape of the alphabet
- *
- * Codes `< 0x80` are **plain ASCII**, and the letters that appear there are
- * exactly the ones with no separate item-font glyph: `I M N T W i l m w`.
- * Everything else lives in the `0x80`-`0xBC` block. `0xBC` is the space.
- *
- * The `0xA1`, `0xA9`-`0xAB`, `0xB0`, `0xB1` slots and the `0x91`-`0x94` gap
- * are **inferred from the alphabet's ordering**, not observed: no item name in
- * this ROM uses them. `0xB2 = Z` follows from `… U V [W=ASCII] X Y Z` and is
- * corroborated by item #177, whose name reads `<0xB2>almoxis` = **Zalmoxis**.
- * They are listed here so the table is complete; treat them as provisional.
+ * Codes `< 0x80` are **plain ASCII** - exactly the letters with no separate
+ * glyph (`I M N T W i l m w`); everything else is `0x80`-`0xBC`, with `0xBC` the
+ * space. `0xA1`, `0xA9`-`0xAB`, `0xB0`, `0xB1`, the `0x91`-`0x94` gap and
+ * `0xB2 = Z` (`… U V [W=ASCII] X Y Z`, corroborated by item #177
+ * `<0xB2>almoxis` = Zalmoxis) are **inferred from the ordering**, not observed;
+ * treat as provisional.
  *
  * Reference: `ROMFE8U.cs:235 font_item_address`, `FontForm.GetFontPointer`,
- *            `FETextDecode.UnHffmanPatchDecodeLow`.
+ * `FETextDecode.UnHffmanPatchDecodeLow`.
  */
 
 /** Bytes `< 0x20` and `0x7F` never appear inside an item name; they end one. */

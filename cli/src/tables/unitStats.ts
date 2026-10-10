@@ -1,77 +1,46 @@
 /**
- * The stats a unit actually enters a chapter with.
+ * The stats a unit actually enters a chapter with: a line-by-line port of
+ * FEBuilderGBA's growth simulator. The ROM stores *inputs* (unit, class, level,
+ * autolevel); the game computes seven numbers on map load, and upstream's model
+ * is the only one known to agree with the game.
  *
- * This is a line-by-line port of FEBuilderGBA's own growth simulator, because
- * the ROM stores *inputs* to a computation, not the answer: a placement record
- * says "unit 12, class 0, level 7, autolevel", and the game turns that into
- * seven numbers when the map loads. Upstream models that same step, and it is
- * the only model available that is known to agree with the game.
- *
- * ## The algorithm, and where each piece comes from
- *
- * `EventUnitSimUserControl.SetParam` (EventUnitSimUserControl.cs:51) is the
- * whole thing - it is what FEBuilderGBA shows in its placement-editor preview:
- *
+ * Algorithm - `EventUnitSimUserControl.SetParam` (EventUnitSimUserControl.cs:51):
  *     classid = record.classId or, when 0, the unit's own class
- *     base    = unit table +12..18  +  class table +11..16      (luck: unit only)
- *     growth  = record.autolevel ? class table +27..33 : none
+ *     base    = unit +12..18 + class +11..16          (luck: unit only)
+ *     growth  = record.autolevel ? class +27..33 : none
  *     lv      = record.level + difficulty adjustment
  *     if promoted(unit) or promoted(class): lv += 10
  *     if autolevel: start at level 1
  *     stats   = base + round(growth/100 * (lv - start))
+ * `GrowSimulator.Grow` (GrowSimulator.cs:151) is the arithmetic; `SetSimUnit` /
+ * `SetSimClass` the offsets, matching `tables/units.ts` `baseStats`/`growths`
+ * and `tables/classes.ts` `bases`/`enemyGrowths`.
  *
- * `GrowSimulator.Grow` (GrowSimulator.cs:151) is the arithmetic, and
- * `SetSimUnit` / `SetSimClass` are the field offsets. The field names line up
- * with this repo's own layout tables (`tables/units.ts` `baseStats`/`growths`,
- * `tables/classes.ts` `bases`/`enemyGrowths`), so nothing is re-derived here.
+ * The difficulty adjustment is a **level** delta, not a stat bonus: the three
+ * nibbles of `chapters.difficulty_raw` feed `Grow` before it runs.
+ * `@MAPSETTING_HARD_BOOST` (InputFormRef.cs:12129) and
+ * `@MAPSETTING_NORMAL_MODE_LEVEL_PENALTY` (InputFormRef.cs:12133) say so, the
+ * latter warning that a negative level underflows to the strongest enemy.
+ * {@link UnitStatRow.levelUnderflow} records that instead of hiding it.
  *
- * ## The difficulty adjustment is a *level*, not a stat bonus
+ * Upstream quirks reproduced on purpose:
+ *   - `Math.Round` is C# banker's rounding (half to even), not JS `Math.round`;
+ *     {@link csRound} matches, and `grow/100*count` is ordered for bit-identical
+ *     double arithmetic.
+ *   - Clamp is `if (v > 256) v = 255`, so exactly 256 passes through - upstream's
+ *     bug, kept so consumers match FEBuilderGBA.
+ *   - Class stat *caps* are not applied (upstream clamps only at 255);
+ *     `classes.cap_*` is there for a stricter consumer.
+ *   - `con` is not in `GrowSimulator`; emitted as `unit delta + class base`, no
+ *     growth, because the ROM data is there.
  *
- * `GrowSimulator` itself has no difficulty input; the map setting supplies it.
- * The three nibbles of `chapters.difficulty_raw` are applied to enemy **levels**
- * before the growth runs, which is exactly what the reference says they are:
- *
- *   - `@MAPSETTING_HARD_BOOST` 「難易度でハードを選んだ場合に、敵に与える強化
- *     ボーナス値を指定します。」 (InputFormRef.cs:12129)
- *   - `@MAPSETTING_NORMAL_MODE_LEVEL_PENALTY` 「敵を弱くするペナルティ値 ...
- *     レベルがマイナスになると、アンダーフローが発生し、敵が最強になって
- *     しまいます。」 (InputFormRef.cs:12133)
- *
- * The field is even *named* `NORMAL_MODE_LEVEL_PENALTY` upstream. So this is a
- * level delta, and it feeds `Grow` directly.
- *
- * A negative resulting level is therefore a real hazard, not a curiosity: the
- * tooltip says the game underflows and the enemy becomes the strongest possible
- * unit. {@link UnitStatRow.levelUnderflow} records that instead of hiding it.
- *
- * ## Upstream's own quirks, reproduced on purpose
- *
- *   - `Math.Round` in C# is **banker's rounding** (half to even), not JS
- *     `Math.round` (half up). {@link csRound} reproduces it, and the
- *     `grow/100*count` expression is evaluated in the same order so the double
- *     arithmetic is bit-identical.
- *   - The clamp is `if (v > 256) v = 255` - so exactly `256` passes through
- *     unchanged. That is upstream's bug, kept, because a consumer comparing
- *     against FEBuilderGBA must see the same numbers.
- *   - Class stat *caps* are **not** applied. Upstream's simulator ignores them
- *     (it only clamps at 255), so an over-cap reading here is upstream's model,
- *     not a parse error. `classes.cap_*` is there for a stricter consumer.
- *   - `con` does not exist in `GrowSimulator` at all. It is emitted because the
- *     ROM data is right there, defined as `unit delta + class base` with no
- *     growth - the same formula the other stats start from.
- *
- * ## What is covered
- *
- * Both ways a unit can appear:
- *
- *   - `placement` - the chapter's initial roster. That is condition slot 10
- *     (「初めて普通の時の自軍配置」) and slot 11 (「難しい時の自軍配置」), i.e.
- *     **player/ally only** in practice; the enemy army is not in this block.
- *   - `event` - every unit a reachable event instruction loads, which is where
- *     the enemies are: in `dream-of-five.gba` chapter 1 the start event alone
- *     loads 31 of them. Attribution walks `chapter_event_slots` -> scripts ->
- *     their CALL closure -> `event_instructions.block_id`, the same reach the
- *     `chapter_recruits` view uses.
+ * Both appearances:
+ *   - `placement` - chapter initial roster, condition slot 10 (「初めて普通の時の
+ *     自軍配置」) / 11 (「難しい時の自軍配置」), i.e. player/ally only.
+ *   - `event` - every unit a reachable instruction loads (where enemies are; in
+ *     `dream-of-five.gba` ch1 the start event loads 31). Attribution walks
+ *     `chapter_event_slots` -> scripts -> CALL closure ->
+ *     `event_instructions.block_id`, the reach `chapter_recruits` uses.
  */
 
 import type { Chapter, PlacedUnit, UnitSide } from "./chapters.ts";
@@ -144,11 +113,9 @@ type GrownStat = "hp" | "str" | "skl" | "spd" | "def" | "res" | "lck";
 const GROWN_STATS: readonly GrownStat[] = ["hp", "str", "skl", "spd", "def", "res", "lck"];
 
 /**
- * C# `Math.Round(double)`: ties go to the **even** neighbour.
- *
- * `Math.round` would round ties up, and a tie is reachable here - growth 35
- * over 10 levels is `3.5`. `Math.floor` (not truncation) is the base so the
- * negative case behaves like C# too.
+ * C# `Math.Round(double)` - ties to the **even** neighbour. `Math.round` rounds
+ * up, and a tie is reachable (growth 35 over 10 levels = 3.5). `Math.floor` (not
+ * truncation) so negatives behave like C#.
  */
 function csRound(x: number): number {
   const floor = Math.floor(x);
@@ -166,10 +133,8 @@ function clampStat(value: number): number {
 }
 
 /**
- * `GrowSimulator.Grow`'s arithmetic for one appearance.
- *
- * `growth === null` is `GrowOptionEnum.None`: the base is returned with no
- * growth applied but still clamped, which is what upstream does.
+ * `GrowSimulator.Grow`'s arithmetic for one appearance. `growth === null` is
+ * `GrowOptionEnum.None`: base returned with no growth, still clamped.
  */
 function growStats(
   base: Readonly<Record<GrownStat, number>>,
@@ -194,10 +159,9 @@ function isPromoted(flags: readonly number[]): boolean {
 }
 
 /**
- * The level adjustment this chapter applies to `side` on `difficulty`.
- *
- * Only enemies are adjusted: all three tooltips speak of 敵. A chapter with no
- * difficulty field (FE6) contributes 0 everywhere.
+ * The level adjustment this chapter applies to `side` on `difficulty`. Only
+ * enemies are adjusted (all three tooltips say 敵); a chapter with no difficulty
+ * field (FE6) contributes 0.
  */
 function levelDelta(chapter: Chapter, difficulty: Difficulty, side: UnitSide): number {
   if (side !== "enemy") return 0;
@@ -207,9 +171,8 @@ function levelDelta(chapter: Chapter, difficulty: Difficulty, side: UnitSide): n
 }
 
 /**
- * Which placement block a difficulty uses: hard has its own (slot 11), the
- * other two share slot 10. `GetChapterAllyUnitDataPointer` resolves exactly
- * this pair (see `tables/chapters.ts` `deploySlots`).
+ * The placement block a difficulty uses: hard has its own (slot 11), the other
+ * two share slot 10 - exactly what `GetChapterAllyUnitDataPointer` resolves.
  */
 function placementBlock(chapter: Chapter, difficulty: Difficulty): readonly PlacedUnit[] {
   return difficulty === "hard" ? chapter.hardPlacements : chapter.placements;
@@ -274,11 +237,9 @@ function unitsByBlock(trace: EventTrace): Map<number, TracedBlockUnit[]> {
 }
 
 /**
- * Every `(chapter, difficulty, block, position)` appearance, with its stats.
- *
- * Rows are deduplicated: a block referenced by two instructions of the same
- * chapter is one appearance, and `chapter_recruits` is where to look for *why*
- * a unit is there.
+ * Every `(chapter, difficulty, block, position)` appearance, with stats.
+ * Deduplicated: a block referenced by two instructions of one chapter is one
+ * appearance; `chapter_recruits` explains *why* a unit is there.
  */
 export function buildUnitStats(ctx: UnitStatContext): UnitStatRow[] {
   const unitById = new Map(ctx.units.map((u) => [u.id, u]));

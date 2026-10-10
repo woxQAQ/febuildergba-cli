@@ -1,35 +1,22 @@
 /**
  * Class ability flags - the bytes at class record `+40`..`+43`.
  *
- * ## Where the bit names come from
+ * Bit names are in `config/data/unitclass_checkbox_<game>.txt` (neither C# nor
+ * ROM), loaded by `InputFormRef.LoadCheckboxesResource` (InputFormRef.cs:12584)
+ * with label prefixes `L_40_BIT_`..`L_43_BIT_`.
  *
- * Not from the C# code and not from the ROM: from
- * `config/data/unitclass_checkbox_<game>.txt`, which FEBuilderGBA loads via
- * `InputFormRef.LoadCheckboxesResource` (InputFormRef.cs:12584) with the label
- * prefixes `L_40_BIT_`, `L_41_BIT_`, `L_42_BIT_`, `L_43_BIT_`.
+ * A key is two hex digits read as one number; `LoadCheckboxesResource`
+ * dispatches on its range, not the high nibble: `0x01..0x0F` -> `L_40_BIT_`
+ * (byte `+40`), `0x10..0x1F` -> `+41`, `0x20..0x2F` -> `+42`, `0x30..0x3F` ->
+ * `+43`; the **low** nibble selects the bit (`1` -> `0x01` ... `8` -> `0x80`).
+ * So byte = `40 + (key >> 4)` - the high nibble is one below the byte index,
+ * since `0x01` not `0x11` is the first bit. `GetInfoByBitFlag`
+ * (InputFormRef.cs:7453): `shift = (key & 0xf) - 1 + ((key & 0xf0) >> 4) * 8`.
  *
- * ## Key encoding
- *
- * A key is two hex digits, read as one number. `LoadCheckboxesResource`
- * dispatches on that number's **range**, not on its high nibble directly:
- *
- *   - `0x01..0x0F` -> the `L_40_BIT_` control, i.e. byte `+40`
- *   - `0x10..0x1F` -> `L_41_BIT_`, byte `+41`
- *   - `0x20..0x2F` -> `L_42_BIT_`, byte `+42`
- *   - `0x30..0x3F` -> `L_43_BIT_`, byte `+43`
- *
- * and the **low** nibble selects the bit: `1` -> `0x01`, `2` -> `0x02`, ... `8`
- * -> `0x80`. So the byte offset is `40 + (key >> 4)` - the high nibble is
- * *one below* the byte index, because `0x01` and not `0x11` is the first byte's
- * first bit. `GetInfoByBitFlag` (InputFormRef.cs:7453) states the same thing as
- * one expression: `shift = (key & 0xf) - 1 + ((key & 0xf0) >> 4) * 8`.
- *
- * Hence `11` = byte `+41`, mask `0x01` - which is exactly the promoted test
- * upstream performs as `u8(addr + 41) & 0x01` (`ClassForm.isHighClassAddr`).
- * `13` = byte `+41`, mask `0x04`, the cavalry icon flag. Those two are the
- * cross-check: if this decoding ever drifts by one byte, `promoted` stops
- * matching `isHighClassAddr`. (`34` = byte `+43`, mask `0x08` is Summoning in
- * FE8 and 敵アイテムドロップ in FE7 - see {@link CLASS_FLAG_KEYS}.)
+ * Cross-check: `11` = byte `+41`, mask `0x01` (= upstream's
+ * `u8(addr + 41) & 0x01`, `ClassForm.isHighClassAddr`); `13` = `+41`, mask
+ * `0x04` (cavalry). If decoding drifts a byte, `promoted` stops matching.
+ * (`34` = byte `+43`, mask `0x08` = Summoning in FE8, 敵アイテムドロップ in FE7.)
  */
 
 import { parseKeyedTable, readTextFile, resolveDataFile } from "../config/data.ts";
@@ -40,19 +27,13 @@ export const CLASS_ABILITY_BASE_OFFSET = 40;
 export const CLASS_ABILITY_BYTE_COUNT = 4;
 
 /**
- * Stable identifiers for the flags we actually reason about, **for FE8**.
+ * Stable ids for the flags we reason about, **for FE8**, keyed by the config
+ * file's two-hex-digit key so the mapping is auditable. Names are ours; display
+ * strings come from the file.
  *
- * Keyed by the two-hex-digit key from the config file so the mapping is
- * auditable against the source. Names are ours; the display strings come from
- * the file.
- *
- * ## These ids are per-game, not universal
- *
- * `config/data` ships a **separate** `unitclass_checkbox_<game>.txt` per game,
- * and the same key names different things. That is not cosmetic: a key whose id
- * is taken from FE8 will silently mislabel an FE6/FE7 ROM. The divergences, read
- * off the three vendored files:
- *
+ * The ids are per-game, not universal: each game ships its own
+ * `unitclass_checkbox_<game>.txt`, and an id taken from FE8 silently mislabels
+ * FE6/FE7. Divergences read off the three files:
  *   key  FE6            FE7                 FE8
  *   21   weaponLockRoy  weaponLock1         weaponLock1
  *   23   manaketeLock   manaketeLock        monsterWeapon
@@ -63,11 +44,9 @@ export const CLASS_ABILITY_BYTE_COUNT = 4;
  *   36   (unnamed)      weaponLockHector    weaponLockEphraim
  *   37   (unnamed)      weaponLockLyndis    weaponLockLyn
  *   38   (unnamed)      weaponLockAthos     weaponLockAthos
- *
- * `34` is the load-bearing one: in FE7 it is 敵アイテムドロップ and decides
- * whether an enemy drops its last item, while in FE8 the drop flag moved into
- * the placement record's `ext` (`EventUnitForm.UpdateItemDropLabel`) and the
- * bit became Summoning. See {@link classFlagKeysFor}.
+ * `34` is load-bearing: FE7 敵アイテムドロップ (drops last item) vs FE8 the drop
+ * flag moved to the placement record's `ext` and the bit became Summoning. See
+ * {@link classFlagKeysFor}.
  */
 export const CLASS_FLAG_KEYS: Readonly<Record<string, string>> = {
   "01": "mountedAid", // Mounted Aid Calc
@@ -105,12 +84,9 @@ export const CLASS_FLAG_KEYS: Readonly<Record<string, string>> = {
 };
 
 /**
- * Per-game overrides for the keys that do **not** share FE8's meaning.
- *
- * Only the divergent keys are listed; everything else falls through to
- * {@link CLASS_FLAG_KEYS}. Keys marked `(unnamed)` in the config (FE6 leaves
- * `32`..`38` as `??`) get an id of our own so the bit is still visible rather
- * than silently dropped.
+ * Per-game overrides for keys that do not share FE8's meaning; the rest fall
+ * through to {@link CLASS_FLAG_KEYS}. Keys marked `(unnamed)` (FE6 leaves
+ * `32`..`38` as `??`) get an id of our own so the bit stays visible.
  */
 const CLASS_FLAG_KEYS_BY_GAME: Readonly<Record<string, Readonly<Record<string, string>>>> = {
   FE6: {
@@ -157,18 +133,11 @@ export interface ClassFlagDef {
 }
 
 /**
- * Decode a config key into (byte offset, bit mask).
- *
- * The key is read as **hexadecimal** - `U.LoadDicResource` stores it via
- * `U.atoh(sp[0])` (U.cs:3385). The authoritative bit arithmetic is
- * `GetInfoByBitFlag` (InputFormRef.cs:7453):
- *
- *     shift = (key & 0xf) - 1 + ((key & 0xf0) >> 4) * 8;
- *     bit   = 1 << shift;
- *
- * i.e. the high nibble is the byte index within the 4-byte block and the low
- * nibble is the bit number, 1-based. `LoadCheckboxesResource` agrees: keys
- * below 0x10 land on `L_40_BIT_`, below 0x20 on `L_41_BIT_`, and so on.
+ * Decode a config key into (byte offset, bit mask). The key is **hexadecimal**
+ * (`U.LoadDicResource` stores it via `U.atoh(sp[0])`, U.cs:3385). Bit arithmetic
+ * from `GetInfoByBitFlag` (InputFormRef.cs:7453):
+ *     shift = (key & 0xf) - 1 + ((key & 0xf0) >> 4) * 8;  bit = 1 << shift
+ * i.e. high nibble = byte index in the 4-byte block, low nibble = 1-based bit.
  */
 export function decodeFlagKey(key: string): { offset: number; mask: number } | null {
   const value = Number.parseInt(key, 16);
@@ -183,11 +152,9 @@ export function decodeFlagKey(key: string): { offset: number; mask: number } | n
 }
 
 /**
- * Load the ability-flag table for a game.
- *
- * `game` is the `TitleToFilename` fragment (`FE6` / `FE7` / `FE8`). Returns an
- * empty array when `config/data` is unavailable - callers must then fall back
- * to deriving roles from movement costs alone.
+ * Load the ability-flag table for a game (`TitleToFilename` fragment); `[]` when
+ * `config/data` is unavailable, in which case callers fall back to deriving roles
+ * from movement costs alone.
  */
 export function loadClassFlags(configDir: string, game: string, language?: string): ClassFlagDef[] {
   const path = resolveDataFile(configDir, "unitclass_checkbox_", game, language);
@@ -214,10 +181,8 @@ export function readAbilityBytes(read: (offset: number) => number, recordOffset:
 }
 
 /**
- * Which flags are set in a 4-byte ability block.
- *
- * Returns stable ids (`mountHorse`, `canto`, ...) in table order. Unknown bits
- * are reported as `flag<key>` so nothing is silently dropped.
+ * Which flags are set in a 4-byte ability block: stable ids in table order.
+ * Unknown bits become `flag<key>` so nothing is dropped.
  */
 export function decodeAbilityFlags(
   bytes: readonly number[],
@@ -239,11 +204,9 @@ export function decodeAbilityFlags(
 }
 
 /**
- * Mount category, or `null` for foot units.
- *
- * The three icon flags are mutually exclusive in practice; when a hack sets
- * several we report the first in wyvern > pegasus > horse order, because
- * wyvern and pegasus both imply flying and are the more specific claim.
+ * Mount category, `null` for foot units. The three icon flags are mutually
+ * exclusive in practice; when a hack sets several, report the first in
+ * wyvern > pegasus > horse order (wyvern/pegasus imply flying, more specific).
  */
 export type MountKind = "wyvern" | "pegasus" | "horse" | "armour" | null;
 

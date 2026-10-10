@@ -1,14 +1,11 @@
 /**
- * The option registry - the single place every CLI flag is declared.
+ * The option registry - the single place every CLI flag is declared. Each flag
+ * carries help text and the commands that read it; `src/cli/args.ts` builds the
+ * `parseArgs` config from that list, so an unused flag is rejected rather than
+ * swallowed. Global flags (no `commands` key) are accepted by every command.
  *
- * Each flag carries its own help text and the list of commands that actually
- * read it. `src/cli/args.ts` builds the `parseArgs` config from that list, so
- * a flag a command does not use is rejected instead of silently swallowed.
- * Global flags (no `commands` key) are accepted by every command.
- *
- * Adding a command-local flag therefore takes two edits: declare it here, then
- * read `ctx.flags.<name>` in the command. Nothing else - not the usage text,
- * not the option parser, not the dispatcher - needs to know it exists.
+ * Adding a command-local flag is two edits: declare it here, read
+ * `ctx.flags.<name>` in the command. Nothing else needs to know it exists.
  */
 import { LANGUAGE_NAMES } from "../config/data.ts";
 import type { Command, CommandName } from "../commands/types.ts";

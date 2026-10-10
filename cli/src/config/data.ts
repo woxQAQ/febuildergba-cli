@@ -1,43 +1,26 @@
 /**
- * Reader for the `config/data/*.txt` resource tables.
+ * Reader for the `config/data/*.txt` resource tables - ROM semantics that are
+ * neither in the C# code nor in the ROM (class ability bit names, the
+ * event-script opcode table, chapter-condition names). FEBuilderGBA ships them
+ * under `config/data/`; this CLI does not read the C# checkout, but vendors the
+ * exact subset it consumes into `cli/data/` so the project stands alone. Four
+ * prefixes, each for FE6/FE7/FE8 in three languages (bare = Japanese, `.en`,
+ * `.zh`), 36 files:
+ *   - `unitclass_checkbox_<game>*.txt`    - class ability bit names
+ *   - `event_<game>*.txt`                 - event-script opcode patterns
+ *   - `eventcond_<game>*.txt`             - chapter condition slot names
+ *   - `item_staff_use_effect_<game>*.txt` - item `+30` use-effect code names
+ * Refresh after an upstream update by re-copying those from
+ * `FEBuilderGBA/FEBuilderGBA/bin/Debug/config/data/`.
  *
- * ## Why this exists
+ * Files are line-oriented, tab-separated, with `//` comments, in three shapes:
+ *   1. `KEY=Display Name`         (checkbox/enum, `unitclass_checkbox_*`)
+ *   2. `PATTERN<TAB>info<TAB>...` (opcode, `event_*`/`aiscript_*`)
+ *   3. `FLAG<TAB>Display Name`    (two-column, `eventcond_*`)
  *
- * A lot of ROM semantics are **not** in the C# code and **not** in the ROM:
- * the names of class ability bits, the event-script opcode table, the
- * chapter-condition table. FEBuilderGBA ships them as plain text files next to
- * the executable, under `config/data/`.
- *
- * ## Where the files come from (vendored, not borrowed)
- *
- * These files originate from FEBuilderGBA, but the CLI **does not read them out
- * of the C# checkout**. A minimal subset is copied into `cli/data/` so this
- * project stands alone: cloning `cli/` on its own is enough to parse a ROM.
- *
- * The vendored set is exactly what the parser consumes - four prefixes, each
- * for FE6 / FE7 / FE8, in all three languages (bare = Japanese, `.en`, `.zh`):
- *
- *   - `unitclass_checkbox_<game>*.txt`      - class ability bit names
- *   - `event_<game>*.txt`                   - event-script opcode patterns
- *   - `eventcond_<game>*.txt`               - chapter condition slot names
- *   - `item_staff_use_effect_<game>*.txt`   - item `+30` use-effect code names
- *
- * To refresh them after an FEBuilderGBA update, re-copy those 36 files from
- * `FEBuilderGBA/FEBuilderGBA/bin/Debug/config/data/` into `cli/data/`.
- *
- * ## File format
- *
- * Line-oriented, tab-separated, with `//` comments. Three shapes appear:
- *
- *   1. `KEY=Display Name`            - checkbox / enum tables (`unitclass_checkbox_*`)
- *   2. `PATTERN<TAB>info<TAB>...`    - opcode tables (`event_*`, `aiscript_*`)
- *   3. `FLAG<TAB>Display Name`       - simple two-column tables (`eventcond_*`)
- *
- * Language variants sit alongside each other as `<name>.<lang>.txt`
- * (`unitclass_checkbox_FE8.txt`, `.en.txt`, `.zh.txt`). The bare name is
- * Japanese. `U.ConfigDataFilename` (U.cs:3180) tries the caller's language,
- * then English, then the bare file; the default order here is English, bare
- * (Japanese), Chinese. Pass `--lang` to change it.
+ * Variants sit as `<name>.<lang>.txt`. The bare name is Japanese.
+ * `U.ConfigDataFilename` (U.cs:3180) tries caller language, English, bare; our
+ * default order is English, bare, Chinese. `--lang` changes it.
  */
 
 import { existsSync, readFileSync } from "node:fs";

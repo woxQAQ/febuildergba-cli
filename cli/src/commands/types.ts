@@ -60,22 +60,15 @@ export interface CommandContext {
 }
 
 export interface Command {
-  /** Word the user types. Unique across the registry. */
+  /** Word the user types; unique across the registry. */
   readonly name: CommandName;
   /** One line, shown in the command table. */
   readonly summary: string;
-  /**
-   * A longer description for `fe-rom <command> --help`. Defaults to `summary`.
-   * Kept short enough to sit under one screen.
-   */
+  /** Longer text for `fe-rom <command> --help`; defaults to `summary`. */
   readonly description?: string;
-  /**
-   * Extra usage-line tail, appended after `[options]` in
-   * `fe-rom <command> --help`. For commands that take bare positionals, e.g.
-   * `text` and its text ids.
-   */
+  /** Usage-line tail after `[options]`, for commands with bare positionals. */
   readonly extraArgs?: string;
-  /** Build the payload. Runs only after the ROM has loaded. */
+  /** Run the command; only after the ROM has loaded. */
   run(context: CommandContext): unknown | Promise<unknown>;
 }
 

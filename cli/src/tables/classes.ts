@@ -1,17 +1,12 @@
 /**
- * A class name, dispatched by storage format.
- *
- * Hacks store class names in either format, and the distinction matters: the
- * **item font** (`ITEM_FONT`) is a separate glyph space where `< 0x80` is plain
- * ASCII and `0x81..0xBC` are glyph codes for the letters that have no ASCII
- * slot. A name stored that way must NOT go through `decodeTextId` -
- * `applySpecialGlyphs` only expands the Latin-1 accented codes, so every
- * glyph code survives as a literal `@00XX`, and the later `stripAllCodes`
- * deletes them, leaving only the incidental ASCII letters.
- *
- * That is what turned Vision Quest's `Sword Pegasus` (id 71, `Natsuko`) into
- * `"w"` and `Sword Cavalier` (id 35, `Marlen`) into `"w li"` - not custom
- * names, just the item font read as text.
+ * A class name, dispatched by storage format. Hacks use either the normal text
+ * encoding or the **item font** (`ITEM_FONT`), a separate glyph space where
+ * `< 0x80` is ASCII and `0x81..0xBC` are glyphs for letters with no ASCII slot.
+ * An item-font name must NOT go through `decodeTextId`: `applySpecialGlyphs`
+ * expands only Latin-1 accents, so every glyph survives as `@00XX` and
+ * `stripAllCodes` deletes it, leaving the incidental ASCII. That is how Vision
+ * Quest's `Sword Pegasus` (id 71) became `"w"` and `Sword Cavalier` (id 35)
+ * `"w li"`.
  */
 function readClassName(rom: RomBuffer, textId: number, text: TextContext): string {
   if (textId === 0) return "";
@@ -30,10 +25,8 @@ function readClassName(rom: RomBuffer, textId: number, text: TextContext): strin
 }
 
 /**
- * Class table.
- *
- * Record layout, 84 bytes. Derived from `ClassForm.designer.cs` control names
- * and label text, same method as the unit table.
+ * Class table, 84-byte records. Layout from `ClassForm.designer.cs` control names
+ * and labels (same method as the unit table).
  *
  *   +0   u16 name text id           +34..39 u8  promotion bonuses (6)
  *   +2   u16 description text id    +40..43 u8  ability flags (4)
@@ -74,23 +67,12 @@ import { classifyMount, decodeAbilityFlags, specialActionRole } from "./classFla
 export const CLASS_RECORD_SIZE = 84;
 
 /**
- * Entries in a class's movement-cost table: one per terrain id, `0x00..0x40`.
- *
- * **65, not 64.** Three independent measurements agree:
- *   1. `MoveCostForm.Designer.cs` declares exactly 65 `NumericUpDown`s,
- *      `B0..B64`, and `MoveCostForm.cs` labels 65 columns `J_0..J_64` with the
- *      terrain names `0..0x40` from `map_terrain_name_pointer`.
- *   2. The terrain-name table itself has 65 entries (`tables/terrainNames.ts`),
- *      and the two share an index space.
- *   3. The tables are allocated **0x41 bytes apart** in this ROM (16 distinct
- *      tables, every gap exactly 0x41), so a 64-byte read would slice the first
- *      byte off the next table.
- *
- * `PatchUtil.WriteIndependence` copies 68 bytes, i.e. 65 rounded up to a
- * 4-byte boundary, which is consistent with 65 as well.
- *
- * Reading only 64 silently drops terrain id `0x40` ("Mast") - the last column
- * the reference displays.
+ * Movement-cost entries: one per terrain id, `0x00..0x40`. **65, not 64**, from
+ * three measurements: `MoveCostForm.Designer.cs` declares `B0..B64` and labels
+ * 65 columns `J_0..J_64` with the 65 `map_terrain_name_pointer` names; the
+ * tables are allocated **0x41 bytes apart** (16 tables, every gap 0x41, so a
+ * 64-byte read would slice the next); `PatchUtil.WriteIndependence` copies 68
+ * bytes (65 rounded to 4). Reading 64 silently drops terrain id `0x40` (Mast).
  */
 export const CLASS_TERRAIN_COUNT = 0x41;
 
@@ -153,23 +135,16 @@ export interface UnitClass {
   name: string;
   description: string;
   /**
-   * **The class this one is promoted FROM** - the field is a *reverse* link,
-   * despite the reference implementation's own naming. Verified on FE8U:
-   * `Knight`(1) stores 3, and 3 is `General`; `Paladin`(7) stores 5, and 5 is
-   * `Lance Cavalier`. Reading it as "this class promotes into X" produces
-   * nonsense (a level-1 unit looking already-promoted).
-   *
-   * To test "is this class already promoted", count *inbound* links instead:
-   * some `X` exists with `promotesToClassId === thisClass`.
-   *
-   * {@link UnitClass.sortOrder} is the forward view: each base/promoted pair
-   * shares a value (Brawler=1, Great Chief=2).
+   * **The class this one is promoted FROM** - a reverse link despite the
+   * reference's naming. Verified FE8U: `Knight`(1) stores 3 (`General`),
+   * `Paladin`(7) stores 5 (`Lance Cavalier`); reading it forward gives nonsense.
+   * To test "already promoted", count *inbound* links; {@link sortOrder} is the
+   * forward view (base/promoted share a value).
    */
   promotesToClassId: number;
   /**
-   * Promotion tier. Each base class and its promoted version share one value,
-   * so 1 = Brawler/Great Chief tier, 2 = Gladiator, ... Read this, not
-   * {@link promotesToClassId}, to know which side of a promotion a class is on.
+   * Promotion tier; each base/promoted pair shares one value (1 = Brawler/Great
+   * Chief, 2 = Gladiator, ...). Read this to know which side a class is on.
    */
   sortOrder: number;
   movementRange: number;
@@ -225,42 +200,27 @@ export interface UnitClass {
   /** Snow-weather cost table (`+64`), or `[]` when the class has none. */
   movementCostsSnow: number[];
   /**
-   * True when every *passable* terrain costs the same.
-   *
-   * That is the mechanical signature of a flying class: fliers ignore terrain,
-   * so their cost table is uniform apart from the terrains nobody may enter.
-   *
-   * This is a **cross-check**, not the primary source: the ability-flag table
-   * gives `mountPegasus` / `mountWyvern` directly. The two disagreeing is a
-   * useful signal that something is mis-parsed.
+   * True when every *passable* terrain costs the same - the mechanical signature
+   * of a flier, whose cost table is uniform except impassable terrain. A
+   * cross-check (the ability flags give `mountPegasus`/`mountWyvern` directly);
+   * disagreement signals a mis-parse.
    */
   flying: boolean;
   /**
-   * Terrain bonuses this class receives, indexed by terrain id. Read from the
-   * pointers at `+68` / `+72` / `+76`.
-   *
-   * `ClassForm.cs:517-521` maps the three `地形回避` / `地形防御` / `地形魔防`
-   * columns to those offsets, and `MoveCostForm.cs:329-334` dereferences each as
-   * `p32(classAddr + offset)` before indexing by terrain id — so they are
-   * pointers, exactly like the movement-cost table at `+56`.
-   *
-   * `null` when the pointers are unusable (class 0, or a class with no tables).
+   * Terrain avoid/defence/resistance bonuses, indexed by the same terrain id.
+   * `ClassForm.cs:517-521` maps 地形回避/地形防御/地形魔防 to `+68`/`+72`/`+76`;
+   * `MoveCostForm.cs:329-334` dereferences each as `p32(classAddr + offset)`
+   * before indexing, so they are pointers like `+56`. `null` when unusable.
    */
   terrainBonuses: TerrainBonuses | null;
   /**
-   * True when this class gets **no terrain bonus on any terrain**.
-   *
-   * That is the mechanical definition of "this class ignores terrain". It is a
-   * third, independent signal alongside `mount` (icon flags) and `flying`
-   * (uniform movement costs), and it is the **most complete** of the three:
-   *
-   *   - icon flags (`+41` bits `0x08`/`0x10`) → 9 classes on the fixture ROM
-   *   - uniform movement costs (`+56`)         → 17 classes
-   *   - all-zero terrain bonus (`+68`)         → 17 classes, **identical set**
-   *
-   * The 8 the icon flags miss are the airborne *monster* classes (Manakete,
-   * Phantom, Mogall, Arch Mogall, Gargoyle, Grotesque, Dracolich), which have
-   * no mount flag because their map icons are not the flier icons.
+   * True when this class gets **no terrain bonus on any terrain** - the
+   * definition of ignoring terrain, and the most complete of three signals:
+   * icon flags (`+41` bits 0x08/0x10) find 9 classes on the fixture, uniform
+   * movement costs (`+56`) 17, all-zero terrain bonus (`+68`) 17 with the
+   * **identical set**. The 8 the flags miss are airborne monsters (Manakete,
+   * Phantom, Mogall, Arch Mogall, Gargoyle, Grotesque, Dracolich), which have no
+   * mount flag because their icons are not flier icons.
    */
   terrainBonusImmune: boolean;
   /** Heuristic: name id 0 and class id 0 means an unused slot. */
@@ -279,9 +239,8 @@ export interface ClassTableContext {
 }
 
 /**
- * Read a movement-cost table from one of the three cost pointers.
- * Returns an empty array when the pointer is not usable, so callers can
- * treat "no data" and "uniform costs" differently.
+ * Read a movement-cost table from one of the three cost pointers; `[]` when the
+ * pointer is unusable, so callers can tell "no data" from "uniform costs".
  */
 function readMovementCosts(rom: RomBuffer, addr: number, pointerOffset: number): number[] {
   const offset = rom.toOffset(rom.u32(addr + pointerOffset));
@@ -411,20 +370,14 @@ export function readClass(ctx: ClassTableContext, index: number): UnitClass | nu
 export const CLASS_HARD_LIMIT = 0x100;
 
 /**
- * Read the class table, using FEBuilderGBA's read-count predicate verbatim
- * (`ClassForm.Init`):
- *
- *     if (i == 0)               return true;   // index 0 is always kept
- *     if (i > 0xff)             return false;  // hard cap, 256 records
- *     return rom.u8(addr + 4) != 0;            // stop at the first class id 0
- *
- * The terminator matters: past the last real class the bytes are *not* empty
- * padding, they are whatever else the linker placed there. Scanning them as
- * classes yields records with plausible-looking names ("Dark", "Gunnels")
- * attached to bogus ids, which then silently poison any id -> name map.
- *
- * Class 0 is the reserved empty entry, so it is kept and reported with
- * `isEmpty: true` rather than treated as the terminator.
+ * Read the class table with FEBuilderGBA's read-count predicate (`ClassForm.Init`):
+ *     i == 0               -> keep            (index 0 always kept)
+ *     i > 0xff             -> stop            (256-record cap)
+ *     u8(addr + 4) != 0    -> stop at first class id 0
+ * The terminator matters: past the last class the bytes are whatever the linker
+ * placed, and scanning them as classes yields plausible names ("Dark",
+ * "Gunnels") on bogus ids that poison id -> name maps. Class 0 is the reserved
+ * empty entry, kept with `isEmpty: true`.
  */
 export function readAllClasses(
   ctx: ClassTableContext,

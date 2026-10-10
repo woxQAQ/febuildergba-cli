@@ -1,10 +1,7 @@
 /**
- * Item table.
- *
- * One record per item id, `RomInfo.item_datasize` = **36 bytes**, located by
- * dereferencing the `item_pointer` slot. The layout below is not guesswork: the
- * control names in `ItemForm.Designer.cs` carry the byte offset, and the labels
- * next to them carry the field name.
+ * Item table: one record per item id, `RomInfo.item_datasize` = **36 bytes**,
+ * reached by dereferencing `item_pointer` (`data/layouts.ts`). Offsets come from
+ * `ItemForm.Designer.cs` control names, fields from their labels.
  *
  * | offset | control | label                        | meaning                     |
  * |--------|---------|------------------------------|-----------------------------|
@@ -32,35 +29,20 @@
  * | `+31`  | `B31`   | ダメージ追加効果               | damage bonus                |
  * | `+32`  | `B32`   | 武器LV熟練度                   | weapon exp                  |
  *
- * ## `+26` is a unit price, not a price
+ * `+26` is a **unit price**, not a price (`ItemForm.cs:309`):
+ *     buy  = B20.Value * W26.Value
+ *     +50% = (uint)(B20.Value * W26.Value * 1.5)
+ *     sell = (B20.Value * W26.Value) / 2
+ * Iron Sword = `50 x 10 = 500`, sells 250. It is a **u16**: weapons leave the
+ * high byte 0 so a `u8` read looks fine, but `3,000 Gold` is `B8 0B` and
+ * `Diamond Gem` `20 4E` = 20000.
  *
- * `ItemForm.cs:309` is explicit:
+ * `+7` (種別) is **0-based** unlike FE6/FE7: 0 sword, 1 lance, 2 axe, 3 bow,
+ * 4 staff, 5 anima, 6 light, 9 consumable ({@link ITEM_TYPES}).
  *
- * ```csharp
- * X_VALUE_SHOP.Value          = B20.Value * W26.Value;           // buy
- * X_VALUE_SHINGEKI_SHOP.Value = (uint)(B20.Value * W26.Value * 1.5); // +50%
- * X_VALUE_SEL.Value           = (B20.Value * W26.Value) / 2;     // sell
- * ```
- *
- * So an Iron Sword is `50 uses x 10 = 500` gold, and it sells for 250. Reading
- * `+26` as "the price" would make every weapon in the game cost 10 gold.
- *
- * The field is a **u16**. Weapons leave the high byte at 0, so reading it as a
- * `u8` gives identical results for them, but gems and money bags would come out
- * wildly wrong: `3,000 Gold` is `B8 0B`, `Diamond Gem` is `20 4E` = 20000.
- *
- * ## `+7` is 0-based
- *
- * Unlike FE6/FE7 this ROM's type field counts swords from **0**. Verified
- * against the table: 0 sword, 1 lance, 2 axe, 3 bow, 4 staff, 5 anima, 6 light,
- * 9 consumable. See {@link ITEM_TYPES}.
- *
- * ## Names are not in the normal text encoding
- *
- * Item names in `dream-of-five.gba` are stored un-compressed in FE8's
- * **item-name font** code space, which is neither ASCII nor Huffman. FEBuilderGBA
- * prints them as `@008F@008C…`; {@link readItemName} decodes them properly via
- * `text/itemFont.ts`.
+ * Item names in `dream-of-five.gba` are un-compressed in FE8's **item-name
+ * font** code space (neither ASCII nor Huffman); FEBuilderGBA prints them as
+ * `@008F@008C…`. {@link readItemName} decodes via `text/itemFont.ts`.
  */
 
 import { RomBuffer } from "../rom/RomBuffer.ts";
@@ -336,9 +318,6 @@ export function readItems(
 
     const range = rom.u8(addr + 25);
     const uses = rom.u8(addr + 20);
-    // `+26` is a **u16**, not a byte. Plain weapons leave `+27` at 0, so `u8`
-    // happens to be right for them, but gems and money bags use the high byte:
-    // "3,000 Gold" is `B8 0B` = 3000, Diamond Gem `20 4E` = 20000.
     const unitPrice = rom.u16(addr + 26);
     const rank = rom.u8(addr + 28);
     const type = rom.u8(addr + 7);

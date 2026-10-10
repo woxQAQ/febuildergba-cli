@@ -1,44 +1,32 @@
 /**
- * Shops.
+ * Shops. Every FE8 shop - prep screen, village, secret - is the same shape: a
+ * flat list of **2-byte entries**, `u8 itemId` then `u8 uses`, terminated by
+ * `itemId == 0`. `uses == 0` means full durability; otherwise it is the
+ * durability handed over, and (since the price is a *unit* price) the price
+ * scales with it.
  *
- * Every shop in FE8 — prep screen, village, secret — is the same shape: a flat
- * list of **2-byte entries**, `u8 itemId` then `u8 uses`, terminated by
- * `itemId == 0`. `uses == 0` means "sell it at full durability"; a non-zero
- * value is the durability the shop hands you (and, since the price field is a
- * *unit* price, the price scales with it).
- *
- * Two sources are wired up here, which between them cover everything this ROM
- * actually has:
- *
- * 1. **Prep-screen shop** (`item_shop_hensei_pointer`, 「編成準備店」). A single
- *    global list — the armoury you can always reach from the battle-prep menu.
- *
- * 2. **Per-map shops.** These are not in the map setting record; they hang off
- *    the map's event-condition table, in the `CONDTYPE.OBJECT` slot, as a list
- *    of 12-byte records - the *same* records that carry chests, villages and
- *    doors (see `tables/mapObjects.ts` for the full layout):
- *
+ * Two sources, covering everything this ROM has:
+ * 1. Prep-screen shop (`item_shop_hensei_pointer`, 編成準備店): one global list.
+ * 2. Per-map shops: not in the map setting record but in the map's
+ *    event-condition `CONDTYPE.OBJECT` slot, as 12-byte records - the same
+ *    records that carry chests/villages/doors (`tables/mapObjects.ts`):
  *    ```text
- *    +0  u16  trigger type; 0x0A means "shop"
+ *    +0  u16  trigger type; 0x0A = shop
  *    +4  u32  GBA pointer to the shop's 2-byte entry list
  *    +10 u8   shop object id -> weapon / item / secret (ROMFE8JP.get_shop_name)
  *    ```
+ *    (`EventCondForm.MakeShopPointerListBox`, EventCondForm.cs:852.)
  *
- *    This is `EventCondForm.MakeShopPointerListBox` (EventCondForm.cs:852).
+ * `readAllObjects` reads the object records once; this module only turns the
+ * shop-typed ones into priced lists, so chest and shop data cannot drift.
  *
- * The object records themselves are read once by `readAllObjects`; this module
- * only turns the shop-typed ones into priced entry lists, so chest and shop
- * data cannot drift apart.
- *
- * A third source exists — **world-map point shops**, read from a 32-byte world
- * map point record at `+12` (weapon), `+16` (item), `+20` (secret) by
- * `WorldMapPointForm.GetShopAddr`. It is not wired up: `worldmap_point_pointer`
+ * A third source, world-map point shops (`WorldMapPointForm.GetShopAddr`: `+12`
+ * weapon, `+16` item, `+20` secret), is not wired up: `worldmap_point_pointer`
  * is not transcribed for FE8U and this hack is chapter-based, so the per-map
- * scan already finds those shops (several `@001F` encounter maps carry full
- * weapon/item lists).
+ * scan already finds those shops.
  *
  * Reference: `ItemShopForm.MakeShopListLow`, `EventCondForm.MakeShopPointerListBox`,
- *            `ROMFE8JP.get_shop_name`, `WorldMapPointForm.GetShopAddr`.
+ * `ROMFE8JP.get_shop_name`, `WorldMapPointForm.GetShopAddr`.
  */
 
 import type { RomBuffer } from "../rom/RomBuffer.ts";

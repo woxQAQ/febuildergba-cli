@@ -1,13 +1,8 @@
 /**
- * Populate an extract database from a parsed ROM.
- *
- * `parseRom` has already read every table; this is the persistence half of
- * the extract. All inserts go through the drizzle schema (`schema.ts`), so a
- * column typo or a wrong value type is a compile error here rather than a
- * SQLite error halfway through an extract.
- *
- * Reads happen inside one transaction; a failure rolls the whole db back
- * rather than leaving a half-populated file that looks finished.
+ * Populate an extract database from a parsed ROM - the persistence half of the
+ * extract. All inserts go through the drizzle schema (`schema.ts`), so a column
+ * typo or wrong value type is a compile error, not a SQLite error mid-extract.
+ * Reads run in one transaction; a failure rolls the whole db back.
  */
 
 import { sql } from "drizzle-orm";

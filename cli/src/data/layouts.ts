@@ -1,37 +1,18 @@
 /**
  * Per-game ROM pointer layouts, transcribed from FEBuilderGBA's `ROMFEINFO`
- * subclasses.
+ * subclasses (`ROMFE6JP/7U/7JP/8U/8JP.cs`).
  *
- * ## The pointer-slot rule
+ * `*_pointer` fields are file offsets of 4-byte slots holding a GBA pointer,
+ * not table offsets: `tableOffset = rom.p32(slotOffset)` (`PatchForm.cs:9372`
+ * reads `u32(RomInfo.item_pointer)`; `InputFormRef.cs:5792` does
+ * `BaseAddress = p32(BasePointer)`). `*_address` fields are plain offsets and
+ * must not be dereferenced.
  *
- * Every `*_pointer` value below is the file offset of a **4-byte slot that
- * holds a GBA pointer**, not the table's own offset. Reaching a table always
- * takes one dereference:
- *
- *     tableOffset = rom.p32(slotOffset)
- *
- * Proof in the C# source:
- *   - `PatchForm.cs:9372 ReplacePointerSub()` reads `u32(RomInfo.item_pointer)`
- *     and compares it against a raw GBA pointer.
- *   - `InputFormRef.cs:5792 Init()` does `BaseAddress = p32(BasePointer)`.
- *
- * Fields ending in `_address` are the exception: those are plain offsets and
- * must NOT be dereferenced.
- *
- * ## Fixed vs. searched slots
- *
- * FE7 and FE6 use fixed constants. FE8U/FE8J instead *search* a candidate list,
- * because the unit and class pointer slots moved between FE8 revisions. The
- * search (`U.FindROMPointer`) picks the first candidate that satisfies:
- *   1. the slot is a safe offset,
- *   2. the value there is a safe GBA pointer,
- *   3. `u32(table + checkPointer)` is also a safe GBA pointer.
- *
- * That third test is what makes the search reliable: for the unit table,
- * `checkPointer = 0x2c` (44) lands on the support-data pointer every unit has.
- *
- * Reference: FEBuilderGBA/FEBuilderGBA/ROMFE7U.cs, ROMFE7JP.cs, ROMFE8U.cs, ROMFE8JP.cs,
- *            ROMFE6JP.cs, and `U.FindROMPointer` (U.cs).
+ * FE6/FE7 use fixed slot constants; FE8U/FE8J search a candidate list because
+ * the unit/class slots moved between revisions. `U.FindROMPointer` (U.cs) picks
+ * the first candidate whose slot is a safe offset, whose value is a safe GBA
+ * pointer, and whose `u32(table + checkPointer)` is safe too - e.g. the unit
+ * table's `checkPointer = 0x2c`, the support-data pointer every unit has.
  */
 
 import type { GameVersion } from "../rom/detect.ts";
@@ -48,22 +29,17 @@ export interface SearchSlot {
   checkPointer: number;
   candidates: readonly number[];
   /**
-   * When set, the probe at `checkPointer` must instead be an integer *below*
-   * this value. This mirrors the `Func<uint,bool>` overload of
-   * `U.FindROMPointer`, which `map_setting_pointer` uses with the predicate
-   * `rom.u32(a + 0x12) < 0xE` (the record's weather id must be a known id).
-   *
-   * Note the C# lambda literally reads `rom.u32(0x12)` - a constant, not
-   * `addr + 0x12`. That looks like a bug upstream; we use the intended
-   * `tableOffset + checkPointer` reading, which is what makes the search
-   * meaningful at all. When the predicate fails for every candidate the
-   * reference falls back to `candidates[0]`, and so do we.
+   * `U.FindROMPointer`'s `Func<uint,bool>` overload: the probe at
+   * `checkPointer` must be an integer below this. `map_setting_pointer` uses
+   * `rom.u32(a + 0x12) < 0xE` (record weather id must be a known id). The C#
+   * lambda literally reads `rom.u32(0x12)`, a constant not `addr + 0x12` - an
+   * upstream bug; we use the intended `tableOffset + checkPointer`. When the
+   * predicate fails for every candidate, fall back to `candidates[0]`.
    */
   checkBelow?: number;
   /**
-   * When set, the probe at `checkPointer` must equal this value exactly.
-   * This is the other `Func<uint,bool>` shape in `U.FindROMPointer`:
-   * `item_pointer` is searched with `rom.u32(0xC) == 0x0` (an item record's
+   * The other `Func<uint,bool>` shape: the probe at `checkPointer` must equal
+   * this exactly. `item_pointer` searches with `rom.u32(0xC) == 0x0` (item
    * `+0x0C` is the stat-bonus pointer, null for a plain weapon).
    */
   checkEqual?: number;
@@ -109,15 +85,13 @@ export interface ItemLayout {
 /**
  * Shops. Three independent sources feed the same 2-byte entry list
  * (`itemId`, `uses`), terminated by `itemId == 0`:
- *
- * 1. the **prep-screen shop** (`item_shop_hensei_pointer`, 「編成準備店」),
- * 2. **per-map shops**, which live in the map's event-condition OBJECT slot
- *    (`CONDTYPE.OBJECT`) as 12-byte records,
- * 3. world-map point shops (`WorldMapPointForm.GetShopAddr`: `+12` weapon,
- *    `+16` item, `+20` secret). FE8-only; not wired up here yet.
- *
- * Reference: `ItemShopForm.MakeShopListLow`, `EventCondForm.MakeShopPointerListBox`,
- *            `ROMFE8JP.get_shop_name` (shop object ids).
+ *   1. prep-screen shop (`item_shop_hensei_pointer`, 編成準備店);
+ *   2. per-map shops, in the map's event-condition OBJECT slot
+ *      (`CONDTYPE.OBJECT`) as 12-byte records;
+ *   3. world-map point shops (`WorldMapPointForm.GetShopAddr`: `+12` weapon,
+ *      `+16` item, `+20` secret). FE8-only, not wired up yet.
+ * Reference: `ItemShopForm.MakeShopListLow`,
+ * `EventCondForm.MakeShopPointerListBox`, `ROMFE8JP.get_shop_name`.
  */
 export interface ShopLayout {
   /** `item_shop_hensei_pointer`: slot holding the prep-screen shop list. */
@@ -126,36 +100,27 @@ export interface ShopLayout {
   shopObjects: Readonly<Record<number, string>>;
   /** Condition-table slot index holding the OBJECT list. */
   objectCondSlot: number;
-  /** Bytes per OBJECT record. */
   objectRecordSize: number;
   /** Offset inside an OBJECT record of the shop-list pointer. */
   objectShopPointer: number;
   /** Offset inside an OBJECT record of the shop object id. */
   objectKindOffset: number;
-  /** Bytes per shop entry. */
   entrySize: number;
 }
 
 /**
- * Terrain-name table (`RomInfo.map_terrain_name_pointer`).
- *
- * This is the table `MoveCostForm` uses to label its cost columns `J_0..J_64`,
- * i.e. it is keyed by the **same terrain id** the movement-cost table uses.
- * There are two on-disk shapes and they are not interchangeable:
- *
- *   - **multibyte (JP) releases** — 4 bytes per record, the record *is* a GBA
- *     pointer to a plain (non-Huffman) string. Terminator:
- *     `U.isPointerOrNULL(u32(addr + 0))` is false.
- *     See `MapTerrainNameForm.Init`.
- *   - **non-multibyte (English) releases** — 2 bytes per record holding a
- *     **text id**, decoded through the normal Huffman text table. Terminator:
- *     `u16(addr + 0) == 0`. See `MapTerrainNameEngForm.Init`, which
- *     `MapTerrainNameForm.MakeList/GetName` delegate to when
- *     `RomInfo.is_multibyte` is false.
- *
- * Reference: FEBuilderGBA/FEBuilderGBA/MapTerrainNameForm.cs, MapTerrainNameEngForm.cs,
- *            ROMFE8U.cs:79, ROMFE7U.cs:79, ROMFE8JP.cs:79, ROMFE7JP.cs:79,
- *            ROMFE6JP.cs:90.
+ * Terrain-name table (`RomInfo.map_terrain_name_pointer`), the table
+ * `MoveCostForm` labels its cost columns `J_0..J_64` from - keyed by the same
+ * terrain id the movement-cost table uses. Two non-interchangeable shapes:
+ *   - multibyte (JP): 4 bytes/record, the record IS a GBA pointer to a plain
+ *     (non-Huffman) string; terminator `!U.isPointerOrNULL(u32(addr))`.
+ *     `MapTerrainNameForm.Init`.
+ *   - non-multibyte (EN): 2 bytes/record, a text id decoded through the normal
+ *     Huffman table; terminator `u16(addr) == 0`. `MapTerrainNameEngForm.Init`,
+ *     which `MapTerrainNameForm.MakeList/GetName` delegate to when
+ *     `!RomInfo.is_multibyte`.
+ * Reference: `MapTerrainNameForm.cs`, `MapTerrainNameEngForm.cs`,
+ * `ROMFE8U/7U/8JP/7JP.cs:79`, `ROMFE6JP.cs:90`.
  */
 export interface TerrainNameLayout {
   /** Slot holding the table pointer. Dereference it before reading records. */
@@ -167,20 +132,20 @@ export interface TerrainNameLayout {
 }
 
 /**
- * Chapter ("map setting") layout. The chain this describes is:
+ * Chapter ("map setting") layout:
  *
  *     mapSetting slot -> map-setting table (one record per map id)
- *       record +eventPlistPos (u8) -> index into the event plist table
+ *       record +eventPlistPos (u8) -> event plist index
  *         eventSlot -> event plist table (4-byte pointer entries)
  *           entry -> event-condition table (20 pointers, see condSlots)
  *             slot 10/11 -> player placement block (unitDataSize-byte records)
  *             slot 18/19 -> START_EVENT / END_EVENT script
- *             slots 0..7  -> small condition records, each holding a script ptr
+ *             slots 0..7  -> small condition records, each with a script ptr
  *
- * Reference: ROMFE8U.cs:50-65, MapSettingForm.cs:261/421, MapPointerForm.cs:413.
+ * Reference: `ROMFE8U.cs:50-65`, `MapSettingForm.cs:261/421`,
+ * `MapPointerForm.cs:413`.
  */
 export interface MapLayout {
-  /** Slot holding the map-setting table pointer. */
   settingSlot: SlotRef;
   settingRecordSize: number;
   settingMaxCount: number;
@@ -197,63 +162,47 @@ export interface MapLayout {
   /** `eventunit_data_size`: bytes per unit-placement record. */
   unitDataSize: number;
   /**
-   * Byte offset of the per-chapter **difficulty adjustment** word, or `null`
-   * when it has not been transcribed for this game.
+   * Byte offset of the per-chapter difficulty-adjustment word, or `null` when
+   * not transcribed. A `u16` (`MapSettingDifficultyForm`):
+   *   bits 0..3  easy penalty   (enemy levels subtracted)
+   *   bits 4..7  hard boost     (enemy levels added)
+   *   bits 8..11 normal penalty
+   * `SetDifficultyValue` reads exactly those; `GetDiffcultyText` prints
+   * `Hard:+h Normal:-n Easy:-e`. The label carries
+   * `AccessibleDescription = "@MAPSETTING_HARD_BOOST"` (tooltip: enemy
+   * **level** bonus, not stats; `InputFormRef.cs:12129`). Measured on
+   * `dream-of-five.gba`: ch1 `0x10` (hard +1), ch3 `0x234` (hard +2,
+   * normal -3, easy -4).
    *
-   * A `u16` whose three nibbles are, per `MapSettingDifficultyForm`:
+   * It is the `W20` control in every map-setting form with this field.
+   * `RomToUI` derives the offset from the control name's digits via `U.atoi`,
+   * which is decimal (`W20` = `addr + 20` = `+0x14`); the leading letter picks
+   * the width (`W` = `u16`, `InputFormRef.cs:5154`). Label 難易度補正 is
+   * `J_20_DIFFCULTY` (`MapSettingForm.Designer.cs`) / `J_20`
+   * (`MapSettingFE7UForm`, `MapSettingFE7Form`); `check-upstream.ts` re-derives
+   * that pairing so the offset cannot rot.
    *
-   *     bits 0..3   easy  penalty   - enemy levels subtracted on "easy"
-   *     bits 4..7   hard  boost     + enemy levels added on "hard"
-   *     bits 8..11  normal penalty  - enemy levels subtracted on "normal"
-   *
-   * `MapSettingDifficultyForm.SetDifficultyValue` reads exactly those three
-   * fields, and `GetDiffcultyText` prints them as `Hard:+h Normal:-n Easy:-e`.
-   * The editor is reached from the label with
-   * `AccessibleDescription = "@MAPSETTING_HARD_BOOST"`, whose tooltip is
-   * 「難易度でハードを選んだ場合に、敵に与える強化ボーナス値を指定します。」
-   * (InputFormRef.cs:12129) - a **level** bonus applied to enemies, not a stat
-   * bonus. Confirmed on `dream-of-five.gba`: chapter 1 carries `0x10` (hard +1)
-   * and chapter 3 `0x234` (hard +2, normal -3, easy -4).
-   *
-   * Offset 20 is the `W20` numeric control in every map-setting form that has
-   * this field. `RomToUI` derives the offset from the digits in a control's
-   * name - through `U.atoi`, which is **decimal**, so `W20` is `addr + 20` =
-   * `+0x14` - and the leading letter picks the width (`W` = `u16`,
-   * `InputFormRef.cs:5154`). The label beside it is 難易度補正:
-   * `MapSettingForm.Designer.cs` `J_20_DIFFCULTY`, `MapSettingFE7UForm` and
-   * `MapSettingFE7Form` `J_20`. `check-upstream.ts` re-derives that pairing from
-   * the designer files, so this offset cannot silently rot.
-   *
-   * **FE6 is different, not merely unmeasured.** It has no 難易度補正 label and
-   * no `W20`; instead `MapSettingFE6Form` carries a lone `B19` (a `u8` at
-   * offset 19) captioned ハードブースト, sharing the `@MAPSETTING_HARD_BOOST`
-   * tooltip but with no easy/normal penalty nibbles. A single byte cannot hold
-   * this encoding, so `null` is the honest value for FE6 rather than 19.
+   * FE6 differs, not merely unmeasured: no 難易度補正 label and no `W20`, a
+   * lone `B19` (u8 at offset 19) captioned ハードブースト with the same
+   * `@MAPSETTING_HARD_BOOST` tooltip but no easy/normal nibbles. One byte
+   * cannot hold this encoding, so `null` is honest for FE6, not 19.
    */
   difficultyPos: number | null;
 }
 
 /**
- * A promotion item's target-class list.
- *
- * FE8 does **not** decide promotions from the item record alone. There are ten
- * `RomInfo.cc_item_*_pointer` slots, each holding a GBA pointer to a
- * `0`-terminated list of **class ids** - the classes that item can promote
- * (`ItemPromotionForm.Init`: block size 1, `u8(addr) != 0`;
- * `ITEM_LIST_SelectedIndexChanged` swaps the list per item).
- *
- * Which item uses which list is keyed by the item's `+30` byte - its
- * **use-effect code** - not by item id: `ItemForm.B30_ValueChanged` calls
- * `IsPromotionItemFE8(B30.Value)`, whose accepted set is exactly
- * `{0x19..0x1D} U {0x2D} U {0x2F..0x32}` (ItemForm.cs:954). That is the same
- * ten codes the `item_staff_use_effect_*` table names (英雄の証, 騎士の勲章,
- * オリオンの矢, 天空のムチ, 導きの指輪, マスタープルフ, ダミー, 覇者の証,
- * 月の腕輪, 太陽の腕輪), so the pairing is effect code -> slot, and an item id
- * is irrelevant (a hack renumbers items freely).
- *
- * Verified on `dream-of-five.gba`: the item named `Crusader's Sigil` has
- * `+30 == 0x1A`, and slot `0x293A0` resolves to the single class `1`
- * (`Ironclad`); `Master Seal` with `+30 == 0x2D` resolves to 31 classes.
+ * A promotion item's target-class list. FE8 does not decide promotions from the
+ * item record alone: ten `RomInfo.cc_item_*_pointer` slots each hold a GBA
+ * pointer to a 0-terminated list of class ids (`ItemPromotionForm.Init`: block
+ * size 1, `u8(addr) != 0`; `ITEM_LIST_SelectedIndexChanged` swaps per item).
+ * The item's `+30` use-effect code - not its id - picks the list:
+ * `ItemForm.B30_ValueChanged` calls `IsPromotionItemFE8`, whose set is exactly
+ * `{0x19..0x1D} U {0x2D} U {0x2F..0x32}` (`ItemForm.cs:954`), the same ten
+ * codes `item_staff_use_effect_*` names. So the pairing is effect code -> slot;
+ * item ids are irrelevant (hacks renumber freely).
+ * Measured on `dream-of-five.gba`: `Crusader's Sigil` (`+30 == 0x1A`) -> slot
+ * `0x293A0` -> class `1` (`Ironclad`); `Master Seal` (`+30 == 0x2D`) -> 31
+ * classes.
  */
 export interface PromotionItemLayout {
   /** Slot holding the GBA pointer to this item's class list. */
@@ -265,31 +214,28 @@ export interface PromotionItemLayout {
 }
 
 /**
- * Forced-deployment ("強制出撃") table.
- *
- * This is the list the game consults through `IsCharacterForceDeployed`
- * (`0x080953F0` in FE8U, which tail-calls `IsCharacterForceDeployed_` at
- * `0x08084800`). Disassembling the inner function gives the record layout and
- * the two filters, byte for byte:
+ * Forced-deployment (強制出撃) table, consulted through
+ * `IsCharacterForceDeployed` (`0x080953F0` FE8U, tail-calls
+ * `IsCharacterForceDeployed_` at `0x08084800`). Disassembly of the inner
+ * function gives the layout and both filters:
  *
  * ```asm
  * ldrh r0, [r2]        ; +0 unit id
- * cmp  r0, 0xFFFF      ; -> end of table
+ * cmp  r0, 0xFFFF      ; end of table
  * ldrb r0, [r2, #2]    ; +2 route filter
- * cmp  r0, #0xFF       ; 0xFF = "any route"
- * ldrb r1, [r3, #0x1b] ; else must equal ChapterData+0x1B (編指定)
+ * cmp  r0, #0xFF       ; 0xFF = any route
+ * ldrb r1, [r3, #0x1b] ; else equal ChapterData+0x1B (編指定)
  * ldrb r0, [r2, #3]    ; +3 map filter
- * cmp  r0, #0xFF       ; 0xFF = "any map"
- * ldrsb r0, [r3, #0x0e]; else must equal ChapterData+0x0E (current map id)
+ * cmp  r0, #0xFF       ; 0xFF = any map
+ * ldrsb r0, [r3, #0x0e]; else equal ChapterData+0x0E (current map id)
  * ldrh r0, [r2]        ; then the unit id must match
  * ```
  *
- * The map id is a **map setting index**, which is exactly what
- * `MapSettingForm.GetMapNameAndANYFF` is given in `EventForceSortieForm`.
- *
+ * The map id is a map-setting index, which is what
+ * `MapSettingForm.GetMapNameAndANYFF` receives in `EventForceSortieForm`.
  * Reference: `ROMFE8U.cs:95 event_force_sortie_pointer = 0x8483C`,
- *            `EventForceSortieForm.cs` (record size 4, terminator `u16 == 0xFFFF`),
- *            `MainFormUtil.cs:2526` ("必ず出撃しなければいけないユニットを設定します。").
+ * `EventForceSortieForm.cs` (record size 4, terminator `u16 == 0xFFFF`),
+ * `MainFormUtil.cs:2526`.
  */
 export interface ForceSortieLayout {
   /** Slot holding the table pointer. Dereference once before reading records. */
@@ -403,9 +349,8 @@ const FE8U: GameLayout = {
   ],
   forceSortie: { slot: 0x8483c, recordSize: 4, termination: "terminator" },
   item: {
-    // `U.FindROMPointer(rom, addr => rom.u32(0xC) == 0, candidates)`.
-    // All eight candidates resolve to the same table in this ROM, but the
-    // search is kept so other FE8 revisions still work.
+    // `U.FindROMPointer(rom, addr => rom.u32(0xC) == 0, candidates)`; all eight
+    // candidates resolve here, search kept for other FE8 revisions.
     slot: {
       kind: "search",
       checkPointer: 0x0c,
@@ -462,9 +407,8 @@ const FE8J: GameLayout = {
   },
   support: {
     unitPointer: 0x8582e8,
-    // Both zero until `scripts/check-upstream.ts` caught it: ROMFE8JP.cs sets
-    // them, the transcription just never carried them over. Nothing reads them
-    // while FE8J is unsupported, which is exactly how it stayed wrong.
+    // From `ROMFE8JP.cs` (never carried over; nothing reads them while FE8J is
+    // unsupported).
     talkPointer: 0x086a50,
     attributePointer: 0x284c8,
   },
@@ -634,16 +578,10 @@ export function getLayout(version: GameVersion): GameLayout {
 }
 
 /**
- * Port of `U.FindROMPointer(rom, checkPointer, pointers)` and
- * `U.FindROMPointer(rom, func, pointers)` (U.cs:7667 / 7705).
- *
- * With `checkBelow` unset the predicate is "the probe is a safe pointer"
- * (the 2-argument overload). With `checkBelow` set it is "the probe is a
- * number below that limit" (the `Func<uint,bool>` overload).
- *
- * Both overloads fall back to `FindROMPointer(rom, pointers)`, which returns
- * the first candidate holding *any* safe pointer, and finally to
- * `candidates[0]`. All three steps are reproduced here.
+ * Port of `U.FindROMPointer`'s two overloads (U.cs:7667 / 7705). Predicate:
+ * `checkBelow` set -> probe < limit; `checkEqual` set -> probe == value;
+ * otherwise probe must be a safe pointer. Falls back to any candidate holding a
+ * safe pointer, then `candidates[0]`.
  */
 export function resolveTableSlot(rom: RomBuffer, ref: SlotRef): number {
   if (ref.kind === "fixed") {

@@ -1,17 +1,11 @@
 /**
- * Binary reader for a GBA ROM, mirroring FEBuilderGBA's `ROM` + `U` helpers.
- *
- * Two coordinate systems are in play and mixing them up is the single most
- * common source of bugs in this codebase:
- *
- *   - **file offset** — an index into the ROM byte array (e.g. 0x803D64)
- *   - **GBA address** — a pointer value stored in the ROM (0x08xxxxxx)
- *
- * `u8/u16/u32` take a *file offset*. `p32/p32p` read a *GBA address* out of the
- * ROM and hand back a *file offset*.
- *
- * Reference: FEBuilderGBA/FEBuilderGBA/Rom.cs (`u8`, `u16`, `u32`, `p32`, `p32p`),
- *            FEBuilderGBA/FEBuilderGBA/U.cs  (`toOffset`, `isPointer`, `isSafetyOffset`).
+ * Binary reader for a GBA ROM, mirroring FEBuilderGBA's `ROM`/`U` helpers.
+ * Mixing the two coordinate systems is the most common bug source here:
+ *   - file offset - an index into the ROM byte array (e.g. 0x803D64);
+ *   - GBA address - a pointer value stored in the ROM (0x08xxxxxx).
+ * `u8/u16/u32` take a file offset; `p32/p32p` read a GBA address and return a
+ * file offset. Reference: `Rom.cs` (`u8`/`u16`/`u32`/`p32`/`p32p`), `U.cs`
+ * (`toOffset`/`isPointer`/`isSafetyOffset`).
  */
 
 import { hex } from "../format.ts";

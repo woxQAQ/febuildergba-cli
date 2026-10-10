@@ -1,36 +1,25 @@
 /**
- * Skill-system detection.
+ * Skill-system detection: port of `PatchUtil.SearchSkillSystemLow`
+ * (PatchUtil.cs:180). FEBuilderGBA recognises six families by a fixed signature
+ * at a fixed offset, gated on version:
+ *   yugudora     FE8J  0x0EE594  {4B FA 2F 59}                        FE8N custom
+ *   FE8N         FE8J  0x089268  {00 4B 9F 46}                        FE8N
+ *   midori       FE8J  0xFE58E0  {05 1C 00 F0 25 F8 01 29 04 D0 ...}  early custom
+ *   SkillSystem  FE8U  0x02ACF8  {70 47}                              FE8U patch
  *
- * Port of `PatchUtil.SearchSkillSystemLow` (PatchUtil.cs:180).
+ * Only `SkillSystem` is reachable: the three FE8J ones need Shift-JIS text
+ * (`supported: false` in `data/layouts.ts`), so `loadRom` refuses those ROMs
+ * first. They stay in the table so the port does not diverge from the reference.
  *
- * FEBuilderGBA recognises six skill-system patch families, each by a fixed
- * byte signature at a fixed ROM offset, gated on the game version:
+ * Deliberate gap: upstream refines `FE8N` into `ver2`/`ver3` by searching skill
+ * icon pointer runs in `0xB00000..0xC00000`, which needs FE8J glyph tables, so
+ * `FE8N` is reported as itself until FE8J lands.
  *
- *   yugudora      FE8J  0x0EE594  {4B FA 2F 59}                        FE8N custom
- *   FE8N          FE8J  0x089268  {00 4B 9F 46}                        FE8N
- *   midori        FE8J  0xFE58E0  {05 1C 00 F0 25 F8 01 29 04 D0 ...}  early custom
- *   SkillSystem   FE8U  0x02ACF8  {70 47}                              FE8U patch
- *
- * **Only `SkillSystem` is reachable here.** The other three are FE8J, and
- * FE8J is `supported: false` in `data/layouts.ts` (Shift-JIS text decoding is
- * unimplemented), so `loadRom` refuses such a ROM before this ever runs. They
- * are kept in the table because dropping them would make the port silently
- * diverge from the reference - when FE8J lands, the table is already right.
- *
- * One deliberate gap: upstream refines `FE8N` into `FE8N_ver2` / `FE8N_ver3`
- * by searching for skill-icon pointer runs in `0xB00000..0xC00000`
- * (`SkillConfigFE8NVer2SkillForm.IsFE8NVer2` and its ver3 twin). Those
- * searches need the FE8J skill glyph tables, so the refinement is dead code
- * until FE8J is supported; `FE8N` is reported as itself, not mislabelled.
- *
- * ## What this answers, and what it does not
- *
- * Detection says *whether* a ROM carries a skill system and *which* one.
- * {@link resolveSkillPointers} then locates the five per-variant tables
- * (`ASSIGN`/`LEVELUP`/`ICON`/`TEXT`/`ANIME`) by the same signature search
- * upstream uses, and `tables/skills.ts` decodes them. What is still missing is
- * the FE8J-only variants' own table shapes and the `FE8N` sub-version
- * refinement (see above), plus the config-file skill-name fallback.
+ * Detection answers *whether* and *which*; {@link resolveSkillPointers} locates
+ * the five per-variant tables (`ASSIGN`/`LEVELUP`/`ICON`/`TEXT`/`ANIME`) by the
+ * same search, and `tables/skills.ts` decodes them. Still missing: the FE8J-only
+ * table shapes, the `FE8N` sub-version refinement, and the config-file
+ * skill-name fallback.
  */
 
 import type { RomBuffer } from "./RomBuffer.ts";

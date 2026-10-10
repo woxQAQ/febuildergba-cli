@@ -1,21 +1,14 @@
 /**
  * 生成 mgba/units.lua —— 给 mGBA 凹点助手用的「角色 id -> 名字」表。
  *
- * 用法：node scripts/emit-mgba-units.ts [db 路径]
- *   默认 cli/out/dream-of-five.db
+ * 用法：node scripts/emit-mgba-units.ts [db 路径]（默认 cli/out/dream-of-five.db）
  *
- * 为什么需要它：Lua 脚本运行时能从 ROM 里直接读到角色数据指针、成长率、
- * 职业上限，唯独**名字**是 u16 文本 id，要过 Huffman 解码才出得来 —— 那套
- * 逻辑已经在 cli/src/text/huffman.ts 里实现过了，没必要在 Lua 里再写一遍。
- * 所以这里把 id -> 名字 单独导出成一张小表。
- *
- * 输入是 `fe-rom extract` 产出的 SQLite db：
- *
+ * Lua 运行时能从 ROM 直接读到角色指针、成长率、职业上限，唯独名字是 u16 文本
+ * id，要过 Huffman 解码；那套逻辑已在 cli/src/text/huffman.ts，故这里只把
+ * id -> 名字导成一张小表。输入是 `fe-rom extract` 产出的 SQLite db：
  *     node src/index.ts extract <rom.gba> --out out/<stem>.db
- *
- * 直接查 units 表全量（含敌人和泛用模板 —— Lua 侧要给他们也显示名字，
- * 所以不能查 roster 视图），不重新解析 ROM。列名显式写在 SQL 里，
- * schema 变了这里会立刻报错，而不是拼出一张半空的 Lua 表。
+ * 查 units 全量（含敌人和泛用模板，不能查 roster），不重新解析 ROM；列名显式
+ * 写在 SQL 里，schema 变了会立刻报错。
  */
 
 import { writeFileSync } from "node:fs";
@@ -34,9 +27,6 @@ const argv = process.argv.slice(2);
 const dbPath = resolve(argv[0] ?? join(HERE, "..", "out", "dream-of-five.db"));
 
 const handle = openDb(dbPath, { readOnly: true });
-// 全量（含敌人和泛用模板 —— Lua 侧要给他们也显示名字，所以不能查 roster
-// 视图）。列名显式写在查询里，schema 变了这里会立刻报错，而不是拼出一张
-// 半空的 Lua 表。
 const rows = await handle.db
   .select({ id: units.id, name: units.name })
   .from(units)

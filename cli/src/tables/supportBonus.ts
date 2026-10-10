@@ -1,36 +1,18 @@
 /**
  * Support affinities and the support-bonus table.
  *
- * Two separate things live here:
+ * 1. Affinity names: `InputFormRef.GetAttributeName()` is a hardcoded `switch`,
+ *    authoritative: 1 炎, 2 雷, 3 風, 4 氷, 5 闇, 6 光, 7 理. Each unit carries
+ *    one at unit-record `+9` (`Unit.attribute`).
+ * 2. Support-bonus table at `RomInfo.support_attribute_pointer`, 8 bytes/record
+ *    (`SupportAttributeForm.cs`), read while `u8(addr) != 0`: byte 0 is the
+ *    affinity id, the table ends at the first zero record.
  *
- * 1. **Affinity names** - `InputFormRef.GetAttributeName()` in the reference is
- *    a plain hardcoded `switch`, so these are authoritative:
- *    1 = 炎 (Fire), 2 = 雷 (Thunder), 3 = 風 (Wind), 4 = 氷 (Ice),
- *    5 = 闇 (Dark), 6 = 光 (Light), 7 = 理 (Anima).
- *
- *    Each *unit* carries one at unit-record `+9` (read as `Unit.attribute`).
- *
- * 2. **The support-bonus table** at `RomInfo.support_attribute_pointer`,
- *    8 bytes per record (`SupportAttributeForm.cs`). The read-count predicate is
- *    `u8(addr) != 0`, i.e. the first byte is the affinity id and the table ends
- *    at the first zero record.
- *
- * ## The scaling across C/B/A - recovered from the ROM's own code
- *
- * The reference ships only an *editor* for this table, so for a long time the
- * rank scaling was listed here as "not documented; do not assume". That was the
- * wrong conclusion: the game itself implements it, and the ROM ships a symbol
- * map that names the functions.
- *
- * `config/data/asmmap_FE8.txt` is a vanilla FE8U symbol map (the fixture is a
- * hack of FE8U that kept the vanilla code layout), and it names three functions
- * around the table:
- *
- *     0802852C  GetSupportBonusEntryPtr                 {U}
- *     08028550  StoreAddedAffinityBonusesForSupportLevel {U}
- *     080285B0  GetUnitSupportBonuses                    {U}
- *
- * Disassembling them gives the whole mechanic:
+ * The C/B/A scaling is in the ROM's own code. `config/data/asmmap_FE8.txt`
+ * (vanilla FE8U symbols; the fixture kept vanilla code) names:
+ *     0802852C GetSupportBonusEntryPtr
+ *     08028550 StoreAddedAffinityBonusesForSupportLevel
+ *     080285B0 GetUnitSupportBonuses
  *
  * ```asm
  * GetSupportBonusEntryPtr(affinity):
@@ -81,33 +63,20 @@
  *     bonus[stat] = floor( SUM over partners (  entry[myAffinity][stat] * L(me->p)
  *                                             + entry[pAffinity][stat] * L(p->me) ) / 2 )
  *
- * The same code is published as `src/bmreliance.c` + `include/bmreliance.h` in
- * the `FireEmblemUniverse/fireemblem8u` decomp, which names every field and
- * every constant. That matters because the *byte layout* alone does not say
- * which of offsets 1..6 is "avoid" and which is "crit avoid" - the decomp's
- * `struct SupportBonuses` does, and its order is
- *
+ * The same code is `src/bmreliance.c` in `FireEmblemUniverse/fireemblem8u`; its
+ * `struct SupportBonuses` names what the byte layout cannot:
  *     +00 affinity, +01 bonusAttack, +02 bonusDefense, +03 bonusHit,
  *     +04 bonusAvoid, +05 bonusCrit, +06 bonusDodge
+ * agreeing with the reference labels (`J_4` 回避 next to `B4`, `J_6` 必殺回避
+ * next to `B6`) and pinning `SUPPORT_EXP_C/B/A = 81/161/241`.
  *
- * which agrees with the reference's own designer labels (`J_4` 回避 next to
- * `B4`, `J_6` 必殺回避 next to `B6`). The header also pins the thresholds as
- * `SUPPORT_EXP_C = 81 / B = 161 / A = 241` and the levels as
- * `SUPPORT_LEVEL_NONE/C/B/A = 0/1/2/3`, which is what makes the `muls` above
- * the rank multiplier rather than a plain index.
+ * Three easy mistakes:
+ * 1. The stored bytes are HALF-points (`5`, not `2.5`); the final `>>1` gives the
+ *    familiar 2/5/7 for C/B/A. Reading them as final doubles every value.
+ * 2. Both affinities contribute: own row *plus* partner's.
+ * 3. The halving is once over the total: `floor(sum/2)`, not `sum(floor(x/2))`.
  *
- * Three consequences that are easy to get wrong:
- *
- * 1. **The stored bytes are HALF-points.** The table holds `5`, not `2.5`, and
- *    the final `>>1` turns it into the familiar 2 / 5 / 7 for C / B / A. Reading
- *    the bytes as final bonuses makes every value look 2x too large.
- * 2. **Both affinities contribute.** A support's bonus is your affinity's row
- *    *plus* your partner's row - not just yours.
- * 3. **The halving happens once, over the total.** It is `floor(sum/2)`, not
- *    `sum(floor(x/2))`. With several adjacent partners the two differ.
- *
- * Byte 7 is genuinely unused: the game's store loop touches offsets 1..6 only,
- * which is why the reference labels it `??`. It is still surfaced as `unknown7`
+ * Byte 7 is unused (the store loop touches 1..6 only) but surfaced as `unknown7`
  * because it is on disk.
  */
 

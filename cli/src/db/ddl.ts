@@ -1,15 +1,9 @@
 /**
- * DDL generation from the drizzle schema.
- *
- * The drizzle table definitions in `schema.ts` are the source of truth; this
- * derives the CREATE TABLE statements from them, so there is no second,
- * hand-written SQL copy to drift away from. It deliberately covers only the
- * subset the extract schema uses: integer/text/real columns, NOT NULL,
- * primary keys (inline or composite) and single-column foreign keys. A
- * schema feature outside that subset fails here, loudly, at extract time.
- *
- * The `roster` view stays as raw SQL - drizzle's view API would not make one
- * SELECT more readable.
+ * DDL generation from the drizzle schema (`schema.ts` is the source of truth;
+ * no second, hand-written SQL copy). Covers only what the extract schema uses -
+ * integer/text/real columns, NOT NULL, inline/composite primary keys,
+ * single-column foreign keys; anything else fails here, loudly, at extract time.
+ * The `roster` view stays raw SQL.
  */
 
 import { getTableConfig } from "drizzle-orm/sqlite-core";

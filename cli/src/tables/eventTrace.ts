@@ -1,31 +1,24 @@
 /**
  * The raw event layer: chapter condition slots, event scripts and their
- * disassembled instruction streams.
- *
- * This module is the *evidence* the walk-based derivations are computed
- * from. It answers "what does the ROM say" - which slot of which chapter
- * points at which script, what instructions each script contains, what each
- * instruction's arguments are - and nothing else. Control-flow questions
- * (which instructions a chapter actually reaches through CALLs, which loads
- * count as recruits) are answered by SQL views over this layer, not here.
+ * disassembled instruction streams. This is the *evidence* the walk-based
+ * derivations compute from: which slot of which chapter points at which script,
+ * what instructions each contains, what their arguments are - nothing else.
+ * Control-flow questions (CALL reach, which loads count as recruits) are SQL
+ * views over this layer, not here.
  *
  * Extraction rules, all mechanical:
- *
- *   - Scripts are identified by start offset internally and decoded **once**;
- *     a helper shared via CALL gets one row set, referenced by many.
- *     Decoding is linear from the start, stopping at an exit opcode (the
- *     reference's branch-aware `isExitCode`), after more than 10 consecutive
- *     unknown instructions, or at a hard budget. UNKNOWN instructions are
- *     stored, not skipped - their size is a guess (`UNKNOWN_SIZE`), which is
- *     why the script row records where and why the decode stopped.
- *   - Slot iteration follows the reference's `EventCondForm.MakeUnitPointer`:
- *     TURN/TALK/OBJECT/ALWAYS walk a
- *     table of small records with a script pointer at +4, TUTORIAL walks a
- *     pointer array, START_EVENT/END_EVENT point straight at a script, and
- *     the rest (PLAYER_UNIT / ENEMY_UNIT / TRAP / FREEMAP_*) are not scripts.
- *   - Unit blocks pointed at by `POINTER_UNIT` arguments are decoded with the
- *     same `readPlacements` reader as the initial placement blocks; they are
- *     the same record format.
+ *   - Scripts are identified by start offset and decoded **once**; a CALL-shared
+ *     helper gets one row set. Decoding is linear from the start, stopping at an
+ *     exit opcode (the reference's branch-aware `isExitCode`), after >10
+ *     consecutive unknown instructions, or at a hard budget. UNKNOWN
+ *     instructions are stored, not skipped - their size is a guess
+ *     (`UNKNOWN_SIZE`), so the script row records where and why it stopped.
+ *   - Slot iteration follows `EventCondForm.MakeUnitPointer`: TURN/TALK/OBJECT/
+ *     ALWAYS walk small records with a script pointer at +4, TUTORIAL a pointer
+ *     array, START_EVENT/END_EVENT point straight at a script; the rest
+ *     (PLAYER_UNIT / ENEMY_UNIT / TRAP / FREEMAP_*) are not scripts.
+ *   - `POINTER_UNIT` blocks use the same `readPlacements` reader as the initial
+ *     placement blocks (same record format).
  */
 
 import type { RomBuffer } from "../rom/RomBuffer.ts";
@@ -69,11 +62,9 @@ export interface TracedInstruction {
 }
 
 /**
- * ターン前指定 (`+10`): which side's turn the event fires on.
- *
- * Upstream knows exactly three encodings - `EventCondForm.DrawEventListTurn`
- * tests `0x00`, `0x40`, `0x80` and prints 自ターン / 友軍ターン / 敵軍ターン -
- * so anything else is reported as `null` rather than guessed at.
+ * ターン前指定 (`+10`): which side's turn fires the event. Upstream knows exactly
+ * three encodings (`EventCondForm.DrawEventListTurn` tests `0x00`/`0x40`/`0x80`:
+ * 自ターン / 友軍ターン / 敵軍ターン), so anything else is `null`.
  */
 export type TurnPhase = "player" | "ally" | "enemy";
 
@@ -96,13 +87,10 @@ export interface ChapterEventSlot {
   position: number;
   scriptId: number | null;
   /**
-   * `TURN` only; `null` for every other slot kind, whose records carry no turn
-   * fields.
-   *
-   * Upstream prints this as a *range* only when `start < end` and as a single
-   * turn otherwise (`EventCondForm.DrawEventListTurn`), i.e. `end <= start`
-   * means "turn `start`, once". That is the game's own condition, so the two
-   * bytes are kept verbatim rather than normalised into one number.
+   * `TURN` only; `null` otherwise (other slot kinds carry no turn fields).
+   * `end <= start` means "turn `start`, once" - upstream prints a range only when
+   * `start < end` (`EventCondForm.DrawEventListTurn`), the game's own condition,
+   * so both bytes are kept verbatim.
    */
   turn: TurnWindow | null;
   /** `TURN` only: 達成フラグ (`+2`), the flag set once the event has run. */
@@ -122,27 +110,19 @@ export interface TracedBlockUnit {
   x: number;
   y: number;
   /**
-   * `+12..15`: the unit's four starting items, `0` = empty slot.
-   *
-   * The event unit block is **the same record** the deployment blocks use -
-   * `EventUnitForm.Designer.cs` labels `B12..B15` 所持品1..4 and
-   * `DrawItemIconOnly` reads them at `addr + 12 + n` - so the event layer is
-   * the only place an *enemy's* equipment lives. The deployment blocks hold
-   * player/ally units only (see `docs/chapters-and-events.md` §3.19).
-   *
-   * Position 0 is not necessarily the equipped weapon: GBA FE picks the
-   * equipped weapon at battle time from what the unit can use, there is no
-   * equip slot in the record. A consumer that wants "attack power" has to
-   * join `items` and choose.
+   * `+12..15`: the four starting items, `0` = empty. The event unit block is the
+   * same record the deployment blocks use (`EventUnitForm.Designer.cs` labels
+   * `B12..B15` 所持品1..4; `DrawItemIconOnly` reads `addr + 12 + n`), so this is
+   * the only place an *enemy's* equipment lives. Slot 0 is not a declared equip
+   * slot - GBA FE picks the weapon at battle time - so "attack power" means
+   * joining `items` and choosing.
    */
   items: number[];
   /**
-   * Decoded `ext` of the packed coordinate (`+4` bits 12-14), FE8 only,
-   * `null` on FE6/FE7 whose coordinate word is a plain two-byte x/y.
-   *
-   * Bit `0x2` is アイテムドロップ (`EventUnitForm.UpdateItemDropLabel`,
-   * `EventUnitForm.cs:2575`): the unit drops its item on death. The other
-   * bits are the pre-placement animation/pose selector.
+   * Decoded `ext` of the packed coordinate (`+4` bits 12-14); FE8 only (`null`
+   * on FE6/FE7, whose coordinate word is a plain two-byte x/y). Bit `0x2` is
+   * アイテムドロップ (drops its item on death; `EventUnitForm.cs:2575`); the rest
+   * is the pre-placement animation/pose selector.
    */
   ext: number | null;
 }

@@ -1,18 +1,11 @@
 /**
- * The forced-deployment ("強制出撃") table.
+ * The forced-deployment (強制出撃) table: a per-map list of units the prep screen
+ * will not let you bench (`EventForceSortieForm` tooltip
+ * 「必ず出撃しなければいけないユニットを設定します。」).
  *
- * FEBuilderGBA ships an editor for this (`EventForceSortieForm`) whose tooltip
- * reads 「必ず出撃しなければいけないユニットを設定します。」 - "set the units
- * that must always be deployed". That is the whole feature: a per-map list of
- * units the prep screen will not let you bench.
- *
- * ## The record layout, recovered from the ROM's own code
- *
- * The reference's `Init` only exposes two of the three fields
- * (`u16(addr)` and `u8(addr + 3)`), so the middle byte had to come from the
- * game itself. `IsCharacterForceDeployed` (`0x080953F0`) tail-calls
- * `IsCharacterForceDeployed_` (`0x08084800`), and disassembling the latter
- * gives every byte and both filters:
+ * The reference's `Init` exposes only `u16(addr)` and `u8(addr + 3)`, so the
+ * middle byte comes from the ROM: `IsCharacterForceDeployed` (`0x080953F0`)
+ * tail-calls `IsCharacterForceDeployed_` (`0x08084800`):
  *
  * ```asm
  * 08084802  lsls r0, r0, #0x10
@@ -42,25 +35,18 @@
  * 08084836  movs r0, #1              ;     forced
  * ```
  *
- * So a record is four bytes - `u16 unitId`, `u8 route`, `u8 mapId` - and a
- * unit is forced when **all three** of its filters match. `0xFF` in either
- * filter byte means "no constraint".
+ * A record is `u16 unitId`, `u8 route`, `u8 mapId`; a unit is forced when all
+ * three match, `0xFF` in either filter meaning "no constraint". The map id is a
+ * **map-setting index**, not a chapter number - what `EventForceSortieForm`'s
+ * label passes to `MapSettingForm.GetMapNameAndANYFF`.
  *
- * The map id is a **map-setting index**, not a chapter number: that is what
- * `EventForceSortieForm`'s own label passes to
- * `MapSettingForm.GetMapNameAndANYFF`.
+ * `ChapterData + 0x1B` is 編指定 (`asmmap_FE8.txt`: `序盤=0x1, A編=0x2, F編=0x3`).
+ * In the Dream of Five fixture only `0xFF`/`0x01`/`0x02` occur, and the `0x01`
+ * records point at maps on *both* story routes, so the byte is stored raw; the
+ * vanilla labels are reader hints, not a mapping.
  *
- * ## The route byte
- *
- * `ChapterData + 0x1B` is the vanilla 編指定 field, which `asmmap_FE8.txt`
- * documents as `序盤=0x1, A編=0x2, F編=0x3`. In the Dream of Five fixture only
- * `0xFF`, `0x01` and `0x02` occur, and the `0x01` records point at maps on
- * *both* story routes - so the label cannot be taken to mean "pre-route-split".
- * The db therefore stores the raw byte; the vanilla labels (`序盤=0x1, A編=0x2,
- * F編=0x3`) are hints for the reader, not a mapping to apply.
- *
- * Reference: ROMFE8U.cs:95, EventForceSortieForm.cs, MainFormUtil.cs:2526,
- *            asmmap_FE8.txt (`IsCharacterForceDeployed` / `@ChapterData@1B`).
+ * Reference: `ROMFE8U.cs:95`, `EventForceSortieForm.cs`, `MainFormUtil.cs:2526`,
+ * `asmmap_FE8.txt`.
  */
 
 import type { ForceSortieLayout, GameLayout } from "../data/layouts.ts";
