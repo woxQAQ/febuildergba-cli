@@ -212,13 +212,6 @@ async function insertClasses(db: ExtractDb, rom: LoadedRom): Promise<void> {
     }
   }
 
-  for (const [classId, role] of rom.classRoles) {
-    await db.insert(t.derivedClassRoles).values({
-      classId,
-      mobility: role.mobility,
-      mobilitySource: role.mobilitySource,
-    });
-  }
 }
 
 async function insertSupports(db: ExtractDb, rom: LoadedRom): Promise<void> {
@@ -406,7 +399,6 @@ async function insertEventTrace(db: ExtractDb, rom: LoadedRom): Promise<void> {
       seq: i.seq,
       opcode: i.opcode,
       category: i.category,
-      bytesHex: i.bytesHex,
       loadKind: i.loadKind,
       blockId: i.blockId,
       callScriptId: i.callScriptId,
@@ -422,7 +414,6 @@ async function insertEventTrace(db: ExtractDb, rom: LoadedRom): Promise<void> {
       slotIndex: slot.slotIndex,
       slotKind: slot.slotKind,
       position: slot.position,
-      dataHex: slot.dataHex,
       scriptId: slot.scriptId,
     });
   }

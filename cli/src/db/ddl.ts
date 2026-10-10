@@ -152,9 +152,31 @@ FROM (SELECT *, ROW_NUMBER() OVER (PARTITION BY unit_id ORDER BY rank, map_index
       FROM ranked)
 WHERE rn = 1`;
 
+/**
+ * Mobility per class, from the ability flags (`classes.mount`) with the two
+ * mechanical flier cross-checks (uniform movement costs / total terrain-bonus
+ * immunity) catching the airborne monster classes that carry no mount flag.
+ * When config/data is absent every mount is NULL and non-fliers read as
+ * 'normal' - the costs-based baseline heuristic that would guess further is
+ * an analysis convention and stays in the parser, not in the db.
+ */
+export const CLASS_ROLES_VIEW_SQL = `
+CREATE VIEW class_roles AS
+SELECT id AS class_id,
+  CASE
+    WHEN mount IN ('wyvern', 'pegasus') THEN 'flying'
+    WHEN mount = 'horse' THEN 'mounted'
+    WHEN mount = 'armour' THEN 'armour'
+    WHEN flying = 1 OR terrain_bonus_immune = 1 THEN 'flying'
+    ELSE 'normal'
+  END AS mobility
+FROM classes
+WHERE is_empty = 0`;
+
 /** Every view, in creation order. */
 export const VIEWS = [
   ROSTER_VIEW_SQL,
+  CLASS_ROLES_VIEW_SQL,
   SUPPORT_EDGES_VIEW_SQL,
   CHAPTER_TRANSITIONS_VIEW_SQL,
   CHAPTER_RECRUITS_VIEW_SQL,

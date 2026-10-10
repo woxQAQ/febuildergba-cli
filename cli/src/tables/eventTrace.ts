@@ -51,8 +51,6 @@ export interface TracedInstruction {
   opcode: string;
   /** The opcode table's `{CATEGORY}` tokens. */
   category: string;
-  /** Raw instruction bytes, hex - the ground truth behind every column here. */
-  bytesHex: string;
   /** Load classification of a POINTER_UNIT argument; NULL when not a load. */
   loadKind: "recruit" | "load" | "cutscene" | "other" | null;
   /** Unit block a POINTER_UNIT argument points at; NULL otherwise. */
@@ -76,8 +74,6 @@ export interface ChapterEventSlot {
   slotKind: string;
   /** Row number within a table-kind slot; 0 for direct slots. */
   position: number;
-  /** Raw record bytes, hex; "" for direct slots. */
-  dataHex: string;
   scriptId: number | null;
 }
 
@@ -106,8 +102,6 @@ export interface EventTrace {
 const MAX_CONSECUTIVE_UNKNOWNS = 10;
 /** Per-script instruction ceiling. */
 const MAX_SCRIPT_INSTRUCTIONS = 4000;
-
-const hex = (buf: Buffer): string => buf.toString("hex");
 
 export function extractEventTrace(
   rom: RomBuffer,
@@ -175,7 +169,6 @@ export function extractEventTrace(
       seq,
       opcode: mnemonic || code.script.description,
       category: code.script.category,
-      bytesHex: hex(code.bytes),
       loadKind: null,
       blockId: null,
       callScriptId: null,
@@ -260,13 +253,12 @@ export function extractEventTrace(
     if (map === null || chapter.condTableAddr === 0) continue;
     const isFe7 = layout.version === "FE7U" || layout.version === "FE7J";
 
-    const link = (slotIndex: number, slotKind: string, position: number, dataHex: string, scriptAddr: number): void => {
+    const link = (slotIndex: number, slotKind: string, position: number, scriptAddr: number): void => {
       trace.chapterSlots.push({
         mapIndex: chapter.index,
         slotIndex,
         slotKind,
         position,
-        dataHex,
         scriptId: scriptIdOf(scriptAddr),
       });
     };
@@ -282,10 +274,7 @@ export function extractEventTrace(
             const type = rom.u8(a);
             if (type === 0) break;
             const event = rom.p32(a + 4);
-            if (rom.isSafeOffset(event)) {
-              const size = isFe7 && type === 1 ? 12 : map.turnCondSize;
-              link(slot.index, slot.kind, pos, hex(Buffer.from(rom.bytes(a, size))), event);
-            }
+            if (rom.isSafeOffset(event)) link(slot.index, slot.kind, pos, event);
             // "信じられないがFE7は12バイトの短いターンイベントが存在する"
             if (isFe7 && type === 1) a -= map.turnCondSize - 12;
           }
@@ -297,7 +286,7 @@ export function extractEventTrace(
             if (rom.u8(a) === 0) break;
             const event = rom.p32(a + 4);
             if (rom.isSafeOffset(event)) {
-              link(slot.index, slot.kind, pos, hex(Buffer.from(rom.bytes(a, map.talkCondSize))), event);
+              link(slot.index, slot.kind, pos, event);
             }
           }
           break;
@@ -310,7 +299,7 @@ export function extractEventTrace(
             if (endOnU32 ? rom.u32(a) === 0 : rom.u8(a) === 0) break;
             const event = rom.p32(a + 4);
             if (rom.isSafeOffset(event)) {
-              link(slot.index, slot.kind, pos, hex(Buffer.from(rom.bytes(a, 12))), event);
+              link(slot.index, slot.kind, pos, event);
             }
           }
           break;
@@ -320,13 +309,13 @@ export function extractEventTrace(
             if (!rom.isSafeOffset(a + 4)) break;
             if (!RB.isPointer(rom.u32(a))) break;
             const event = rom.p32(a);
-            if (rom.isSafeOffset(event)) link(slot.index, slot.kind, pos, "", event);
+            if (rom.isSafeOffset(event)) link(slot.index, slot.kind, pos, event);
           }
           break;
         }
         case "START_EVENT":
         case "END_EVENT":
-          link(slot.index, slot.kind, 0, "", addr);
+          link(slot.index, slot.kind, 0, addr);
           break;
         default:
           break; // PLAYER_UNIT / ENEMY_UNIT / FREEMAP_* / TRAP: not scripts

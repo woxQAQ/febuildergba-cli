@@ -242,18 +242,7 @@ export const classTerrainBonuses = sqliteTable(
   (t) => [primaryKey({ columns: [t.classId, t.terrainId] })],
 );
 
-/**
- * Derived mobility profile; SQL cannot reproduce it (it needs the
- * infantry-baseline comparison across the whole class table). Weapon
- * usability, staff and magic access derive from `classes.wl_*` and are not
- * repeated here.
- */
-export const derivedClassRoles = sqliteTable("derived_class_roles", {
-  classId: integer("class_id").primaryKey(),
-  mobility: text("mobility", { enum: ["flying", "mounted", "armour", "normal"] }).notNull(),
-  /** "flags" when the ROM stated it, "costs" when we inferred it. */
-  mobilitySource: text("mobility_source", { enum: ["flags", "costs"] }).notNull(),
-});
+/** Mobility is the `class_roles` VIEW over classes.mount - see ddl.ts. */
 
 export const terrains = sqliteTable("terrains", {
   /** Terrain id 0..0x40; also the movement-cost index space. */
@@ -532,8 +521,6 @@ export const eventInstructions = sqliteTable(
     opcode: text("opcode").notNull(),
     /** The opcode table's {CATEGORY} tokens. */
     category: text("category").notNull(),
-    /** Raw instruction bytes, hex - the ground truth behind every column here. */
-    bytesHex: text("bytes_hex").notNull(),
     /** Load classification of a POINTER_UNIT argument; NULL when not a load. */
     loadKind: text("load_kind", { enum: ["recruit", "load", "cutscene", "other"] }),
     /** Unit block a POINTER_UNIT argument points at; NULL otherwise. */
@@ -564,8 +551,6 @@ export const chapterEventSlots = sqliteTable(
     slotKind: text("slot_kind").notNull(),
     /** Row number within a table-kind slot; 0 for direct (START/END) slots. */
     position: integer("position").notNull(),
-    /** Raw record bytes, hex; "" for direct slots. */
-    dataHex: text("data_hex").notNull(),
     scriptId: integer("script_id"),
   },
   (t) => [
@@ -667,7 +652,6 @@ export const TABLES = [
   loadBlocks,
   loadBlockUnits,
   // Materialized inference SQL cannot express - see the module doc.
-  derivedClassRoles,
   derivedPlayOrder,
   derivedEnemySamples,
 ] as const;
