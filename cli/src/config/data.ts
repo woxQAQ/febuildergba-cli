@@ -36,9 +36,8 @@
  * Language variants sit alongside each other as `<name>.<lang>.txt`
  * (`unitclass_checkbox_FE8.txt`, `.en.txt`, `.zh.txt`). The bare name is
  * Japanese. `U.ConfigDataFilename` (U.cs:3180) tries the caller's language,
- * then English, then the bare file - but the CLI's caller is a program, not a
- * person, and its output is read by an AI: so the default order here is
- * English, bare (Japanese), Chinese. Pass `--lang` to change it.
+ * then English, then the bare file; the default order here is English, bare
+ * (Japanese), Chinese. Pass `--lang` to change it.
  */
 
 import { existsSync, readFileSync } from "node:fs";
@@ -86,11 +85,9 @@ export const LANGUAGES: Readonly<Record<string, readonly string[]>> = {
 /**
  * Whether a `--lang` value is one this CLI knows.
  *
- * The single answer to "is this language real", because two places used to
- * decide it independently and could disagree: the CLI rejects an unknown value
- * with exit 2, while `loadRom` - also a library entry point, so it cannot
- * assume the CLI ran - warns and falls back. Same question, two answers; now
- * one predicate with two callers.
+ * The single answer to "is this language real": the CLI rejects an unknown
+ * value with exit 2, while `loadRom` - also a library entry point, so it
+ * cannot assume the CLI ran - warns and falls back.
  */
 export function isKnownLanguage(language: string): boolean {
   return Object.hasOwn(LANGUAGES, language);

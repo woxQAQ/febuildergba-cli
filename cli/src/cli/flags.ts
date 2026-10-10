@@ -24,10 +24,9 @@ export interface FlagSpec {
   readonly summary: string;
   /**
    * Commands that read this flag, by name. Omitted means "every command".
-   * Typed as `CommandName` so a misspelling is a compile error - as a plain
-   * string it made the flag silently unavailable to the command it was meant
-   * for, and nothing reported it. Order here is the order the flag appears in
-   * a command's help.
+   * Typed as `CommandName` so a misspelling is a compile error rather than a
+   * flag silently unavailable to the command it was meant for. Order here is
+   * the order the flag appears in a command's help.
    */
   readonly commands?: readonly CommandName[];
   /** Per-command clarification appended to `summary`, keyed by command name. */

@@ -33,12 +33,11 @@
  *      at extract time because the consumer cannot recompute it without the
  *      ROM and the parser. Treat it as a conclusion, not evidence.
  *
- * The walk-based derivations used to be `derived_*` tables too; with the
- * raw event layer (`event_scripts` / `event_instructions` /
- * `chapter_event_slots` / `load_blocks`) they are now views -
- * `chapter_transitions`, `chapter_recruits`, `chapter_recruit_units`,
- * `chapter_gold`, `chapter_item_gives`, `unit_joins`, `class_roles` - so
- * the evidence and the conclusions are both inspectable.
+ * The walk-based derivations - `chapter_transitions`, `chapter_recruits`,
+ * `chapter_recruit_units`, `chapter_gold`, `chapter_item_gives`,
+ * `unit_joins`, `class_roles` - are views over the raw event layer
+ * (`event_scripts` / `event_instructions` / `chapter_event_slots` /
+ * `load_blocks`), so the evidence and the conclusions are both inspectable.
  *
  * Conventions:
  *

@@ -3,14 +3,13 @@ import type { RomHandle } from "../load.ts";
 /**
  * Every command word, as a literal union.
  *
- * This is the single source of truth for "which commands exist", and it exists
- * so two things that used to be free strings become checked ones:
+ * This is the single source of truth for "which commands exist", so that two
+ * things are checked rather than free strings:
  *
- *   - `Command.name` - a command whose name is not in here is a typo, and now
- *     a compile error rather than a command the registry never matches.
+ *   - `Command.name` - a command whose name is not in here is a typo, and a
+ *     compile error rather than a command the registry never matches.
  *   - `FlagSpec.commands` / `FlagSpec.notes` - a misspelled command name in a
- *     flag declaration used to make that flag silently unavailable, with
- *     nothing anywhere reporting it.
+ *     flag declaration would make that flag silently unavailable.
  *
  * Adding a command: add the word here, then let `registry.ts` fail to compile
  * until you have registered it there too.

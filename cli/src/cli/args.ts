@@ -75,12 +75,9 @@ function firstUnknownOption(
  * `--lang`, a stray positional); the caller turns that into a message plus
  * exit code 2.
  *
- * There is exactly one parse here. The previous version ran `parseArgs` twice
- * and then hand-scanned argv to restore the strictness the first pass had to
- * give up, so "what does this argv mean" had two sources that disagreed: the
- * standard `--` terminator was reported as `unknown option "--"`, and the
- * value of `--out` was mistaken for a flag. One permissive parse plus a
- * membership check on its tokens removes the second source.
+ * One permissive parse plus a membership check on its tokens, so that the
+ * standard `--` terminator is not reported as an option and the value of
+ * `--out` is not mistaken for a flag.
  */
 export function parseArgv(argv: readonly string[]): ParsedArgv {
   const { values, positionals, tokens } = parseArgs({
@@ -101,9 +98,8 @@ export function parseArgv(argv: readonly string[]): ParsedArgv {
     if (bad !== null) throw new Error(`unknown option "${bad}" for "${resolved.name}"`);
 
     // A command that documents no trailing positionals must not quietly accept
-    // them: `fe-rom units rom.gba typo` used to run and exit 0, so a mistyped
-    // flag or a forgotten argument was invisible. Everything after `--` lands
-    // here too, which is what the terminator is for.
+    // them, or a mistyped flag or a forgotten argument goes unnoticed.
+    // Everything after `--` lands here too, which is what the terminator is for.
     const extra = positionals.slice(2);
     if (extra.length > 0 && resolved.extraArgs === undefined) {
       throw new Error(

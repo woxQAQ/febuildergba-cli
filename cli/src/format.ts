@@ -9,9 +9,7 @@
  *
  * Every address in the JSON output and in an error message goes through here,
  * so casing and padding stay consistent: addresses are bare `0x18480F8`, terrain
- * and item ids are zero-padded to two digits. Uppercase throughout - a single
- * `info` dump used to carry `sizeHex: 0x1D7FDE8` next to a `notes` line reading
- * `0x1d7fde8` for the same file.
+ * and item ids are zero-padded to two digits, all uppercase.
  */
 export function hex(value: number, pad = 0): string {
   return `0x${value.toString(16).toUpperCase().padStart(pad, "0")}`;

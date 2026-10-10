@@ -6,7 +6,7 @@ import { text } from "./text.ts";
 /**
  * Every command, keyed by the word the user types.
  *
- * `Record<CommandName, Command>` rather than an array on purpose: it is the
+ * `Record<CommandName, Command>` rather than an array: it is the
  * only shape that makes "a command exists in `CommandName` but was never
  * registered" a compile error instead of a command that silently does not
  * exist. Declaration order below is the order the usage table lists them.
@@ -14,12 +14,6 @@ import { text } from "./text.ts";
  * This is the only place a command needs to be registered: the usage text,
  * the command table, the dispatcher and the "unknown command" error all read
  * from here. Adding a command is one file plus one line in this table.
- *
- * There are deliberately only two commands. Everything analytical used to be
- * its own command (`units`, `classes`, `chapters`, ...), each with its own
- * filter flags; those are all SQL queries against the `extract` database now,
- * and their flags were query filters wearing CLI clothes. `text` survives as
- * a raw-bytes diagnostic.
  */
 const REGISTRY: Readonly<Record<CommandName, Command>> = {
   extract,

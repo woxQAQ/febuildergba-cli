@@ -5,14 +5,8 @@
  * `text` command needs. `parseRom` reads every table the extractor persists;
  * it exists separately because a full parse walks every event script of
  * every chapter (~650 ms on a 30 MB hack), which a diagnostic like `text`
- * should not have to pay for.
- *
- * There is deliberately no lazy middle layer. One used to exist - memoised
- * getters with per-field cost tracking - to serve the per-table query
- * commands, each of which read a different subset of the tables. Those
- * commands are SQL against the extract database now, and the only two
- * granularities left are "identity" and "everything", so the middle layer
- * was machinery without a caller.
+ * should not have to pay for. The two granularities are "identity" and
+ * "everything"; there is deliberately no lazy middle layer between them.
  */
 
 import { readFileSync } from "node:fs";

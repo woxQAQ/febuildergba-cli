@@ -230,9 +230,9 @@ export interface UnitClass {
    * That is the mechanical signature of a flying class: fliers ignore terrain,
    * so their cost table is uniform apart from the terrains nobody may enter.
    *
-   * This is now a **cross-check**, not the primary source: the ability-flag
-   * table gives `mountPegasus` / `mountWyvern` directly. The two disagreeing is
-   * a useful signal that something is mis-parsed.
+   * This is a **cross-check**, not the primary source: the ability-flag table
+   * gives `mountPegasus` / `mountWyvern` directly. The two disagreeing is a
+   * useful signal that something is mis-parsed.
    */
   flying: boolean;
   /**

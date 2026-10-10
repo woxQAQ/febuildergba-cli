@@ -709,8 +709,8 @@ const COMPOSITE_SELECTORS = new Set([0x02, 0x03]);
  *
  * The other shape is the composite family above, whose argument sits four
  * bytes into the instruction with no `2C` anywhere near it. Classifying on
- * `2C` alone used to drop that whole family into `other` - and since
- * `chapter_recruits` filters `load_kind != 'other'`, it threw away every
+ * `2C` alone drops that whole family into `other`, and since
+ * `chapter_recruits` filters `load_kind != 'other'`, that throws away every
  * reinforcement block in the ROM (190 + 18 instructions on the FE8U fixture,
  * 210 of the 213 unreachable load blocks).
  *

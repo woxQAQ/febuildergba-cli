@@ -15,7 +15,7 @@
 import { getTableConfig } from "drizzle-orm/sqlite-core";
 import type { SQLiteTable } from "drizzle-orm/sqlite-core";
 
-/** The roster: units carrying support data, the old `units` command's default filter. */
+/** The roster: units carrying support data. */
 export const ROSTER_VIEW_SQL =
   "CREATE VIEW roster AS SELECT * FROM units WHERE has_support_data = 1";
 

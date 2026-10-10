@@ -30,14 +30,6 @@
  * cross-check: if this decoding ever drifts by one byte, `promoted` stops
  * matching `isHighClassAddr`. (`34` = byte `+43`, mask `0x08` is Summoning in
  * FE8 and 敵アイテムドロップ in FE7 - see {@link CLASS_FLAG_KEYS}.)
- *
- * ## Why this matters
- *
- * An earlier pass concluded that "mounted vs. armour" was underivable because
- * the flag names were missing. That was wrong - the names are right here, and
- * `13` (Cavalry Unit Icon) / `27` (Triangle Attack 2, the armour flag) separate
- * them cleanly. `analysis/roles.ts` still cross-checks against the terrain
- * movement-cost table, but the flags are now the primary source.
  */
 
 import { parseKeyedTable, readTextFile, resolveDataFile } from "../config/data.ts";

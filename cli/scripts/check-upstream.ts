@@ -7,11 +7,8 @@
  *   2. `cli/data/*.txt` - the 36 vendored `config/data` files, copied there by
  *      hand so `cli/` stands alone.
  *
- * Both used to be maintained on discipline alone: the C# checkout sitting in
- * this repo was referenced only in prose (`U.cs:3180`, `InputFormRef.cs:7470`)
- * and by line numbers that move the moment upstream does, and the vendored
- * copy's only synchronisation mechanism was a sentence saying "re-copy after an
- * FEBuilderGBA update". This script is that sentence, executable.
+ * Upstream line numbers move whenever FEBuilderGBA does, so this script checks
+ * the transcription mechanically rather than trusting prose to stay accurate.
  *
  * Usage (from `cli/`):
  *

@@ -203,9 +203,9 @@ function isVariableByte(pattern: string, i: number): boolean {
  *
  * Splits the info column into text and `[...]` segments, so that a marker
  * buried inside a description - `リターン[TERM](ENDA)` - becomes its own token
- * `[TERM]`. Splitting on tabs instead (which an earlier version of this port
- * did) silently loses every `[TERM]` / `[MAPTERM]`, and `MakeScriptHas` then
- * fails to classify `20010000` as a terminator. The walker stops only on
+ * `[TERM]`. Splitting on tabs instead silently loses every `[TERM]` /
+ * `[MAPTERM]`, and `MakeScriptHas` then fails to classify `20010000` as a
+ * terminator. The walker stops only on
  * terminators, so it would run straight past the end of the script into
  * whatever bytes follow.
  */
@@ -295,9 +295,8 @@ export function parseScriptLine(line: string): EventScriptDef | null {
   const infoTokens = splitInfo(info);
 
   // Categories come from the columns *after* the info column, i.e. `sp[2..]`
-  // (`EventScript.ParsePopupHintAndCategory`, EventScript.cs:436). Reading them
-  // out of the info column finds nothing, which is what made `{ITEM}` and
-  // `{GOLD}` invisible to earlier versions of this port.
+  // (`EventScript.ParsePopupHintAndCategory`, EventScript.cs:436); reading them
+  // out of the info column finds nothing.
   let category = "";
   for (let c = 2; c < sp.length; c++) {
     const token = sp[c] ?? "";
