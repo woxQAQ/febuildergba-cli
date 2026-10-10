@@ -462,7 +462,8 @@ export const itemPromotions = sqliteTable(
   ],
 );
 
-export const shops = sqliteTable("shops", {  id: integer("id").primaryKey(),
+export const shops = sqliteTable("shops", {
+  id: integer("id").primaryKey(),
   kind: text("kind", { enum: ["weapon", "item", "secret", "prep"] }).notNull(),
   /** NULL for the prep-screen shop. */
   mapIndex: integer("map_index"),

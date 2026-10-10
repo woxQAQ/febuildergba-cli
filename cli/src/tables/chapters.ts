@@ -583,8 +583,7 @@ export function readChapters(
     const chapterNumberRaw = rom.u16(record.addr + 0x80);
     // `MapSettingDifficultyForm`: bits 0-3 easy penalty, 4-7 hard boost,
     // 8-11 normal penalty. All three are enemy **level** deltas.
-    const difficultyRaw =
-      map.difficultyPos === null ? 0 : rom.u16(record.addr + map.difficultyPos);
+    const difficultyRaw = map.difficultyPos === null ? 0 : rom.u16(record.addr + map.difficultyPos);
     const chapter: Chapter = {
       index: record.index,
       mapSettingAddr: record.addr,

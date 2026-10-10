@@ -40,7 +40,12 @@ import { buildPlayOrder, isRealMap, readAllTransitions } from "./tables/storyPat
 import type { ForceSortieTable } from "./tables/forceSortie.ts";
 import { readForceSortie } from "./tables/forceSortie.ts";
 import type { Item, ItemReadResult } from "./tables/items.ts";
-import { buildItemMap, loadItemEffectNames, readItems, readPromotionTables } from "./tables/items.ts";
+import {
+  buildItemMap,
+  loadItemEffectNames,
+  readItems,
+  readPromotionTables,
+} from "./tables/items.ts";
 import type { SkillReadResult } from "./tables/skills.ts";
 import { readSkills } from "./tables/skills.ts";
 import type { ShopReadResult } from "./tables/shops.ts";
@@ -318,7 +323,9 @@ export function parseRom(handle: RomHandle, options: ParseOptions = {}): ParsedR
   const terrainNames = readTerrainNames(buffer, layout.terrainNames, text);
 
   const eventScripts: EventScriptTable =
-    configDir === null ? { scripts: [], source: null } : loadEventScripts(configDir, game, language);
+    configDir === null
+      ? { scripts: [], source: null }
+      : loadEventScripts(configDir, game, language);
   const condSlots = describeCondSlots(
     configDir === null ? [] : loadConditionSlots(configDir, game, language),
   );
@@ -339,7 +346,8 @@ export function parseRom(handle: RomHandle, options: ParseOptions = {}): ParsedR
   // Items come first: shop entries are priced through them, and map objects
   // only need the chapter list. The `+30` use-effect names come from
   // `config/data`; the promotion class lists come from the ROM itself.
-  const itemEffectNames = configDir === null ? null : loadItemEffectNames(configDir, game, language);
+  const itemEffectNames =
+    configDir === null ? null : loadItemEffectNames(configDir, game, language);
   const promotionTables =
     layout.promotion === null ? null : readPromotionTables(buffer, layout.promotion);
   const itemData: ItemReadResult | null =

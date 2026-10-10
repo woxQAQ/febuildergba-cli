@@ -227,12 +227,9 @@ export function extractEventTrace(
     return id;
   };
 
-  const decodeInstruction = (
-    code: EventCode,
-    scriptId: number,
-    seq: number,
-  ): TracedInstruction => {
-    const mnemonic = code.script.description === "UNKNOWN" ? "UNKNOWN" : mnemonicOf(code.script.description);
+  const decodeInstruction = (code: EventCode, scriptId: number, seq: number): TracedInstruction => {
+    const mnemonic =
+      code.script.description === "UNKNOWN" ? "UNKNOWN" : mnemonicOf(code.script.description);
     const row: TracedInstruction = {
       scriptId,
       seq,

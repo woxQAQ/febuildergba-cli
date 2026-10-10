@@ -43,7 +43,13 @@ export async function populate(handle: OpenDb, rom: ParsedRom): Promise<Populate
     // The trace is walked once and consumed twice: it is the raw event layer,
     // and it is also the only route to "which units appear in which chapter",
     // which `derived_unit_stats` needs.
-    const trace = extractEventTrace(rom.rom, rom.layout, rom.chapters, rom.condSlots, rom.eventScripts);
+    const trace = extractEventTrace(
+      rom.rom,
+      rom.layout,
+      rom.chapters,
+      rom.condSlots,
+      rom.eventScripts,
+    );
     await insertEventTrace(db, rom, trace);
     await insertUnitStats(db, rom, trace);
     await insertWorldData(db, rom);
@@ -53,7 +59,10 @@ export async function populate(handle: OpenDb, rom: ParsedRom): Promise<Populate
     // that actually landed.
     const tables: Record<string, number> = {};
     for (const table of t.TABLES) {
-      const row = await db.select({ n: sql<number>`count(*)` }).from(table).get();
+      const row = await db
+        .select({ n: sql<number>`count(*)` })
+        .from(table)
+        .get();
       tables[getTableConfig(table).name] = row?.n ?? 0;
     }
     return { tables };
@@ -217,7 +226,6 @@ async function insertClasses(db: ExtractDb, rom: ParsedRom): Promise<void> {
       }
     }
   }
-
 }
 
 async function insertSupports(db: ExtractDb, rom: ParsedRom): Promise<void> {
@@ -620,5 +628,4 @@ async function insertWorldData(db: ExtractDb, rom: ParsedRom): Promise<void> {
         .onConflictDoNothing();
     }
   }
-
 }

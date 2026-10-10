@@ -276,7 +276,9 @@ export function readSkills(options: SkillReadOptions): SkillReadResult | null {
     unitSkills: unitBase === null ? [] : readAssignments(rom, unitBase, unitCount),
     classSkills: classBase === null ? [] : readAssignments(rom, classBase, classCount),
     unitLearns:
-      unitLearnBase === null ? [] : readLearnLists(rom, unitLearnBase, unitCount, classSkillExtends),
+      unitLearnBase === null
+        ? []
+        : readLearnLists(rom, unitLearnBase, unitCount, classSkillExtends),
     classLearns:
       classLearnBase === null
         ? []

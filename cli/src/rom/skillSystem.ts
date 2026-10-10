@@ -60,7 +60,8 @@ const SIGNATURES: readonly SkillSystemSignature[] = [
     version: "FE8J",
     addr: 0xfe_58e0,
     signature: [
-      0x05, 0x1c, 0x00, 0xf0, 0x25, 0xf8, 0x01, 0x29, 0x04, 0xd0, 0x28, 0x1c, 0x00, 0xf0, 0x28, 0xf8,
+      0x05, 0x1c, 0x00, 0xf0, 0x25, 0xf8, 0x01, 0x29, 0x04, 0xd0, 0x28, 0x1c, 0x00, 0xf0, 0x28,
+      0xf8,
     ],
   },
   // Two bytes: `bx lr`. Weak on its own, but this is the offset and the
@@ -152,8 +153,7 @@ const SKILL_POINTER_SIGNATURES: readonly SkillPointerSignature[] = [
   {
     type: "LEVELUP",
     skip: 0,
-    pattern:
-      "E458002C0CD02378002B09D08B4201DD934201DD0234F6E7637833700136F9E70020307071BC7047",
+    pattern: "E458002C0CD02378002B09D08B4201DD934201DD0234F6E7637833700136F9E70020307071BC7047",
   },
   {
     type: "LEVELUP",
@@ -180,8 +180,7 @@ const SKILL_POINTER_SIGNATURES: readonly SkillPointerSignature[] = [
   {
     type: "ANIME",
     skip: 12,
-    pattern:
-      "9D2E0008358A0508000800000004000010E306088CE50608C4AE020855A10508",
+    pattern: "9D2E0008358A0508000800000004000010E306088CE50608C4AE020855A10508",
   },
 ];
 
@@ -211,7 +210,10 @@ function hexBytes(hex: string): number[] {
 function isWildcard(pattern: readonly number[], i: number): boolean {
   if (i + 4 >= pattern.length) return false;
   return (
-    pattern[i] === 0xff && pattern[i + 1] === 0xff && pattern[i + 2] === 0xff && pattern[i + 3] === 0xff
+    pattern[i] === 0xff &&
+    pattern[i + 1] === 0xff &&
+    pattern[i + 2] === 0xff &&
+    pattern[i + 3] === 0xff
   );
 }
 
