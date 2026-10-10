@@ -9,8 +9,9 @@
  *     sqlite3 dream-of-five.db 'SELECT name FROM roster'
  *
  * Runs directly on Node >= 22.18, where TypeScript type stripping is on by
- * default (22.6 - 22.17 need `--experimental-strip-types`). Zero runtime
- * dependencies; the database is Node's built-in `node:sqlite`.
+ * default (22.6 - 22.17 need `--experimental-strip-types`). The database is
+ * Node's built-in `node:sqlite`; drizzle-orm supplies the typed schema over
+ * it and is the one runtime dependency.
  *
  * This file is only the shell: parse argv, load the ROM, hand both to the
  * registered command, print the result. Everything else lives in `src/cli`
@@ -20,13 +21,7 @@
  * the option parser and the dispatcher all read from that one registry.
  */
 
-import {
-  formatLoadTrace,
-  loadRom,
-  loadStatsFor,
-  RomNotFoundError,
-  UnsupportedRomError,
-} from "./load.ts";
+import { loadRom, RomNotFoundError, UnsupportedRomError } from "./load.ts";
 import { UsageError } from "./commands/types.ts";
 import { parseArgv } from "./cli/args.ts";
 import { commandHelp, suggestions, usage } from "./cli/help.ts";
@@ -89,7 +84,7 @@ async function run(): Promise<void> {
 
   let rom;
   try {
-    rom = loadRom(romPath, flags.lang === undefined ? {} : { language: flags.lang });
+    rom = loadRom(romPath);
   } catch (error) {
     if (error instanceof UnsupportedRomError) {
       failRom(error.message);
@@ -107,14 +102,6 @@ async function run(): Promise<void> {
   try {
     const payload = await resolved.run({ rom, flags, args });
     emit(payload);
-    // After the payload, on stderr, so the numbers describe the run that
-    // produced it and stdout stays pipeable.
-    if (flags.timings) {
-      const stats = loadStatsFor(rom);
-      if (stats !== undefined) console.error(formatLoadTrace(stats));
-    }
-    const code = resolved.exitCode?.(payload) ?? 0;
-    if (code !== 0) process.exitCode = code;
   } catch (error) {
     // The command may have been called with something it cannot accept - a
     // malformed `--range`, a text id that is not a number. That is still the

@@ -9,7 +9,6 @@
   "type": "module",
   "scripts": {
     "extract": "node src/index.ts extract",
-    "validate": "node src/index.ts validate",
     "typecheck": "tsc --noEmit",
     "check": "node scripts/check-upstream.ts",
     "check:update": "node scripts/check-upstream.ts --update"

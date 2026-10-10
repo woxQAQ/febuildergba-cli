@@ -1,4 +1,4 @@
-import type { LoadedRom } from "../load.ts";
+import type { RomHandle } from "../load.ts";
 
 /**
  * Every command word, as a literal union.
@@ -15,7 +15,7 @@ import type { LoadedRom } from "../load.ts";
  * Adding a command: add the word here, then let `registry.ts` fail to compile
  * until you have registered it there too.
  */
-export type CommandName = "extract" | "text" | "validate";
+export type CommandName = "extract" | "text";
 
 /**
  * Flags resolved from the command line, after the command's own flag set has
@@ -28,8 +28,6 @@ export interface ResolvedFlags {
   range?: string;
   /** `extract`: language for the config/data name tables baked into the db. */
   lang?: string;
-  /** Print per-table load times to stderr - see `load.ts`. */
-  timings: boolean;
 }
 
 /**
@@ -49,9 +47,13 @@ export class UsageError extends Error {
   }
 }
 
-/** Everything a command body needs: the parsed ROM plus the parsed argv. */
+/** Everything a command body needs: the parsed argv plus the identified ROM. */
 export interface CommandContext {
-  rom: LoadedRom;
+  /**
+   * The identified ROM. `text` reads it directly; `extract` passes it to
+   * `parseRom` - see `load.ts` for why those are separate stages.
+   */
+  rom: RomHandle;
   /** Resolved global + command-local flags. */
   flags: ResolvedFlags;
   /** Positionals after the ROM path - `text` takes text ids here. */
@@ -76,12 +78,6 @@ export interface Command {
   readonly extraArgs?: string;
   /** Build the payload. Runs only after the ROM has loaded. */
   run(context: CommandContext): unknown | Promise<unknown>;
-  /**
-   * Exit code the process should use, given what `run` returned. Only
-   * `validate` needs this - it reports failures in its payload but still has
-   * to write the report and exit non-zero. Defaults to 0.
-   */
-  exitCode?(payload: unknown): number;
 }
 
 /** Convenience re-export so command bodies can take just the context. */

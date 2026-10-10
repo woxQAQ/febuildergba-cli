@@ -1,11 +1,10 @@
 /**
- * Populate an extract database from a loaded ROM.
+ * Populate an extract database from a parsed ROM.
  *
- * Every lazy field of `LoadedRom` is read here - that is the point of
- * `extract`: pay the full parse once, persist the result, and let analysis
- * query the db instead of re-invoking the CLI. All inserts go through the
- * drizzle schema (`schema.ts`), so a column typo or a wrong value type is a
- * compile error here rather than a SQLite error halfway through an extract.
+ * `parseRom` has already read every table; this is the persistence half of
+ * the extract. All inserts go through the drizzle schema (`schema.ts`), so a
+ * column typo or a wrong value type is a compile error here rather than a
+ * SQLite error halfway through an extract.
  *
  * Reads happen inside one transaction; a failure rolls the whole db back
  * rather than leaving a half-populated file that looks finished.
@@ -14,7 +13,7 @@
 import { sql } from "drizzle-orm";
 import { getTableConfig } from "drizzle-orm/sqlite-core";
 
-import type { LoadedRom } from "../load.ts";
+import type { ParsedRom } from "../load.ts";
 import { collectEnemyStats } from "../analysis/enemyStats.ts";
 import { extractEventTrace } from "../tables/eventTrace.ts";
 import { createSchemaSql } from "./ddl.ts";
@@ -28,7 +27,7 @@ export interface PopulateResult {
   readonly unresolvedEnemyClasses: number;
 }
 
-export async function populate(handle: OpenDb, rom: LoadedRom): Promise<PopulateResult> {
+export async function populate(handle: OpenDb, rom: ParsedRom): Promise<PopulateResult> {
   const { db, sqlite } = handle;
   for (const statement of createSchemaSql(t.TABLES)) sqlite.exec(statement);
 
@@ -63,7 +62,7 @@ export async function populate(handle: OpenDb, rom: LoadedRom): Promise<Populate
   }
 }
 
-async function insertMeta(db: ExtractDb, rom: LoadedRom): Promise<void> {
+async function insertMeta(db: ExtractDb, rom: ParsedRom): Promise<void> {
   await db.insert(t.meta).values([
     { key: "rom.path", value: rom.path },
     { key: "rom.sizeBytes", value: String(rom.rom.length) },
@@ -84,7 +83,7 @@ async function insertMeta(db: ExtractDb, rom: LoadedRom): Promise<void> {
 }
 
 /** Empty slots (no name, class or level) are skipped; the count lands in meta. */
-async function insertUnits(db: ExtractDb, rom: LoadedRom): Promise<void> {
+async function insertUnits(db: ExtractDb, rom: ParsedRom): Promise<void> {
   let skipped = 0;
   for (const u of rom.units) {
     if (u.isEmpty) {
@@ -135,7 +134,7 @@ async function insertUnits(db: ExtractDb, rom: LoadedRom): Promise<void> {
   await db.insert(t.meta).values({ key: "units.emptySlots", value: String(skipped) });
 }
 
-async function insertClasses(db: ExtractDb, rom: LoadedRom): Promise<void> {
+async function insertClasses(db: ExtractDb, rom: ParsedRom): Promise<void> {
   for (const c of rom.classes) {
     await db.insert(t.classes).values({
       id: c.id,
@@ -216,7 +215,7 @@ async function insertClasses(db: ExtractDb, rom: LoadedRom): Promise<void> {
 
 }
 
-async function insertSupports(db: ExtractDb, rom: LoadedRom): Promise<void> {
+async function insertSupports(db: ExtractDb, rom: ParsedRom): Promise<void> {
   // Every referenced affinity id gets a row, named or not: a unit carrying
   // an unnamed hack affinity is data, not an absence of data.
   const affinityIds = new Set<number>(rom.affinityNames.keys());
@@ -257,7 +256,7 @@ async function insertSupports(db: ExtractDb, rom: LoadedRom): Promise<void> {
   // support_edges is a VIEW over support_partners now - nothing to insert.
 }
 
-async function insertItemsAndTerrain(db: ExtractDb, rom: LoadedRom): Promise<void> {
+async function insertItemsAndTerrain(db: ExtractDb, rom: ParsedRom): Promise<void> {
   for (const i of rom.items) {
     await db.insert(t.items).values({
       id: i.id,
@@ -313,7 +312,7 @@ async function insertItemsAndTerrain(db: ExtractDb, rom: LoadedRom): Promise<voi
   }
 }
 
-async function insertChapters(db: ExtractDb, rom: LoadedRom): Promise<void> {
+async function insertChapters(db: ExtractDb, rom: ParsedRom): Promise<void> {
   for (const c of rom.chapters) {
     await db.insert(t.chapters).values({
       mapIndex: c.index,
@@ -370,7 +369,7 @@ async function insertChapters(db: ExtractDb, rom: LoadedRom): Promise<void> {
  * transitions it reads are the `chapter_transitions` view over the raw
  * event layer.
  */
-async function insertStory(db: ExtractDb, rom: LoadedRom): Promise<void> {
+async function insertStory(db: ExtractDb, rom: ParsedRom): Promise<void> {
   for (const step of rom.playOrder.steps) {
     await db.insert(t.derivedPlayOrder).values({
       mapIndex: step.mapIndex,
@@ -386,7 +385,7 @@ async function insertStory(db: ExtractDb, rom: LoadedRom): Promise<void> {
  * Walk-based derivations (transitions, recruits, gold, joins) are views over
  * these tables - nothing derived is inserted here.
  */
-async function insertEventTrace(db: ExtractDb, rom: LoadedRom): Promise<void> {
+async function insertEventTrace(db: ExtractDb, rom: ParsedRom): Promise<void> {
   const trace = extractEventTrace(rom.rom, rom.layout, rom.chapters, rom.condSlots, rom.eventScripts);
   for (const script of trace.scripts) {
     await db.insert(t.eventScripts).values({
@@ -437,7 +436,7 @@ async function insertEventTrace(db: ExtractDb, rom: LoadedRom): Promise<void> {
 }
 
 /** Condition slots, shops, map objects and the forced-sortie table. */
-async function insertWorldData(db: ExtractDb, rom: LoadedRom): Promise<void> {
+async function insertWorldData(db: ExtractDb, rom: ParsedRom): Promise<void> {
   for (const slot of rom.condSlots) {
     await db
       .insert(t.condSlots)
@@ -498,7 +497,7 @@ async function insertWorldData(db: ExtractDb, rom: LoadedRom): Promise<void> {
  * Both autolevel modes, so normal-vs-hard is a WHERE clause, not a re-run.
  * Returns the unresolved-class count for meta.
  */
-async function insertEnemySamples(db: ExtractDb, rom: LoadedRom): Promise<number> {
+async function insertEnemySamples(db: ExtractDb, rom: ParsedRom): Promise<number> {
   let unresolved = 0;
   for (const mode of ["normal", "hard"] as const) {
     const { samples, unresolvedClass } = collectEnemyStats({

@@ -2,7 +2,6 @@ import type { Command, CommandName } from "./types.ts";
 
 import { extract } from "./extract.ts";
 import { text } from "./text.ts";
-import { validate } from "./validate.ts";
 
 /**
  * Every command, keyed by the word the user types.
@@ -16,15 +15,15 @@ import { validate } from "./validate.ts";
  * the command table, the dispatcher and the "unknown command" error all read
  * from here. Adding a command is one file plus one line in this table.
  *
- * There are deliberately only three commands. Everything analytical used to
- * be its own command (`units`, `classes`, `chapters`, ...), each with its own
+ * There are deliberately only two commands. Everything analytical used to be
+ * its own command (`units`, `classes`, `chapters`, ...), each with its own
  * filter flags; those are all SQL queries against the `extract` database now,
- * and their flags were query filters wearing CLI clothes.
+ * and their flags were query filters wearing CLI clothes. `text` survives as
+ * a raw-bytes diagnostic.
  */
 const REGISTRY: Readonly<Record<CommandName, Command>> = {
   extract,
   text,
-  validate,
 };
 
 /** Every command, in the order the usage table lists them. */

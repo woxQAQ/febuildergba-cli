@@ -22,7 +22,7 @@
  * per-block detail for one map-setting index instead of the summary.
  */
 
-import { loadRom } from "../src/load.ts";
+import { loadRom, parseRom } from "../src/load.ts";
 import {
   collectPlacementSites,
   classifyUnitArg,
@@ -37,7 +37,7 @@ const romPath =
 const chapterFlag = argv.indexOf("--chapter");
 const onlyChapter = chapterFlag >= 0 ? Number(argv[chapterFlag + 1]) : null;
 
-const loaded = loadRom(romPath);
+const loaded = parseRom(loadRom(romPath));
 const { rom, layout, chapters, condSlots, eventScripts } = loaded;
 
 const hex = (n: number): string => "0x" + n.toString(16).padStart(7, "0");

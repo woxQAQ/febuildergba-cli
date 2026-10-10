@@ -56,38 +56,18 @@
  * documents as `序盤=0x1, A編=0x2, F編=0x3`. In the Dream of Five fixture only
  * `0xFF`, `0x01` and `0x02` occur, and the `0x01` records point at maps on
  * *both* story routes - so the label cannot be taken to mean "pre-route-split".
- * {@link routeLabel} therefore reports the raw value alongside the vanilla
- * label rather than inventing a mapping.
+ * The db therefore stores the raw byte; the vanilla labels (`序盤=0x1, A編=0x2,
+ * F編=0x3`) are hints for the reader, not a mapping to apply.
  *
  * Reference: ROMFE8U.cs:95, EventForceSortieForm.cs, MainFormUtil.cs:2526,
  *            asmmap_FE8.txt (`IsCharacterForceDeployed` / `@ChapterData@1B`).
  */
 
 import type { ForceSortieLayout, GameLayout } from "../data/layouts.ts";
-import { hex } from "../format.ts";
 import { RomBuffer } from "../rom/RomBuffer.ts";
-
-/** Value of the route filter meaning "this record applies on every route". */
-export const ROUTE_ANY = 0xff;
-
-/** Value of the map filter meaning "this record applies on every map". */
-export const MAP_ANY = 0xff;
 
 /** The terminator of a `'terminator'`-style table (`u16(+0)`). */
 export const FORCE_SORTIE_TERMINATOR = 0xffff;
-
-/**
- * The vanilla labels for `ChapterData + 0x1B`, from `asmmap_FE8.txt`
- * (`@ChapterData@1B  byte  編指定 序盤=0x1,A編=0x2,F編=0x3`).
- *
- * These are hints only - see the module doc comment for why the fixture's
- * `0x01` records cannot actually mean "pre-split".
- */
-export const ROUTE_LABELS: Readonly<Record<number, string>> = {
-  1: "序盤",
-  2: "A編",
-  3: "F編",
-};
 
 export interface ForceSortieRecord {
   /** Position in the table. */
@@ -112,13 +92,6 @@ export interface ForceSortieTable {
   /** How the end of the table was found. */
   termination: ForceSortieLayout["termination"];
   records: ForceSortieRecord[];
-}
-
-/** Human-readable route filter, e.g. `any` or `0x01 (序盤)`. */
-export function routeLabel(route: number): string {
-  if (route === ROUTE_ANY) return "any";
-  const name = ROUTE_LABELS[route];
-  return `${hex(route, 2)}${name === undefined ? "" : ` (${name})`}`;
 }
 
 /**
@@ -168,30 +141,4 @@ export function readForceSortie(
     termination: spec.termination,
     records,
   };
-}
-
-/**
- * The records that apply to one map setting index.
- *
- * This mirrors the two filters `IsCharacterForceDeployed_` applies: the map
- * byte must be `0xFF` or equal `mapIndex`. The route byte cannot be checked
- * statically (it compares against a runtime value), so records are returned
- * regardless of their route filter and callers should surface
- * {@link ForceSortieRecord.route} when it is not `0xFF`.
- */
-export function forcedUnitsForMap(
-  table: ForceSortieTable | null,
-  mapIndex: number,
-): ForceSortieRecord[] {
-  if (table === null) return [];
-  return table.records.filter((r) => r.mapIndex === MAP_ANY || r.mapIndex === mapIndex);
-}
-
-/**
- * The records that apply to a unit on every map - i.e. entries whose map filter
- * is `0xFF`. These are the "this unit is always deployed" rows.
- */
-export function alwaysForcedUnits(table: ForceSortieTable | null): ForceSortieRecord[] {
-  if (table === null) return [];
-  return table.records.filter((r) => r.mapIndex === MAP_ANY);
 }

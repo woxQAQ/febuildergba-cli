@@ -139,11 +139,6 @@ export const AFFINITY_NAMES: Readonly<Record<number, string>> = {
 /** The label the reference prints for an affinity it has no name for. */
 export const UNNAMED_AFFINITY = "-";
 
-/** True when the reference (and therefore the game) has a name for this id. */
-export function isNamedAffinity(id: number): boolean {
-  return id in AFFINITY_NAMES;
-}
-
 /**
  * `InputFormRef.GetAttributeName()`: the seven named affinities, else `"-"`.
  *
@@ -151,18 +146,6 @@ export function isNamedAffinity(id: number): boolean {
  */
 export function affinityName(id: number): string {
   return AFFINITY_NAMES[id] ?? UNNAMED_AFFINITY;
-}
-
-/**
- * `affinityName` but always carrying the id, for contexts where the reader
- * needs to tell `Fire` from `affinity 11`. Affinities the reference names are
- * printed bare; anything else becomes `11 (-)`, which stays a single token and
- * so cannot run into column-padding bugs the way a spaced label does.
- */
-export function affinityLabel(id: number): string {
-  const named = AFFINITY_NAMES[id];
-  if (named !== undefined) return named;
-  return `${id} (${UNNAMED_AFFINITY})`;
 }
 
 /**
@@ -189,33 +172,6 @@ export const AFFINITY_TEXT_IDS: Readonly<Record<number, number>> = {
   7: 0x50a,
 };
 
-/**
- * Support bonuses only apply while the two units are within this many tiles
- * (`SUPPORT_BONUSES_MAX_DISTANCE`, `include/bmreliance.h`).
- *
- * Note this is the **bonus** range. Support *points* accumulate at a shorter
- * range - see {@link SUPPORT_EXP_DISTANCE}.
- */
-export const SUPPORT_BONUSES_MAX_DISTANCE = 3;
-
-/**
- * Support points accumulate only when the pair is adjacent, or when one is
- * carrying the other (`ProcessTurnSupportExp` in `src/bmreliance.c`, whose
- * `RECT_DISTANCE` switch accepts `0` - same tile, must be a rescue - and `1`).
- */
-export const SUPPORT_EXP_DISTANCE = 1;
-
-/**
- * A unit may hold at most this many support *levels* in total
- * (`MAX_SIMULTANEOUS_SUPPORT_COUNT`, `include/bmreliance.h`).
- *
- * This is not a partner count: the levels are summed, so one A (3) plus one B
- * (2) already fills a unit's allowance, while five C supports (5) would too.
- * `CanUnitSupportNow` refuses a new support once `GetUnitTotalSupportLevel`
- * reaches this on *either* side of the pair.
- */
-export const MAX_SIMULTANEOUS_SUPPORT_LEVELS = 5;
-
 export const SUPPORT_BONUS_RECORD_SIZE = 8;
 
 /**
@@ -236,19 +192,14 @@ export const SUPPORT_BONUS_FIELDS = [
   "unknown7", // J_7, labelled "??" in the reference; never read by the game
 ] as const;
 
-/** The six stats a support actually modifies, in record-offset order. */
-export const SUPPORT_BONUS_STATS = ["atk", "def", "hit", "avoid", "crit", "critAvoid"] as const;
-
-export type SupportBonusStat = (typeof SUPPORT_BONUS_STATS)[number];
-
 export interface SupportBonus {
   /** Affinity id, 1..7. */
   affinity: number;
   affinityName: string;
   /** Raw 8 bytes, exactly as stored. */
   raw: number[];
-  /** Bytes 1..7 keyed by {@link SUPPORT_BONUS_FIELDS} - always all six. */
-  bonuses: Record<SupportBonusStat, number>;
+  /** Bytes 1..7 keyed by {@link SUPPORT_BONUS_FIELDS}. */
+  bonuses: Record<(typeof SUPPORT_BONUS_FIELDS)[number], number>;
 }
 
 /**
@@ -261,8 +212,7 @@ export interface SupportBonus {
  * Hard cap on how many bonus records {@link readSupportBonuses} will read.
  *
  * The format's own terminator is a zero id; this only bounds a table that never
- * terminates, so that a wrong pointer slot cannot walk the whole ROM. Exported
- * so the validator can tell "the table ended" from "we hit the ceiling".
+ * terminates, so that a wrong pointer slot cannot walk the whole ROM.
  */
 export const SUPPORT_BONUS_MAX_RECORDS = 0x20;
 
@@ -305,111 +255,4 @@ export function readAffinityNames(rom: RomBuffer, text: TextContext): Map<number
     out.set(affinity, decoded === "" ? affinityName(affinity) : decoded);
   }
   return out;
-}
-
-/**
- * The multiplier `StoreAddedAffinityBonusesForSupportLevel` is handed for each
- * rank. `GetSupportLevelBySupportIndex` returns exactly these four values.
- */
-export const SUPPORT_LEVEL_MULTIPLIER: Readonly<Record<string, number>> = {
-  none: 0,
-  C: 1,
-  B: 2,
-  A: 3,
-};
-
-/**
- * One stored half-point value at one rank.
- *
- * `(stored * multiplier) >> 1`, matching the game's `muls` followed by the
- * final `lsrs #1`.
- */
-export function scaleBonus(stored: number, rank: "none" | "C" | "B" | "A"): number {
-  return (stored * (SUPPORT_LEVEL_MULTIPLIER[rank] as number)) >> 1;
-}
-
-/** The six real stats at each of the three ranks, derived from the stored bytes. */
-export type RankedBonus = Record<"C" | "B" | "A", Record<SupportBonusStat, number>>;
-
-/** Derive the C/B/A bonus a unit with this affinity adds to a single support. */
-export function rankedBonus(bonus: SupportBonus): RankedBonus {
-  const out = { C: {}, B: {}, A: {} } as RankedBonus;
-  for (const rank of ["C", "B", "A"] as const) {
-    const row = out[rank] as Record<SupportBonusStat, number>;
-    for (const stat of SUPPORT_BONUS_STATS) {
-      row[stat] = scaleBonus(bonus.bonuses[stat] as number, rank);
-    }
-  }
-  return out;
-}
-
-/** Index the table by affinity id for the pair calculation. */
-export function bonusByAffinity(bonuses: readonly SupportBonus[]): Map<number, SupportBonus> {
-  return new Map(bonuses.map((b) => [b.affinity, b]));
-}
-
-/**
- * The bonus a single two-unit support contributes, before the final halving.
- *
- * Both rows are added, each scaled by that side's own rank, exactly as
- * `GetUnitSupportBonuses` does. Callers wanting the finished numbers should use
- * {@link pairBonus} rather than halving this themselves - the game halves the
- * sum across *all* partners once, not each contribution.
- */
-function pairContribution(
-  table: ReadonlyMap<number, SupportBonus>,
-  stat: SupportBonusStat,
-  selfAffinity: number,
-  selfRank: "none" | "C" | "B" | "A",
-  otherAffinity: number,
-  otherRank: "none" | "C" | "B" | "A",
-): number {
-  const mine = table.get(selfAffinity);
-  const theirs = table.get(otherAffinity);
-  let sum = 0;
-  if (mine !== undefined) sum += scaleBonus(mine.bonuses[stat] as number, selfRank);
-  if (theirs !== undefined) sum += scaleBonus(theirs.bonuses[stat] as number, otherRank);
-  return sum;
-}
-
-export interface AdjacentSupport {
-  /** Affinity id (1..7) of the unit the bonus is being computed for. */
-  selfAffinity: number;
-  /** That unit's rank toward the partner. */
-  selfRank: "none" | "C" | "B" | "A";
-  /** Affinity id (1..7) of the partner. */
-  otherAffinity: number;
-  /** The partner's rank toward the unit. Usually equal to `selfRank`. */
-  otherRank: "none" | "C" | "B" | "A";
-}
-
-/**
- * The finished bonus a unit receives, following `GetUnitSupportBonuses`.
- *
- * `adjacent` should list only the supports the game would actually count: the
- * partner deployed, alive, and within `|dx| + |dy| <= 3`. The halving is applied
- * once here, over the total, as the game does.
- */
-export function pairBonus(
-  table: ReadonlyMap<number, SupportBonus>,
-  adjacent: readonly AdjacentSupport[],
-): Record<SupportBonusStat, number> {
-  const totals = {} as Record<SupportBonusStat, number>;
-  for (const stat of SUPPORT_BONUS_STATS) totals[stat] = 0;
-
-  for (const link of adjacent) {
-    for (const stat of SUPPORT_BONUS_STATS) {
-      totals[stat] += pairContribution(
-        table,
-        stat,
-        link.selfAffinity,
-        link.selfRank,
-        link.otherAffinity,
-        link.otherRank,
-      );
-    }
-  }
-
-  for (const stat of SUPPORT_BONUS_STATS) totals[stat] >>= 1;
-  return totals;
 }

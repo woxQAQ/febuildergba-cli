@@ -267,82 +267,16 @@ export function mapIdByteOf(rom: RomBuffer, chapter: Chapter): number {
   return rom.u8(chapter.mapSettingAddr + 0x0e);
 }
 
-/** The chapter-route byte (`+0x0C`), mirrored to the runtime `ChapterData+0x1B`. */
-export function chapterRouteOf(rom: RomBuffer, chapter: Chapter): number {
-  return rom.u8(chapter.mapSettingAddr + 0x0c);
-}
-
 /**
  * Whether a map-setting row is a playable map rather than a padded slot.
  *
  * The table has one row per map *id*, so it is longer than the number of real
  * maps. A row is real when it claims its own id in the map-id byte **and**
  * deploys units. Hack authors also register the same battle twice - identical
- * start event, end event and condition table - which this does not merge; see
- * {@link duplicateRegistrations}.
+ * start event, end event and condition table - which this does not merge.
  */
 export function isRealMap(rom: RomBuffer, chapter: Chapter): boolean {
   return mapIdByteOf(rom, chapter) === chapter.index && chapter.deploySlots > 0;
-}
-
-/**
- * Maps that register one battle more than once.
- *
- * Two rows with the same start event, end event and condition table are the
- * same battle entered twice - Vision Quest registers Castle Frelia under both
- * map 56 and map 63. Keying on the END_EVENT pointer alone is not enough,
- * because the padded rows also share one.
- */
-export function duplicateRegistrations(rom: RomBuffer, chapters: readonly Chapter[]): number[][] {
-  const bySignature = new Map<string, number[]>();
-  for (const c of chapters) {
-    if (c.startEventAddr === 0 || c.endEventAddr === 0) continue;
-    const key = `${c.startEventAddr}:${c.endEventAddr}:${c.condTableAddr}`;
-    const list = bySignature.get(key);
-    if (list === undefined) bySignature.set(key, [c.index]);
-    else list.push(c.index);
-  }
-  return [...bySignature.values()].filter((v) => v.length > 1);
-}
-
-/**
- * Order the chapters into a main path by following the transitions.
- *
- * `chain` follows a branch's **first** destination. Which destination a
- * playthrough actually takes depends on flag conditions inside the branch, not
- * on the opcode, so `branches` reports all of them and
- * {@link buildPlayOrder} is what puts the other ones back in sequence.
- *
- * See {@link walkMainPath} for how the opening chapter is chosen.
- */
-export interface StoryPath {
-  /** The linear run of chapters, in play order. */
-  readonly chain: readonly ChapterEdges[];
-  /**
-   * Maps with more than one story-advancing destination. Each is where the path
-   * splices in a side chapter and comes back, or genuinely forks. The first
-   * destination is the one the chain followed; the rest are only reachable on
-   * some playthroughs.
-   */
-  readonly branches: readonly PathBranch[];
-  /**
-   * Maps the chain reached whose single story-advancing destination it did not
-   * follow, because the chain had already visited it - i.e. where the walk
-   * closed its loop, not where the story ends. An empty list means the chain ran
-   * to a chapter with no advancing transition at all.
-   */
-  readonly closedLoop: readonly number[];
-  /** How the starting map was chosen, for the caller to report. */
-  readonly startReason: string;
-  /** Every chapter-numbered map that could have started a path. */
-  readonly startCandidates: readonly number[];
-  /**
-   * Every chapter reachable from the start, `chain` and `branches` combined.
-   * Larger than `chain.length` whenever a side chapter is spliced in.
-   */
-  readonly reachable: readonly number[];
-  /** True when a start was found and the chain is non-empty. */
-  readonly found: boolean;
 }
 
 /** One map in play order. */
@@ -475,34 +409,6 @@ export function buildPlayOrder(
   };
 }
 
-/**
- * Every chapter reachable from the start, chain and branches together.
- *
- * `chain` is the path with no detours, so a gaiden chapter spliced into the
- * middle of it is **not** in `chain` - only in `branches`. A caller asking
- * "which chapters does this game have" wants this set; one asking "what order
- * do I play them" wants `buildPlayOrder`.
- */
-export function reachableFrom(edges: readonly ChapterEdges[], startMap: number): Set<number> {
-  const byMap = new Map(edges.map((e) => [e.mapIndex, e]));
-  const seen = new Set<number>();
-  const queue = [startMap];
-  while (queue.length > 0) {
-    const m = queue.pop() as number;
-    if (seen.has(m)) continue;
-    seen.add(m);
-    const e = byMap.get(m);
-    if (e === undefined) continue;
-    for (const t of e.transitions) {
-      // LOMA is an in-chapter teleport; following it would pull in maps the
-      // player never transitions to as a chapter.
-      if (t.opcode === "LOMA") continue;
-      if (!seen.has(t.targetMap)) queue.push(t.targetMap);
-    }
-  }
-  return seen;
-}
-
 /** Branch point of the main path: a map whose END_EVENT names several next chapters. */
 export interface PathBranch {
   readonly mapIndex: number;
@@ -594,27 +500,4 @@ function walkMainPath(
     cur = next;
   }
   return { chain, branches, closedLoop, candidates };
-}
-
-export function traceStoryPath(
-  edges: readonly ChapterEdges[],
-  isReal: (mapIndex: number) => boolean = () => true,
-): StoryPath {
-  const walk = walkMainPath(edges, isReal);
-  const first = walk.candidates[0];
-  return {
-    chain: walk.chain,
-    branches: walk.branches,
-    closedLoop: walk.closedLoop,
-    startReason:
-      first === undefined
-        ? "no map numbered 1 that no real numbered chapter leads into"
-        : "map-table order among the maps numbered 1 that no real numbered " +
-          `chapter leads into (chose map ${first.mapIndex}; ` +
-          `candidates ${walk.candidates.map((c) => c.mapIndex).join(", ")})`,
-    startCandidates: walk.candidates.map((c) => c.mapIndex),
-    reachable:
-      first === undefined ? [] : [...reachableFrom(edges, first.mapIndex)].sort((a, b) => a - b),
-    found: walk.chain.length > 0,
-  };
 }

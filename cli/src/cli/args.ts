@@ -134,7 +134,6 @@ export function parseArgv(argv: readonly string[]): ParsedArgv {
     args: positionals.slice(2),
     help: values.help === true,
     flags: {
-      timings: values.timings === true,
       ...(out === undefined ? {} : { out }),
       ...(range === undefined ? {} : { range }),
       ...(lang === undefined ? {} : { lang }),

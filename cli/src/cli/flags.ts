@@ -62,11 +62,6 @@ export const FLAGS: readonly FlagSpec[] = [
     commands: ["text"],
   },
   {
-    name: "timings",
-    type: "boolean",
-    summary: "Print per-table parse times to stderr",
-  },
-  {
     name: "help",
     type: "boolean",
     short: "h",

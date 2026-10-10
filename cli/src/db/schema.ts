@@ -29,18 +29,17 @@
  *      read differently.
  *   3. **`derived_*` tables**: inference SQL cannot express even over the
  *      raw event layer - graph traversal with branch splicing
- *      (`derived_play_order`), RNG projection (`derived_enemy_samples`),
- *      cross-class heuristics (`derived_class_roles`). They are
- *      materialized at extract time because the consumer cannot recompute
- *      them without the ROM and the parser. Treat them as conclusions, not
- *      evidence.
+ *      (`derived_play_order`) and RNG projection (`derived_enemy_samples`).
+ *      They are materialized at extract time because the consumer cannot
+ *      recompute them without the ROM and the parser. Treat them as
+ *      conclusions, not evidence.
  *
  * The walk-based derivations used to be `derived_*` tables too; with the
  * raw event layer (`event_scripts` / `event_instructions` /
  * `chapter_event_slots` / `load_blocks`) they are now views -
  * `chapter_transitions`, `chapter_recruits`, `chapter_recruit_units`,
- * `chapter_gold`, `chapter_item_gives`, `unit_joins` - so the evidence and
- * the conclusions are both inspectable.
+ * `chapter_gold`, `chapter_item_gives`, `unit_joins`, `class_roles` - so
+ * the evidence and the conclusions are both inspectable.
  *
  * Conventions:
  *

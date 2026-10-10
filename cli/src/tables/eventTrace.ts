@@ -18,7 +18,8 @@
  *     unknown instructions, or at a hard budget. UNKNOWN instructions are
  *     stored, not skipped - their size is a guess (`UNKNOWN_SIZE`), which is
  *     why the script row records where and why the decode stopped.
- *   - Slot iteration mirrors `scanChapter`: TURN/TALK/OBJECT/ALWAYS walk a
+ *   - Slot iteration follows the reference's `EventCondForm.MakeUnitPointer`:
+ *     TURN/TALK/OBJECT/ALWAYS walk a
  *     table of small records with a script pointer at +4, TUTORIAL walks a
  *     pointer array, START_EVENT/END_EVENT point straight at a script, and
  *     the rest (PLAYER_UNIT / ENEMY_UNIT / TRAP / FREEMAP_*) are not scripts.

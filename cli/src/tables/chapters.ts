@@ -1,23 +1,10 @@
 /**
- * Chapter ("map setting") parsing and join-chapter derivation.
+ * Chapter ("map setting") parsing: map-setting records, the event-condition
+ * tables they point at, and the placement blocks those tables name.
  *
- * ## Why this exists
- *
- * A unit's join chapter is not stored as a number anywhere. It has to be
- * inferred from the chapter's data, and there are exactly two ways a unit can
- * enter the player's army in FE8:
- *
- *   1. **Initial placement.** The map setting record's event plist points at an
- *      event-condition table; slots 10 and 11 of that table hold pointers to
- *      the normal-mode and hard-mode player placement blocks. Every unit in
- *      that block starts the chapter on the field.
- *   2. **Mid-chapter recruitment.** An event script executes
- *      `402C0100 XXXXXXXX 20300000` ("ユニット読込んで配置 自軍ユニットは仲間にする",
- *      `LOAD1`), whose 4-byte `POINTER_UNIT` argument points at a placement
- *      block. Those units are added to the player's army.
- *
- * Finding (2) requires the event-script disassembler, because the script is
- * opaque bytes until you know each opcode's length.
+ * Deriving which chapter a unit joins in is a query over this data plus the
+ * raw event layer; it lives in the extract database as the `unit_joins` view
+ * (see `db/ddl.ts`), not in this module.
  *
  * ## The chain, step by step
  *
@@ -655,9 +642,6 @@ export function readChapters(
  */
 export type LoadKind = "recruit" | "load" | "cutscene" | "other";
 
-/** The subset of `LoadKind` that actually names units to load. */
-export type LoadSiteKind = Exclude<LoadKind, "other">;
-
 /**
  * Classify the `POINTER_UNIT` argument at byte position `position` of an
  * opcode pattern. Every pattern in `event_FE8.txt` places the argument
@@ -681,57 +665,6 @@ export interface UnitPointerHit {
   instruction: string;
   kind: LoadKind;
 }
-
-/**
- * A literal "gain/lose gold" instruction. The event table spells them
- * `40050300XXXX000021370000` ("ゴールド[XXXX]入手") and `...22370000`
- * ("所持金からゴールド[XXXX]を失う"), with the amount as a u16 at `+4`.
- *
- * This is *not* the only way money enters the game - FE8 hands out money bags
- * as ordinary items (see {@link ItemGiveHit}) and gems are sold - but it is the
- * only instruction that writes gold directly.
- */
-export interface GoldHit {
-  addr: number;
-  /** Signed: positive for gain, negative for lose. */
-  delta: number;
-  /** The literal the instruction matched, for diagnostics. */
-  instruction: string;
-}
-
-/**
- * An instruction that hands an item to a unit, e.g.
- * `40050300XX0000002037YYYY` ("[YYYY]が[XX]を入手"). The item id is 1 byte.
- *
- * Money bags (`Gold`, `3,000 Gold`, ...) travel this path: FE8's
- * `item_gold_id = 0x77` means the bag is an item whose value is its price
- * field, so the caller can turn these into income.
- */
-export interface ItemGiveHit {
-  addr: number;
-  itemId: number;
-  /** `0xFFFF` means "the unit that is currently acting". */
-  unitId: number;
-  instruction: string;
-}
-
-export interface ScriptWalkResult {
-  /** Every instruction that carried a `POINTER_UNIT` argument. */
-  unitPointers: UnitPointerHit[];
-  /** Direct gold writes, in the order the walk met them. */
-  gold: GoldHit[];
-  /** Item grants, in the order the walk met them. */
-  itemsGiven: ItemGiveHit[];
-  /** Instructions visited, for diagnostics. */
-  visited: number;
-  /** Why the walk stopped. */
-  stopped: "exit" | "unknowns" | "end-of-rom" | "budget";
-}
-
-/** `40050300XXXX000021370000` - "gain gold". */
-export const GOLD_GAIN_PATTERN = "40050300XXXX000021370000";
-/** `40050300XXXX000022370000` - "lose gold". */
-export const GOLD_LOSE_PATTERN = "40050300XXXX000022370000";
 
 /** The 12-byte gold literal, with the amount left as a hole. */
 const GOLD_LITERAL_HEAD = [0x40, 0x05, 0x03, 0x00];
@@ -777,32 +710,30 @@ export function findGoldLiteralsIn(code: EventCode): { offset: number; delta: nu
  *
  * `options.innerFailure` matters more than it looks. The reference aborts the
  * *caller* as soon as a sub-event ends in anything other than an exit code
- * (`if (inner !== 'exit') return inner`), which is fine when the only goal is
- * to draw icons for the unit pointers found so far. In this hack almost every
- * sub-event ends in the unknown-opcode bail-out, so the faithful mode stops a
- * script at its first `400A0000` call - which hides everything after it.
- * `'continue'` keeps walking the caller, and is what the economy pass needs.
+ * (`if (inner !== 'exit') return inner`). In this hack almost every sub-event
+ * ends in the unknown-opcode bail-out, so the faithful mode stops a script at
+ * its first `400A0000` call - which hides everything after it. `'continue'`
+ * keeps walking the caller, and is what the placement scan uses.
  */
 export interface WalkOptions {
   /** `'abort'` (default, reference-faithful) or `'continue'`. */
   innerFailure?: "abort" | "continue";
 }
 
+/** Every `POINTER_UNIT` target reachable from `startAddr`. */
 export function walkScript(
   rom: RomBuffer,
   scripts: EventScriptTable,
   startAddr: number,
   budget = 20_000,
   options: WalkOptions = {},
-): ScriptWalkResult {
+): UnitPointerHit[] {
   const abortOnInnerFailure = (options.innerFailure ?? "abort") === "abort";
   const unitPointers: UnitPointerHit[] = [];
-  const gold: GoldHit[] = [];
-  const itemsGiven: ItemGiveHit[] = [];
   const visited = new Set<number>();
   let instructions = 0;
 
-  const walk = (from: number): ScriptWalkResult["stopped"] => {
+  const walk = (from: number): "exit" | "unknowns" | "end-of-rom" | "budget" => {
     let addr = from;
     let lastBranchAddr = 0;
     let unknownCount = 0;
@@ -814,27 +745,6 @@ export function walkScript(
       const code = disassemble(rom, addr, scripts);
 
       if (isExitCode(rom, code, lastBranchAddr)) return "exit";
-
-      // Gold writes and item grants are collected before the UNKNOWN check,
-      // because neither depends on the opcode table knowing the instruction.
-      for (const hit of findGoldLiteralsIn(code)) {
-        gold.push({ addr: addr + hit.offset, delta: hit.delta, instruction: code.script.pattern });
-      }
-
-      // Item grants: only the `{ITEM}`-category instructions hand an item over.
-      // An `ITEM`-typed argument also appears in battle instructions ("which
-      // weapon is used") and forced class changes ("item id, display only"), so
-      // the category token is what separates a grant from those.
-      if (code.script.category.includes("{ITEM}")) {
-        for (const arg of code.script.args) {
-          if (arg.type !== "ITEM") continue;
-          const itemId = readArg(rom, code.addr, arg.position, arg.size);
-          // `0xFFFF` in the unit slot means "the visiting/acting unit"; keep it.
-          const unitArg = code.script.args.find((a) => a.type === "UNIT");
-          const unitId = unitArg ? readArg(rom, code.addr, unitArg.position, unitArg.size) : 0;
-          itemsGiven.push({ addr, itemId, unitId, instruction: code.script.pattern });
-        }
-      }
 
       if (code.script.has === "UNKNOWN") {
         unknownCount++;
@@ -880,8 +790,8 @@ export function walkScript(
     }
   };
 
-  const stopped = walk(startAddr);
-  return { unitPointers, gold, itemsGiven, visited: instructions, stopped };
+  walk(startAddr);
+  return unitPointers;
 }
 
 function readArg(rom: RomBuffer, base: number, position: number, size: number): number {
@@ -922,14 +832,13 @@ export interface PlacementSite {
 /**
  * Every placement block reachable from one chapter's scripts.
  *
- * This is {@link scanChapter}'s walk **without** its `kind !== 'other'` filter,
- * so it also returns the reinforcement blocks - which is where the bulk of a
- * chapter's enemies live. Slot handling is the reference's
- * (`EventCondForm.MakeUnitPointer`, EventCondForm.cs:1577): TURN / TALK /
- * OBJECT / ALWAYS / TUTORIAL walk a table of 12-byte records each holding a
- * script pointer at `+4` and terminated by a zero byte; START_EVENT / END_EVENT
- * point straight at a script. The remaining slots (PLAYER_UNIT, FREEMAP_*,
- * TRAP) hold no script and are not walked.
+ * Unlike a recruit-only scan, the reinforcement blocks (`kind: 'other'`) are
+ * kept: they are where the bulk of a chapter's enemies live. Slot handling is
+ * the reference's (`EventCondForm.MakeUnitPointer`, EventCondForm.cs:1577):
+ * TURN / TALK / OBJECT / ALWAYS / TUTORIAL walk a table of 12-byte records
+ * each holding a script pointer at `+4` and terminated by a zero byte;
+ * START_EVENT / END_EVENT point straight at a script. The remaining slots
+ * (PLAYER_UNIT, FREEMAP_*, TRAP) hold no script and are not walked.
  *
  * Blocks are deduplicated **within the chapter** - the same block can
  * legitimately be loaded by more than one slot. Callers that want a whole-ROM
@@ -964,8 +873,7 @@ export function collectPlacementSites(
     }
 
     for (const s of starts) {
-      const result = walkScript(rom, scripts, s, 20_000, { innerFailure: "continue" });
-      for (const hit of result.unitPointers) {
+      for (const hit of walkScript(rom, scripts, s, 20_000, { innerFailure: "continue" })) {
         const key = `${hit.addr}:${hit.blockAddr}`;
         if (seen.has(key)) continue;
         seen.add(key);
@@ -982,317 +890,4 @@ export function collectPlacementSites(
     }
   }
   return out;
-}
-
-// ---------------------------------------------------------------- recruit scan
-
-export interface RecruitSite {
-  /** Address of the `LOAD*` instruction. */
-  addr: number;
-  /** Condition slot the walk started from, or -1 for a direct placement block. */
-  slotIndex: number;
-  slotKind: CondKind;
-  /** The opcode pattern, e.g. `402C0100XXXXXXXX20300000`. */
-  instruction: string;
-  /** Which load instruction this is. `other` is filtered before this point. */
-  kind: LoadSiteKind;
-  /** File offset of the placement block the instruction points at. */
-  blockAddr: number;
-  /** Units named in that block. */
-  units: PlacedUnit[];
-}
-
-export interface ChapterScan {
-  chapterIndex: number;
-  recruits: RecruitSite[];
-  /** Direct gold writes reachable from this chapter's scripts. */
-  gold: GoldHit[];
-  /** Item grants reachable from this chapter's scripts. */
-  itemsGiven: ItemGiveHit[];
-  /** Script walks that hit the unknown-instruction bail-out. */
-  truncatedWalks: number;
-}
-
-/**
- * Scan every condition slot of a chapter that carries an event script.
- *
- * Slot handling mirrors `EventCondForm.MakeUnitPointer` (EventCondForm.cs:1577):
- * TURN/TALK/OBJECT/ALWAYS walk a table of small records, each holding a script
- * pointer at `+4`; TUTORIAL walks a plain pointer array; START_EVENT and
- * END_EVENT point straight at a script. TRAP slots are not scanned by the
- * reference and are not scanned here.
- */
-export function scanChapter(
-  rom: RomBuffer,
-  scripts: EventScriptTable,
-  layout: GameLayout,
-  chapter: Chapter,
-  condSlots: readonly CondSlotInfo[],
-): ChapterScan {
-  const map = layout.map;
-  const recruits: RecruitSite[] = [];
-  const gold: GoldHit[] = [];
-  const itemsGiven: ItemGiveHit[] = [];
-  let truncatedWalks = 0;
-  if (map === null || chapter.condTableAddr === 0) {
-    return { chapterIndex: chapter.index, recruits, gold, itemsGiven, truncatedWalks };
-  }
-
-  const push = (slotIndex: number, slotKind: CondKind, result: ScriptWalkResult): void => {
-    if (result.stopped === "unknowns") truncatedWalks++;
-    for (const hit of result.unitPointers) {
-      if (hit.kind === "other") continue; // reinforcement branch, not a load
-      if (recruits.some((r) => r.addr === hit.addr && r.blockAddr === hit.blockAddr)) continue;
-      recruits.push({
-        addr: hit.addr,
-        slotIndex,
-        slotKind,
-        instruction: hit.instruction,
-        kind: hit.kind,
-        blockAddr: hit.blockAddr,
-        units: readPlacements(rom, hit.blockAddr, layout),
-      });
-    }
-  };
-
-  const isFe7 = layout.version === "FE7U" || layout.version === "FE7J";
-
-  /**
-   * Walk one script twice.
-   *
-   * Pass 1 is the reference-faithful walk and feeds the recruit scan - its
-   * results are what the existing join-order output is built on, so it must not
-   * change. Pass 2 uses `innerFailure: 'continue'` and feeds the economy
-   * collections, which need to see instructions *after* the first sub-event
-   * call. Both passes are deduplicated by address below.
-   */
-  const pushBoth = (slotIndex: number, slotKind: CondKind, scriptAddr: number): void => {
-    push(slotIndex, slotKind, walkScript(rom, scripts, scriptAddr));
-    const loose = walkScript(rom, scripts, scriptAddr, 20_000, { innerFailure: "continue" });
-    for (const hit of loose.gold) {
-      if (!gold.some((g) => g.addr === hit.addr)) gold.push(hit);
-    }
-    for (const hit of loose.itemsGiven) {
-      if (!itemsGiven.some((g) => g.addr === hit.addr && g.itemId === hit.itemId)) {
-        itemsGiven.push(hit);
-      }
-    }
-  };
-
-  for (const slot of condSlots) {
-    const addr = chapter.condPointers[slot.index] ?? 0;
-    if (!rom.isSafeOffset(addr)) continue;
-
-    switch (slot.kind) {
-      case "TURN": {
-        for (let a = addr; ; a += map.turnCondSize) {
-          if (!rom.isSafeOffset(a + map.turnCondSize)) break;
-          const type = rom.u8(a);
-          if (type === 0) break;
-          const event = rom.p32(a + 4);
-          if (rom.isSafeOffset(event)) pushBoth(slot.index, slot.kind, event);
-          // "信じられないがFE7は12バイトの短いターンイベントが存在する"
-          if (isFe7 && type === 1) a -= map.turnCondSize - 12;
-        }
-        break;
-      }
-      case "TALK": {
-        for (let a = addr; ; a += map.talkCondSize) {
-          if (!rom.isSafeOffset(a + map.talkCondSize)) break;
-          if (rom.u8(a) === 0) break;
-          const event = rom.p32(a + 4);
-          if (rom.isSafeOffset(event)) pushBoth(slot.index, slot.kind, event);
-        }
-        break;
-      }
-      case "OBJECT":
-      case "ALWAYS": {
-        const endOnU32 = slot.kind === "ALWAYS";
-        for (let a = addr; ; a += 12) {
-          if (!rom.isSafeOffset(a + 12)) break;
-          if (endOnU32 ? rom.u32(a) === 0 : rom.u8(a) === 0) break;
-          const event = rom.p32(a + 4);
-          if (rom.isSafeOffset(event)) pushBoth(slot.index, slot.kind, event);
-        }
-        break;
-      }
-      case "TUTORIAL": {
-        for (let a = addr; ; a += 4) {
-          if (!rom.isSafeOffset(a + 4)) break;
-          if (!RomBuffer.isPointer(rom.u32(a))) break;
-          const event = rom.p32(a);
-          if (rom.isSafeOffset(event)) pushBoth(slot.index, slot.kind, event);
-        }
-        break;
-      }
-      case "START_EVENT":
-      case "END_EVENT": {
-        pushBoth(slot.index, slot.kind, addr);
-        break;
-      }
-      default:
-        // PLAYER_UNIT / ENEMY_UNIT / FREEMAP_* / TRAP: not scripts.
-        break;
-    }
-  }
-
-  return { chapterIndex: chapter.index, recruits, gold, itemsGiven, truncatedWalks };
-}
-
-// ---------------------------------------------------------------- join order
-
-export type JoinSource = "placement" | "recruit" | "load" | "cutscene";
-
-export interface JoinEvidence {
-  unitId: number;
-  /** Map setting index of the earliest chapter the unit is present in. */
-  chapterIndex: number;
-  /**
-   * The chapter's position in the play order (see `buildPlayOrder`), or `null`
-   * when it is off every known path.
-   *
-   * This, not `chapterIndex`, is what "earliest" means. `chapterIndex` is a row
-   * number in the map-setting table and the game's chapter *number* restarts at
-   * 1 in every act, so neither orders the game: Vision Quest's map 16 is
-   * followed by 41, 42 and only then 17.
-   */
-  storyOrder: number | null;
-  source: JoinSource;
-  /** Where the evidence is: a placement record address, or a `LOAD*` address. */
-  evidenceAddr: number;
-  /** True when the placement overrode the unit's own class (generic template). */
-  classOverridden: boolean;
-  /** Class the unit was placed as, when known. */
-  placedClassId: number;
-}
-
-export interface JoinDerivation {
-  /**
-   * Earliest chapter the unit is in the player's army: an initial placement, or
-   * a `LOAD1` ("仲間にする") instruction.
-   */
-  joins: Map<number, JoinEvidence>;
-  /**
-   * Earliest chapter the unit is referenced by *any* load instruction,
-   * including `LOAD2`/`LOAD3` cutscene loads. This is "first appearance", which
-   * can predate the join when a unit is loaded as a guest.
-   */
-  appearances: Map<number, JoinEvidence>;
-  /** Placement records whose class disagreed with the unit's own class. */
-  classOverriddenPlacements: number;
-  /** Total placement records examined. */
-  placementsExamined: number;
-  /** `LOAD*` sites found, by kind. */
-  sitesByKind: Record<JoinSource, number>;
-}
-
-const EMPTY_SITES: Record<JoinSource, number> = {
-  placement: 0,
-  recruit: 0,
-  load: 0,
-  cutscene: 0,
-};
-
-/**
- * Combine initial placements and mid-chapter load sites into a per-unit
- * earliest chapter.
- *
- * A placement only counts as the named character when its class id is 0 or
- * matches the unit's own class. `LOAD*` blocks are always counted, because a
- * load target is by construction "this unit is on the field".
- *
- * **Allegiance decides what counts as a join.** The `+3` side byte is
- * authoritative: only `player` records put a unit in the player's army.
- * Hacks routinely use `LOAD1` ("仲間にする") to place *enemy* units - on
- * dream-of-five, 1912 of 2338 recruit-site records are enemy-side - so a
- * recruit instruction alone proves a load, not a recruit. `ally` records
- * are guests and `removed` (消滅) deletes the unit at map load; both count
- * as appearances, never as joins.
- *
- * `orderOf` supplies the play position of a map index and is what "earliest"
- * is decided on; a chapter off every known path has no position and therefore
- * never beats one that has. Pass the map index back when there is no play order
- * to speak of - the comparison then degenerates to map-table order, which is
- * what this used to do.
- */
-export function deriveJoins(
-  chapters: readonly Chapter[],
-  scans: readonly ChapterScan[],
-  ownClassOf: ReadonlyMap<number, number>,
-  orderOf: (mapIndex: number) => number | null = () => null,
-): JoinDerivation {
-  const joins = new Map<number, JoinEvidence>();
-  const appearances = new Map<number, JoinEvidence>();
-  const scansByChapter = new Map(scans.map((s) => [s.chapterIndex, s]));
-  const sitesByKind: Record<JoinSource, number> = { ...EMPTY_SITES };
-  let placementsExamined = 0;
-  let classOverriddenPlacements = 0;
-
-  /** Off-path chapters sort after every placed one, then by table order. */
-  const rankOf = (record: JoinEvidence): number => record.storyOrder ?? Number.MAX_SAFE_INTEGER;
-
-  const earliest = (into: Map<number, JoinEvidence>, record: JoinEvidence): void => {
-    const existing = into.get(record.unitId);
-    if (
-      existing === undefined ||
-      rankOf(record) < rankOf(existing) ||
-      (rankOf(record) === rankOf(existing) && record.chapterIndex < existing.chapterIndex)
-    ) {
-      into.set(record.unitId, record);
-    }
-  };
-
-  for (const chapter of chapters) {
-    for (const placed of chapter.placements) {
-      placementsExamined++;
-      const own = ownClassOf.get(placed.unitId);
-      const overridden = placed.classId !== 0 && own !== undefined && placed.classId !== own;
-      if (overridden) {
-        classOverriddenPlacements++;
-        continue;
-      }
-
-      const record: JoinEvidence = {
-        unitId: placed.unitId,
-        chapterIndex: chapter.index,
-        storyOrder: orderOf(chapter.index),
-        source: "placement",
-        evidenceAddr: placed.addr,
-        classOverridden: false,
-        placedClassId: placed.classId,
-      };
-      sitesByKind.placement++;
-      earliest(appearances, record);
-      if (placed.side === "player") earliest(joins, record);
-    }
-
-    const scan = scansByChapter.get(chapter.index);
-    if (scan === undefined) continue;
-
-    for (const site of scan.recruits) {
-      const source: JoinSource = site.kind;
-      sitesByKind[source]++;
-      for (const unit of site.units) {
-        const record: JoinEvidence = {
-          unitId: unit.unitId,
-          chapterIndex: chapter.index,
-          storyOrder: orderOf(chapter.index),
-          source,
-          evidenceAddr: site.addr,
-          classOverridden: false,
-          placedClassId: unit.classId,
-        };
-        if (source === "recruit" && unit.side === "player") earliest(joins, record);
-        earliest(appearances, record);
-      }
-    }
-  }
-
-  return {
-    joins,
-    appearances,
-    classOverriddenPlacements,
-    placementsExamined,
-    sitesByKind,
-  };
 }

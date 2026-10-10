@@ -1,6 +1,7 @@
 import { renameSync, unlinkSync } from "node:fs";
 import { basename, extname, resolve } from "node:path";
 
+import { parseRom } from "../load.ts";
 import { openDb } from "../db/index.ts";
 import { populate } from "../db/populate.ts";
 import type { Command } from "./types.ts";
@@ -45,6 +46,7 @@ export const extract: Command = {
     "ExperimentalWarning on stderr. It is harmless.",
   run: async ({ rom, flags }) => {
     const out = flags.out ?? defaultOutPath(rom.path);
+    const parsed = parseRom(rom, flags.lang === undefined ? {} : { language: flags.lang });
 
     // Rebuild into a scratch file, then rename over the output: a failed
     // extract must not take the previous good database down with it. The
@@ -58,7 +60,7 @@ export const extract: Command = {
     try {
       const handle = openDb(tmp);
       try {
-        result = await populate(handle, rom);
+        result = await populate(handle, parsed);
       } finally {
         handle.close();
       }

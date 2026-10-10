@@ -91,7 +91,6 @@ export function usage(): string {
     "  fe-rom extract  ../fixtures/dream-of-five.gba",
     "  fe-rom extract  ../fixtures/dream-of-five.gba --out do5.db --lang zh",
     "  fe-rom text     ../fixtures/dream-of-five.gba 703 704 --range 0x210-0x218",
-    "  fe-rom validate ../fixtures/dream-of-five.gba",
   ].join("\n");
 }
 

@@ -21,9 +21,9 @@ export const ROSTER_VIEW_SQL =
 
 /**
  * Support pairs, deduplicated from the asymmetric `support_partners`.
- * Mirrors `buildSupportGraph` (tables/supports.ts): the pair is normalized
- * a < b, the numbers come from the a-side record when it exists, and the
- * reverse side is exposed so a mismatch is a WHERE clause, not a parse.
+ * The pair is normalized a < b, the numbers come from the a-side record when
+ * it exists, and the reverse side is exposed so a mismatch is a WHERE clause,
+ * not a parse.
  */
 export const SUPPORT_EDGES_VIEW_SQL = `
 CREATE VIEW support_edges AS
@@ -121,8 +121,7 @@ WHERE i.item_id IS NOT NULL`;
  * Earliest chapter per unit, from initial placements and load sites.
  * kind: "join" = in the player's army (player-side records only, placement
  * class-overrides excluded); "appearance" = any load at all. "Earliest" is
- * play position, with off-path maps last and the table row as tie-break -
- * the same rule as the parser's deriveJoins.
+ * play position, with off-path maps last and the table row as tie-break.
  */
 export const UNIT_JOINS_VIEW_SQL = `
 CREATE VIEW unit_joins AS
@@ -157,8 +156,8 @@ WHERE rn = 1`;
  * mechanical flier cross-checks (uniform movement costs / total terrain-bonus
  * immunity) catching the airborne monster classes that carry no mount flag.
  * When config/data is absent every mount is NULL and non-fliers read as
- * 'normal' - the costs-based baseline heuristic that would guess further is
- * an analysis convention and stays in the parser, not in the db.
+ * 'normal' - inferring more from movement costs would be an analysis
+ * convention, and conventions do not belong in the db.
  */
 export const CLASS_ROLES_VIEW_SQL = `
 CREATE VIEW class_roles AS
