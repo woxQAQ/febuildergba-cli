@@ -6,3 +6,6 @@ r
 # cli/ - TypeScript ROM parser (see AGENTS.md section 5)
 cli/node_modules/
 cli/out/
+
+# agent session memory
+.workbuddy/
