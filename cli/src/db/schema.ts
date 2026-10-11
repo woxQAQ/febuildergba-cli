@@ -125,8 +125,8 @@ export const classes = sqliteTable("classes", {
   sortOrder: integer("sort_order").notNull(),
   movementRange: integer("movement_range").notNull(),
   movementSpeed: integer("movement_speed").notNull(),
-  /** Experience bonus factored into exp gains; 0 = none. */
-  experienceBonus: integer("experience_bonus").notNull(),
+  /** Class power (威力等级) of the exp formula; class record +26. */
+  classPower: integer("class_power").notNull(),
 
   baseHp: integer("base_hp").notNull(),
   baseStr: integer("base_str").notNull(),

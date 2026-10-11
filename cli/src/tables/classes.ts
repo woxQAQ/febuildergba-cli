@@ -39,7 +39,7 @@ function readClassName(rom: RomBuffer, textId: number, text: TextContext): strin
  *   +11..17 u8 base stats (7)       +72  p32 terrain defence pointer
  *   +18  u8  movement range         +76  p32 terrain resistance pointer
  *   +19..25 u8 stat caps (7)        +80  u32 (unlabelled)
- *   +26  u8  experience bonus
+ *   +26  u8  class power
  *   +27..33 u8 enemy growths (7)
  *
  * Class ids are **0-based** (unlike unit ids), and class 0 is the empty entry
@@ -91,7 +91,7 @@ export const CLASS_OFFSET = {
   baseStats: 11,
   movementRange: 18,
   statCaps: 19,
-  experienceBonus: 26,
+  classPower: 26,
   enemyGrowths: 27,
   promotionBonuses: 34,
   abilityFlags: 40,
@@ -150,10 +150,16 @@ export interface UnitClass {
   movementRange: number;
   movementSpeed: number;
   /**
-   * `+26`: experience bonus factored into kill/exp gains (the reference's
-   * 経験値ボーナス). 0 means the class grants no bonus.
+   * `+26`: **class power** (威力等级), the divisor/multiplier of the FE6/7/8
+   * experience formula. The designer label is 経験値補正値 with
+   * `AccessibleDescription = "@CLASS_POWER"` (ClassForm.Designer.cs `J_26`,
+   * same in ClassFE6Form.Designer.cs), and the FE8U decomp names the byte
+   * `ClassData.classRelativePower` at `0x1A` (include/bmunit.h). Vanilla
+   * values are 1 (trainees/civilians), 2 (thieves, healers, dancers),
+   * 3 (everything else), 5 (final bosses); 0 marks the empty entry.
+   * Earlier read as "experience bonus" - a mistranslation of the label.
    */
-  experienceBonus: number;
+  classPower: number;
   bases: ClassBases;
   /** Stat caps, same field order as `bases`. */
   caps: ClassBases;
@@ -331,7 +337,7 @@ export function readClass(ctx: ClassTableContext, index: number): UnitClass | nu
     sortOrder: rom.u8(addr + CLASS_OFFSET.sortOrder),
     movementRange: rom.u8(addr + CLASS_OFFSET.movementRange),
     movementSpeed: rom.u8(addr + CLASS_OFFSET.movementSpeed),
-    experienceBonus: rom.u8(addr + CLASS_OFFSET.experienceBonus),
+    classPower: rom.u8(addr + CLASS_OFFSET.classPower),
     bases: readBases(rom, addr),
     caps,
     enemyGrowths: {

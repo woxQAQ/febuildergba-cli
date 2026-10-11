@@ -49,6 +49,27 @@
  *     caps, the bonus lands, the level resets to 1, and any overshoot
  *     accrues post-promotion. Since the rates are personal, the split point
  *     changes *which caps and bonus apply*, never the total growth.
+ *   - Levels never exceed {@link MAX_LEVEL} (20) per class: once capped, a
+ *     unit with no promotion left gains nothing further. The old flat
+ *     default never made this visible; the parity budget overfeeds a single
+ *     unit fast enough that the cap is what keeps the trajectory sane.
+ *   - The default per-chapter level gain is not a fixed constant: it is the
+ *     chapter's `expectedLevelsAtParity` from `analysis/expcurve.ts` times
+ *     the unit's share of it. The budget is a roster-level resource - the
+ *     exp one fighter would earn solo-clearing the chapter - so a unit
+ *     deployed alongside a full squad gets `1/deploySlots` of it by
+ *     default. Harder chapters offer more exp by fielding more and
+ *     boss/thief-flagged enemies. An explicit `levelsPerChapter` overrides
+ *     with a flat rate; `expShare` overrides the share only.
+ *   - A unit's share is further scaled by its join-time exp efficiency
+ *     (`ExpEfficiency.ratio`): a promoted or high-power unit converts the
+ *     same chapter budget into fewer levels. The ratio is frozen at the
+ *     join profile; the full feedback loop (recomputing exp from the
+ *     projected level each chapter) is a follow-up, as is the parity
+ *     assumption itself (a unit ahead of the curve earns less per kill
+ *     in-game than credited here).
+
+
  *   - `levelTrack` renders the trajectory in the community's `base/promoted`
  *     notation: `"15"` while unpromoted, `"20/3"` after promoting at base
  *     level 20 and gaining 2 further levels (reset to 1, then +2). A unit
@@ -69,8 +90,11 @@ import type { ParsedRom } from "../load.ts";
 import type { UnitClass } from "../tables/classes.ts";
 import type { EventTrace } from "../tables/eventTrace.ts";
 import { extractEventTrace } from "../tables/eventTrace.ts";
+import type { Difficulty } from "../tables/unitStats.ts";
 import { collectAppearances } from "./appearances.ts";
 import type { Unit } from "../tables/units.ts";
+import type { CombatantProfile, ExpCurveResult } from "./expcurve.ts";
+import { battleExp, combatantOf, computeExpCurve } from "./expcurve.ts";
 
 export interface StatLine {
   hp: number;
@@ -92,6 +116,30 @@ export interface ProjectionPoint {
   stats: StatLine;
 }
 
+/**
+ * 入队时的「经验效率」概要:该单位击杀一个同级参照敌所得经验,相对于一个
+ * 标准基础职业单位(power = 参照敌 power、未转职)的比值。语义:
+ *   - classPower 越高,伤害经验项 ÷power 越小,即「高 power 职业吃经验少」;
+ *   - 入队即上级的单位有效等级 +20、bonus B 抬升自身 powerLevel,两项一起
+ *     压缩经验 — 这就是上级单位挤压下级成长的量化。
+ * ratio < 1 表示低于标准线(典型:入队即转职的单位);> 1 见于学徒系
+ * (power 1-2)。
+ */
+export interface ExpEfficiency {
+  /** 入队职业的 class power(职业表 +26)。 */
+  classPower: number;
+  /** 参照敌的 power:入队章敌方众数;无章或无敌时退回 3(全版本标准值)。 */
+  enemyPowerRef: number;
+  /** 入队时是否已是上级职业。 */
+  promotedAtJoin: boolean;
+  /** 击杀同级参照敌的经验(无 boss/thief 加成,假设命中且击杀)。 */
+  expPerParityKill: number;
+  /** 同条件下标准基础职业单位的对照经验。 */
+  baselineExpPerParityKill: number;
+  /** expPerParityKill / baseline,保留 2 位小数。 */
+  ratio: number;
+}
+
 export interface UnitProjection {
   unitId: number;
   name: string;
@@ -100,6 +148,11 @@ export interface UnitProjection {
   classLine: readonly { classId: number; name: string }[];
   points: readonly ProjectionPoint[];
   /**
+   * 入队时的经验效率概要;单位从不入队(或入队章不在任何已知路径上)时为
+   * null — 没有可参照的入队章敌方 power。
+   */
+  expEfficiency: ExpEfficiency | null;
+  /**
    * 满练投影:Lv20 基础职业 → 转职 → Lv20 上位(无转职则 Lv20/当前职业上限),
    * cap 截断。与 options 无关 - 它是天花板,不是某个训练计划的结果。
    */
@@ -107,10 +160,20 @@ export interface UnitProjection {
 }
 
 export interface ProjectionOptions {
-  /** 每章期望升级数,默认 1。 */
+  /**
+   * 每章期望升级数的显式覆盖(平坦值)。缺省时消费 expcurve:取该章
+   * `expectedLevelsAtParity` 乘以经验份额(见 `expShare`)。
+   */
   levelsPerChapter?: number;
   /** 转职时机:基础职业达到该等级即转,默认 20。 */
   promoteAt?: number;
+  /** expcurve 预算与经验效率参照的难度,默认 "normal"。 */
+  difficulty?: Difficulty;
+  /**
+   * 该单位在每章经验预算中的份额,0-1。缺省为 1/deploySlots(满编出战
+   * 平分);该章无 deploy 数据时退回 {@link DEFAULT_EXP_SHARE}。
+   */
+  expShare?: number;
 }
 
 type GrownStat = keyof StatLine;
@@ -144,6 +207,70 @@ function traceOf(parsed: ParsedRom): EventTrace {
   );
   traceCache.set(parsed, trace);
   return trace;
+}
+
+/**
+ * The exp budget, cached per parsed ROM for the same reason as the trace:
+ * `computeExpCurve` pays a full unit-stats walk. The trace is shared with
+ * {@link traceOf} so the event scripts are walked once across both.
+ */
+const curveCache = new WeakMap<ParsedRom, ExpCurveResult>();
+
+function curveOf(parsed: ParsedRom): ExpCurveResult {
+  const cached = curveCache.get(parsed);
+  if (cached !== undefined) return cached;
+  const curve = computeExpCurve(parsed, { trace: traceOf(parsed) });
+  curveCache.set(parsed, curve);
+  return curve;
+}
+
+// ------------------------------------------------------------- exp efficiency
+
+/** Vanilla standard enemy class power; the fallback when a join chapter has no
+ *  counted enemies (or the unit never joins on a known path). */
+const STANDARD_ENEMY_POWER = 3;
+
+/**
+ * A unit's default share of a chapter's exp budget when the map carries no
+ * deploy-slot count: a full GBA squad deploys ~10.
+ */
+const DEFAULT_EXP_SHARE = 0.1;
+
+/**
+ * The join-time exp efficiency summary: this unit's exp for killing one
+ * same-level reference enemy vs a standard base-class unit's. See
+ * {@link ExpEfficiency} for the semantics.
+ */
+function expEfficiencyOf(
+  unit: Unit,
+  cls: UnitClass | undefined,
+  enemyPowerRef: number,
+  classById: ReadonlyMap<number, UnitClass>,
+  game: ParsedRom["identity"]["version"],
+  difficulty: Difficulty,
+): ExpEfficiency | null {
+  if (cls === undefined) return null; // class id outside the table: no power
+  const actor = combatantOf(cls, unit.level, unit.isPromotedClass, classById, game);
+  const reference: CombatantProfile = {
+    level: unit.level,
+    classPower: enemyPowerRef,
+    promoted: false,
+    linkedClassPower: 0,
+    boss: false,
+    thief: false,
+    mummy: false,
+    noExp: false,
+  };
+  const ours = battleExp(actor, reference, game, difficulty);
+  const baseline = battleExp(reference, reference, game, difficulty);
+  return {
+    classPower: cls.classPower,
+    enemyPowerRef,
+    promotedAtJoin: unit.isPromotedClass,
+    expPerParityKill: ours,
+    baselineExpPerParityKill: baseline,
+    ratio: baseline > 0 ? Math.round((ours / baseline) * 100) / 100 : 0,
+  };
 }
 
 // --------------------------------------------------------------- join chapters
@@ -267,7 +394,8 @@ function initState(unit: Unit, cls: UnitClass | undefined): SimState {
  * crossing of `promoteAt` when the class has a promotion and the unit did not
  * join promoted. The step is split at the threshold: growth before it accrues
  * under the old class's caps, the bonus lands, and the overshoot accrues
- * under the new ones.
+ * under the new ones. Levels stop at {@link MAX_LEVEL} per class - a capped
+ * unit earns exp but no levels, so the remainder is discarded, not carried.
  */
 function advance(state: SimState, levels: number, ctx: SimContext): void {
   let remaining = levels;
@@ -281,10 +409,13 @@ function advance(state: SimState, levels: number, ctx: SimContext): void {
       applyPromotion(state, target);
       remaining -= pre;
     } else {
-      growBy(state, remaining, ctx);
-      state.level += remaining;
+      const room = Math.max(0, MAX_LEVEL - state.level);
+      const step = Math.min(remaining, room);
+      growBy(state, step, ctx);
+      state.level += step;
       capAt(state, ctx.classById.get(state.classId));
-      remaining = 0;
+      remaining -= step;
+      if (room <= EPSILON) break; // capped at 20 with no promotion left
     }
   }
 }
@@ -343,8 +474,37 @@ function maxedStats(unit: Unit, ctx: SimContext): StatLine {
  * unit id as tie-break) - the order a "who do I train" reader scans in.
  */
 export function projectUnits(parsed: ParsedRom, opts: ProjectionOptions = {}): UnitProjection[] {
-  const levelsPerChapter = opts.levelsPerChapter ?? 1;
   const promoteAt = opts.promoteAt ?? MAX_LEVEL;
+  const difficulty = opts.difficulty ?? "normal";
+
+  // Levels per chapter: an explicit flat override when given; else the
+  // chapter's parity budget times the unit's share of it. The budget is a
+  // roster-level resource (one fighter solo-clearing the chapter), so a unit
+  // deployed alongside a full squad gets 1/deploySlots by default. Chapters
+  // with no counted enemies grant nothing - there is no one to fight.
+  const deploySlotsByMap = new Map(parsed.chapters.map((c) => [c.index, c.deploySlots]));
+  const shareOf = (mapIndex: number): number => {
+    if (opts.expShare !== undefined) return opts.expShare;
+    const slots = deploySlotsByMap.get(mapIndex);
+    return slots !== undefined && slots > 0 ? 1 / slots : DEFAULT_EXP_SHARE;
+  };
+  const levelsOf = ((): (position: number, mapIndex: number) => number => {
+    if (opts.levelsPerChapter !== undefined) return () => opts.levelsPerChapter as number;
+    const byPosition = new Map<number, number>();
+    for (const b of curveOf(parsed).budgets) {
+      if (b.difficulty === difficulty) byPosition.set(b.position, b.expectedLevelsAtParity);
+    }
+    return (position, mapIndex) => (byPosition.get(position) ?? 0) * shareOf(mapIndex);
+  })();
+  const powerRefOf = ((): ((position: number) => number) => {
+    const byPosition = new Map<number, number>();
+    for (const b of curveOf(parsed).budgets) {
+      if (b.difficulty === difficulty && b.typicalClassPower !== null) {
+        byPosition.set(b.position, b.typicalClassPower);
+      }
+    }
+    return (position) => byPosition.get(position) ?? STANDARD_ENEMY_POWER;
+  })();
 
   const classById = new Map(parsed.classes.map((c) => [c.id, c]));
   const targets = buildPromotionTargets(parsed.classes);
@@ -380,13 +540,28 @@ export function projectUnits(parsed: ParsedRom, opts: ProjectionOptions = {}): U
       applyPromotion(state, target);
     }
 
+    const efficiency =
+      joinPosition === null
+        ? null
+        : expEfficiencyOf(
+            unit,
+            cls,
+            powerRefOf(joinPosition),
+            classById,
+            parsed.identity.version,
+            difficulty,
+          );
+
     const points: ProjectionPoint[] = [];
     if (joinPosition !== null) {
       // The join chapter itself is the baseline point: starting stats, no growth.
       points.push(snapshot(state, joinPosition));
+      // The same chapter budget converts into fewer levels for a promoted or
+      // high-power unit; the ratio is frozen at the join profile (module doc).
+      const rate = efficiency?.ratio ?? 1;
       for (const step of playable) {
         if (step.order <= joinPosition) continue;
-        advance(state, levelsPerChapter, ctx);
+        advance(state, levelsOf(step.order, step.mapIndex) * rate, ctx);
         points.push(snapshot(state, step.order));
       }
     }
@@ -397,6 +572,7 @@ export function projectUnits(parsed: ParsedRom, opts: ProjectionOptions = {}): U
       joinPosition,
       classLine,
       points,
+      expEfficiency: efficiency,
       maxed: maxedStats(unit, ctx),
     });
   }

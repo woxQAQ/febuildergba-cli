@@ -154,7 +154,7 @@ async function insertClasses(db: ExtractDb, rom: ParsedRom): Promise<void> {
       sortOrder: c.sortOrder,
       movementRange: c.movementRange,
       movementSpeed: c.movementSpeed,
-      experienceBonus: c.experienceBonus,
+      classPower: c.classPower,
       baseHp: c.bases.hp,
       baseStr: c.bases.str,
       baseSkl: c.bases.skl,

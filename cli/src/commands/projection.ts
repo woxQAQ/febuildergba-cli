@@ -15,9 +15,11 @@ export const projection: Command = {
   description:
     "For every roster unit (support-data bearing, the same predicate the " +
     "`roster` command uses): the class line, the expected stats at each " +
-    "chapter from its join on - one expected level per chapter, promotion at " +
-    "base level 20 - and the fully-trained ceiling (`maxed`). These are " +
-    "expectations for planning, not the game's own simulation; see " +
-    "src/analysis/projection.ts for the difference from derived_unit_stats.",
+    "chapter from its join on - per-chapter levels from the exp curve's " +
+    "parity budget (see the `expcurve` command), promotion at base level " +
+    "20 - the join-time exp-efficiency summary, and the fully-trained " +
+    "ceiling (`maxed`). These are expectations for planning, not the game's " +
+    "own simulation; see src/analysis/projection.ts for the difference from " +
+    "derived_unit_stats.",
   run: ({ rom }) => projectUnits(parseRom(rom)),
 };

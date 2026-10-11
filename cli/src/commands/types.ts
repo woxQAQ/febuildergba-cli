@@ -25,6 +25,7 @@ export type CommandName =
   | "gains"
   | "joins"
   | "availability"
+  | "expcurve"
   | "projection";
 
 /**
