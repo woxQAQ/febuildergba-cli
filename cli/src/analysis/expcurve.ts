@@ -1,7 +1,7 @@
 /**
  * Per-chapter experience budget: how much combat exp a chapter offers, the
- * resource pool behind "who is worth training". Pure derivation over
- * `ParsedRom`; nothing here is persisted.
+ * resource pool behind "who is worth training". Pure derivation over the
+ * extract db ({@link AnalysisData}); nothing here is persisted.
  *
  * ## The formula and its sources
  *
@@ -54,11 +54,12 @@
  *     tutorial route) and off for the Link Arena. We proxy "tutorial route"
  *     with difficulty `easy` - see {@link EXP_CURVE_ASSUMPTIONS}.
  *
- * ## The budget itself
+ * The budget itself
  *
- * Enemies come from `tables/unitStats.ts` (`buildUnitStats`, the in-memory
- * twin of `derived_unit_stats`), which already resolves each appearance's
- * level under each difficulty. The budget measures the chapter at **parity**:
+ * Enemies come from `derived_unit_stats` (`data.unitStats` - what `populate`
+ * computed with `tables/unitStats.ts`'s simulator), which already resolves
+ * each appearance's level under each difficulty. The budget measures the
+ * chapter at **parity**:
  * a hypothetical player unit that fights every enemy at that enemy's own
  * level, class power and promotion status. At parity the level terms cancel
  * (`roundExp` is `31/power`, the power-level difference is 0), so a chapter's
@@ -73,13 +74,10 @@
  * chapters. See `EXP_CURVE_ASSUMPTIONS`.
  */
 
-import type { ParsedRom } from "../load.ts";
+import type { AnalysisClass, AnalysisData } from "./data.ts";
 import type { GameVersion } from "../rom/detect.ts";
-import type { UnitClass } from "../tables/classes.ts";
-import type { EventTrace } from "../tables/eventTrace.ts";
-import { extractEventTrace } from "../tables/eventTrace.ts";
 import type { Difficulty, UnitStatRow } from "../tables/unitStats.ts";
-import { DIFFICULTIES, buildUnitStats } from "../tables/unitStats.ts";
+import { DIFFICULTIES } from "../tables/unitStats.ts";
 
 // ----------------------------------------------------------------- constants
 // Every value cited; see the module doc for the source abbreviations.
@@ -177,10 +175,10 @@ export interface CombatantProfile {
  * dependency.
  */
 export function combatantOf(
-  cls: UnitClass,
+  cls: AnalysisClass,
   level: number,
   promoted: boolean,
-  classById: ReadonlyMap<number, UnitClass>,
+  classById: ReadonlyMap<number, AnalysisClass>,
   game: GameVersion,
 ): CombatantProfile {
   const linked =
@@ -358,11 +356,6 @@ const EXP_CURVE_ASSUMPTIONS: readonly string[] = [
 export interface ExpCurveOptions {
   /** Restrict to one difficulty; default emits all three. */
   difficulty?: Difficulty;
-  /**
-   * Pass the trace an extract already built to avoid re-walking every event
-   * script (same pattern as `analysis/availability.ts`).
-   */
-  trace?: EventTrace;
 }
 
 /** Modal class power of the counted enemies; `null` when empty. */
@@ -387,24 +380,10 @@ function typicalClassPowerOf(powers: readonly number[]): number | null {
  * The per-chapter exp budget for every playable chapter, one entry per
  * difficulty (FE6's three are identical - see assumptions).
  */
-export function computeExpCurve(parsed: ParsedRom, opts: ExpCurveOptions = {}): ExpCurveResult {
-  const trace =
-    opts.trace ??
-    extractEventTrace(
-      parsed.rom,
-      parsed.layout,
-      parsed.chapters,
-      parsed.condSlots,
-      parsed.eventScripts,
-    );
-  const rows = buildUnitStats({
-    units: parsed.units,
-    classes: parsed.classes,
-    chapters: parsed.chapters,
-    trace,
-  });
-  const classById = new Map(parsed.classes.map((c) => [c.id, c]));
-  const game = parsed.identity.version;
+export function computeExpCurve(data: AnalysisData, opts: ExpCurveOptions = {}): ExpCurveResult {
+  const rows = data.unitStats;
+  const classById = new Map(data.classes.map((c) => [c.id, c]));
+  const game = data.game;
   const difficulties = opts.difficulty === undefined ? DIFFICULTIES : [opts.difficulty];
 
   // (mapIndex, difficulty) -> counted enemy rows
@@ -423,7 +402,7 @@ export function computeExpCurve(parsed: ParsedRom, opts: ExpCurveOptions = {}): 
   }
 
   const budgets: ChapterExpBudget[] = [];
-  for (const step of parsed.playOrder.steps) {
+  for (const step of data.playOrder.steps) {
     if (!step.playable) continue;
     for (const difficulty of difficulties) {
       const enemies = byChapter.get(`${step.mapIndex}|${difficulty}`) ?? [];
@@ -431,7 +410,7 @@ export function computeExpCurve(parsed: ParsedRom, opts: ExpCurveOptions = {}): 
       let initialEnemyCount = 0;
       const powers: number[] = [];
       for (const row of enemies) {
-        const cls = classById.get(row.classId) as UnitClass;
+        const cls = classById.get(row.classId) as AnalysisClass;
         // A level that underflowed below 0 wraps to a maxed enemy in the
         // game (see tables/unitStats.ts); no formula input survives that.
         // Clamp to 0 so the parity computation stays symmetric - the level

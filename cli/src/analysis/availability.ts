@@ -1,18 +1,18 @@
 /**
  * Per-chapter unit availability: "can unit U be fielded in chapter N?" -
  * the first constraint on "who is worth training" (a unit that leaves the
- * army stops paying back investment). Pure derivation over `ParsedRom`;
- * nothing here is persisted.
+ * army stops paying back investment). Pure derivation over the extract db
+ * ({@link AnalysisData}); nothing here is persisted.
  *
  * ## Data sources
  *
- *   - Initial placements: `parsed.chapters[].placements` / `hardPlacements`
+ *   - Initial placements: `data.chapters[].placements` / `hardPlacements`
  *     (condition slots 10/11, the normal/hard 自軍配置 blocks).
  *   - Event loads: `reachedLoadSites` over the event trace - every load
  *     site a chapter's scripts reach, with its unit block attached.
- *   - Chapter order: `parsed.playOrder` (`derived_play_order` materialised);
+ *   - Chapter order: `data.playOrder` (`derived_play_order` materialised);
  *     `position`, not `chapterNumber`, is what orders a playthrough.
- *   - Forced deployment: `parsed.forceSortie`, the 必ず出撃 table.
+ *   - Forced deployment: `data.forceSortie`, the 必ず出撃 table.
  *
  * ## Derivation rules (v1, heuristic)
  *
@@ -62,17 +62,16 @@
  *   - **Removal persistence.** `removed` is per-chapter evidence; whether the
  *     unit ever returns is inferred only from later appearances, so a silent
  *     permanent leave shows as one `removed` chapter followed by `available`.
- *   - The trace is recomputed by default because `parseRom` does not retain
- *     it (only `populate` builds one). Callers that already have a trace
- *     should pass it in.
+ *
+ * The trace is read back from the db (`data.trace`), not re-walked:
+ * `extract` persists the raw event layer and the loader rebuilds the same
+ * shape (`db/read.ts`), so this module never touches the ROM.
  */
 
-import type { ParsedRom } from "../load.ts";
+import type { AnalysisData, AnalysisUnit } from "./data.ts";
 import { collectAppearances } from "./appearances.ts";
 import type { UnitAppearance } from "./appearances.ts";
-import type { EventTrace } from "../tables/eventTrace.ts";
-import { extractEventTrace } from "../tables/eventTrace.ts";
-import type { Unit } from "../tables/units.ts";
+import type { ForceSortieRecord } from "../tables/forceSortie.ts";
 
 export type ChapterStatus =
   /** Not yet in the army. */
@@ -115,9 +114,9 @@ type Appearance = UnitAppearance;
 // --- appearance collection ------------------------------------------------
 
 /** Appearances grouped by unit id; the collection rules live in `appearances.ts`. */
-function appearancesByUnit(parsed: ParsedRom, trace: EventTrace): Map<number, Appearance[]> {
+function appearancesByUnit(data: AnalysisData): Map<number, Appearance[]> {
   const out = new Map<number, Appearance[]>();
-  for (const a of collectAppearances(parsed, trace)) {
+  for (const a of collectAppearances(data)) {
     const list = out.get(a.unitId);
     if (list === undefined) out.set(a.unitId, [a]);
     else list.push(a);
@@ -128,9 +127,11 @@ function appearancesByUnit(parsed: ParsedRom, trace: EventTrace): Map<number, Ap
 // --- force sortie ---------------------------------------------------------
 
 /** Unit id -> the map indices its force-sortie records name; `null` set = any map. */
-function forceSortieIndex(parsed: ParsedRom): Map<number, Set<number> | null> {
+function forceSortieIndex(
+  records: readonly Pick<ForceSortieRecord, "unitId" | "mapIndex">[],
+): Map<number, Set<number> | null> {
   const out = new Map<number, Set<number> | null>();
-  for (const r of parsed.forceSortie?.records ?? []) {
+  for (const r of records) {
     let maps = out.get(r.unitId);
     if (maps === null) continue; // already "any map"
     if (maps === undefined) {
@@ -151,26 +152,14 @@ function forceSortieIndex(parsed: ParsedRom): Map<number, Set<number> | null> {
  * Availability of every unit the ROM shows anywhere (placement or event
  * load), sorted by unit id. Units with no recorded appearance at all are
  * omitted - there is nothing to say about them.
- *
- * `trace` is optional: pass the trace an extract already built to avoid
- * re-walking every event script.
  */
-export function computeAvailability(parsed: ParsedRom, trace?: EventTrace): UnitAvailability[] {
-  const effectiveTrace =
-    trace ??
-    extractEventTrace(
-      parsed.rom,
-      parsed.layout,
-      parsed.chapters,
-      parsed.condSlots,
-      parsed.eventScripts,
-    );
-  const appearances = appearancesByUnit(parsed, effectiveTrace);
-  const forced = forceSortieIndex(parsed);
+export function computeAvailability(data: AnalysisData): UnitAvailability[] {
+  const appearances = appearancesByUnit(data);
+  const forced = forceSortieIndex(data.forceSortie);
 
-  const playable = parsed.playOrder.steps.filter((s) => s.playable);
-  const positionOf = parsed.playOrder.position;
-  const unitById = new Map<number, Unit>(parsed.units.map((u) => [u.id, u]));
+  const playable = data.playOrder.steps.filter((s) => s.playable);
+  const positionOf = data.playOrder.position;
+  const unitById = new Map<number, AnalysisUnit>(data.units.map((u) => [u.id, u]));
 
   const results: UnitAvailability[] = [];
   for (const [unitId, apps] of [...appearances.entries()].sort((a, b) => a[0] - b[0])) {

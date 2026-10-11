@@ -1,9 +1,9 @@
-import { parseRom } from "../load.ts";
 import { buildUnitNameMap, unitNameOrId } from "../tables/units.ts";
 import type { Command } from "./types.ts";
 
-export const supports: Command = {
+export const supports: Command<"db"> = {
   name: "supports",
+  input: "db",
   summary: "List support pairs, deduplicated from the asymmetric partner lists",
   description:
     "One row per support pair. Replaces the former `support_edges` db view: " +
@@ -11,18 +11,15 @@ export const supports: Command = {
     "record when it exists (otherwise the b-side), `reciprocal` marks whether " +
     "both directions declare the pair, and the reverse numbers are exposed so " +
     "a mismatch is visible rather than a parse error.",
-  run: ({ rom }) => {
-    const parsed = parseRom(rom);
-    const names = buildUnitNameMap(parsed.units);
+  run: ({ data }) => {
+    const names = buildUnitNameMap(data.units);
 
     // Directed records keyed "unit>partner"; pairs keyed "a:b" with a < b.
     const directed = new Map<string, { initial: number; growth: number }>();
     const pairs = new Set<string>();
-    for (const e of parsed.supports.entries) {
-      for (const p of e.partners) {
-        directed.set(`${e.unitId}>${p.unitId}`, { initial: p.initial, growth: p.growth });
-        pairs.add(`${Math.min(e.unitId, p.unitId)}:${Math.max(e.unitId, p.unitId)}`);
-      }
+    for (const p of data.supportPartners) {
+      directed.set(`${p.unitId}>${p.partnerId}`, { initial: p.initial, growth: p.growth });
+      pairs.add(`${Math.min(p.unitId, p.partnerId)}:${Math.max(p.unitId, p.partnerId)}`);
     }
 
     return [...pairs]

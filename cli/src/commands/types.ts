@@ -1,4 +1,5 @@
 import type { RomHandle } from "../load.ts";
+import type { AnalysisData } from "../analysis/data.ts";
 
 /**
  * Every command word, as a literal union.
@@ -58,8 +59,15 @@ export class UsageError extends Error {
   }
 }
 
-/** Everything a command body needs: the parsed argv plus the identified ROM. */
-export interface CommandContext {
+/**
+ * What a command reads. `extract` and `text` parse the ROM itself; every
+ * other command reads the db `extract` wrote - the db is the single source of
+ * truth, so the analysis commands never touch the ROM.
+ */
+export type CommandInput = "rom" | "db";
+
+/** Context for an `"rom"` command: the identified ROM. */
+export interface RomCommandContext {
   /**
    * The identified ROM. `text` reads it directly; `extract` passes it to
    * `parseRom` - see `load.ts` for why those are separate stages.
@@ -71,7 +79,24 @@ export interface CommandContext {
   args: string[];
 }
 
-export interface Command {
+/** Context for a `"db"` command: an extract db loaded by `db/read.ts`. */
+export interface DbCommandContext {
+  data: AnalysisData;
+  /** Resolved global + command-local flags. */
+  flags: ResolvedFlags;
+  /** Positionals after the db path. No current command takes any. */
+  args: string[];
+}
+
+/** Everything a command body needs, discriminated by the command's `input`. */
+export type CommandContext = RomCommandContext | DbCommandContext;
+
+/** The context a command with `input` receives. */
+export type CommandContextFor<I extends CommandInput> = I extends "rom"
+  ? RomCommandContext
+  : DbCommandContext;
+
+export interface Command<I extends CommandInput = CommandInput> {
   /** Word the user types; unique across the registry. */
   readonly name: CommandName;
   /** One line, shown in the command table. */
@@ -80,9 +105,15 @@ export interface Command {
   readonly description?: string;
   /** Usage-line tail after `[options]`, for commands with bare positionals. */
   readonly extraArgs?: string;
-  /** Run the command; only after the ROM has loaded. */
-  run(context: CommandContext): unknown | Promise<unknown>;
+  /** What the positional argument is: a ROM, or an extract db. */
+  readonly input: I;
+  /** Run the command; only after its input has loaded. */
+  run(context: CommandContextFor<I>): unknown | Promise<unknown>;
 }
 
-/** Convenience re-export so command bodies can take just the context. */
-export type CommandRunner = (context: CommandContext) => unknown;
+/**
+ * The registry's element type. Keeping the `input` literal in the type lets
+ * the dispatcher narrow the context it builds; a plain `Command` would widen
+ * it away.
+ */
+export type AnyCommand = Command<"rom"> | Command<"db">;

@@ -1,9 +1,9 @@
-import { parseRom } from "../load.ts";
-import { extractEventTrace, reachedLoadSites } from "../tables/eventTrace.ts";
+import { reachedLoadSites } from "../tables/eventTrace.ts";
 import type { Command } from "./types.ts";
 
-export const recruits: Command = {
+export const recruits: Command<"db"> = {
   name: "recruits",
+  input: "db",
   summary: "List each chapter's load sites and the units they bring in",
   description:
     'One entry per reachable POINTER_UNIT instruction (a "load site"), with ' +
@@ -11,19 +11,12 @@ export const recruits: Command = {
     "`chapter_recruits` and `chapter_recruit_units` db views, which were the " +
     "same data flat and pre-joined: sites were the recursive CALL reach over " +
     "the raw event layer filtered to unit loads, units the block rows joined " +
-    "on. The reach now runs in memory over the same trace `extract` persists " +
-    "(`tables/eventTrace.ts`); `kind` is the load classification - " +
-    "`recruit` loads join the player's army, `load`/`cutscene` do not.",
-  run: ({ rom }) => {
-    const parsed = parseRom(rom);
-    const trace = extractEventTrace(
-      parsed.rom,
-      parsed.layout,
-      parsed.chapters,
-      parsed.condSlots,
-      parsed.eventScripts,
-    );
-    return reachedLoadSites(trace).map((site) => ({
+    "on. The reach runs over the trace `extract` persisted " +
+    "(`tables/eventTrace.ts`), read back from the db; `kind` is the load " +
+    "classification - `recruit` loads join the player's army, " +
+    "`load`/`cutscene` do not.",
+  run: ({ data }) => {
+    return reachedLoadSites(data.trace).map((site) => ({
       mapIndex: site.mapIndex,
       scriptId: site.scriptId,
       seq: site.seq,

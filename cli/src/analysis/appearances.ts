@@ -22,9 +22,8 @@
  * and forcing one policy on all three would hide that.
  */
 
-import type { ParsedRom } from "../load.ts";
+import type { AnalysisData } from "./data.ts";
 import type { UnitSide } from "../tables/chapters.ts";
-import type { EventTrace } from "../tables/eventTrace.ts";
 import { reachedLoadSites } from "../tables/eventTrace.ts";
 
 export interface UnitAppearance {
@@ -43,8 +42,8 @@ export interface UnitAppearance {
  * calling script. Ordering is collection order (placements first, then event
  * loads) - consumers that rank appearances apply their own sort.
  */
-export function collectAppearances(parsed: ParsedRom, trace: EventTrace): UnitAppearance[] {
-  const unitById = new Map(parsed.units.filter((u) => !u.isEmpty).map((u) => [u.id, u]));
+export function collectAppearances(data: AnalysisData): UnitAppearance[] {
+  const unitById = new Map(data.units.filter((u) => !u.isEmpty).map((u) => [u.id, u]));
   const out: UnitAppearance[] = [];
   const seen = new Set<string>();
 
@@ -55,7 +54,7 @@ export function collectAppearances(parsed: ParsedRom, trace: EventTrace): UnitAp
     out.push(a);
   };
 
-  for (const chapter of parsed.chapters) {
+  for (const chapter of data.chapters) {
     for (const block of [chapter.placements, chapter.hardPlacements]) {
       for (const p of block) {
         const unit = unitById.get(p.unitId);
@@ -72,7 +71,7 @@ export function collectAppearances(parsed: ParsedRom, trace: EventTrace): UnitAp
     }
   }
 
-  for (const site of reachedLoadSites(trace)) {
+  for (const site of reachedLoadSites(data.trace)) {
     for (const u of site.units) {
       push({
         unitId: u.unitId,

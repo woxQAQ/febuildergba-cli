@@ -1,24 +1,32 @@
 #!/usr/bin/env node
 /**
  * fe-rom - GBA Fire Emblem ROM extractor. Parses FE6/FE7/FE8 once into a SQLite
- * database so the data is analysed with SQL rather than a parser per question:
+ * database; everything downstream reads the db, not the ROM:
  *     node src/index.ts extract ../fixtures/dream-of-five.gba
+ *     node src/index.ts roster dream-of-five.db
  *     sqlite3 dream-of-five.db 'SELECT name, level FROM units WHERE has_support_data'
- * Common derivations are commands of their own, no db needed:
- *     node src/index.ts roster ../fixtures/dream-of-five.gba
  *
  * Runs on Node >= 22.18 (type stripping on by default; 22.6-22.17 need
  * `--experimental-strip-types`). Storage is Node's `node:sqlite`; drizzle-orm
  * is the one runtime dependency.
  *
- * This file is the shell only: parse argv, load the ROM, hand both to the
- * registered command, print. Adding a command is one `Command` file plus a line
- * in `src/commands/registry.ts`; the usage text, option parser and dispatcher
- * all read that registry.
+ * This file is the shell only: parse argv, load the command's input (the ROM
+ * for `extract`/`text`, the extract db for everything else), hand it to the
+ * registered command, print. Adding a command is one `Command` file plus a
+ * line in `src/commands/registry.ts`; the usage text, option parser and
+ * dispatcher all read that registry.
  */
 
 import { loadRom, RomNotFoundError, UnsupportedRomError } from "./load.ts";
+import { loadAnalysisData } from "./db/read.ts";
 import { UsageError } from "./commands/types.ts";
+import type {
+  AnyCommand,
+  Command,
+  CommandContext,
+  DbCommandContext,
+  RomCommandContext,
+} from "./commands/types.ts";
 import { parseArgv } from "./cli/args.ts";
 import { commandHelp, suggestions, usage } from "./cli/help.ts";
 import { emit } from "./cli/emit.ts";
@@ -42,6 +50,27 @@ function failRom(message: string): void {
 
 function main(): void {
   void run();
+}
+
+/** Run the command and print its payload; turns a UsageError into exit 2. */
+async function runAndEmit(command: Command<"rom">, context: RomCommandContext): Promise<void>;
+async function runAndEmit(command: Command<"db">, context: DbCommandContext): Promise<void>;
+async function runAndEmit(command: AnyCommand, context: CommandContext): Promise<void> {
+  try {
+    // The overloads pin the context to the command's `input`; the union call
+    // signature here is the one place that knowledge is not expressible.
+    const payload = await (command.run as (context: CommandContext) => unknown)(context);
+    emit(payload);
+  } catch (error) {
+    // The command may have been called with something it cannot accept - a
+    // malformed `--range`, a text id that is not a number. That is still the
+    // user's to fix, so it exits 2 like every other usage error.
+    if (error instanceof UsageError) {
+      fail(error.message);
+      return;
+    }
+    failRom(error instanceof Error ? error.message : String(error));
+  }
 }
 
 async function run(): Promise<void> {
@@ -74,7 +103,24 @@ async function run(): Promise<void> {
   }
 
   if (romPath === "") {
-    fail(`"${command}" needs a ROM path\n\nUsage: fe-rom ${command} <rom.gba> [options]`);
+    const isDb = resolved.input === "db";
+    const input = isDb ? "an extract db path" : "a ROM path";
+    fail(`"${command}" needs ${input}\n\nUsage: fe-rom ${command} ${isDb ? "<file.db>" : "<rom.gba>"} [options]`);
+    return;
+  }
+
+  if (resolved.input === "db") {
+    // The analysis commands' input is the db `extract` wrote, opened
+    // read-only; a missing file or a non-extract db is a one-line exit 1,
+    // the same treatment an unreadable ROM gets.
+    let data;
+    try {
+      data = await loadAnalysisData(romPath);
+    } catch (error) {
+      failRom(error instanceof Error ? error.message : String(error));
+      return;
+    }
+    await runAndEmit(resolved, { data, flags, args });
     return;
   }
 
@@ -95,19 +141,7 @@ async function run(): Promise<void> {
     throw error;
   }
 
-  try {
-    const payload = await resolved.run({ rom, flags, args });
-    emit(payload);
-  } catch (error) {
-    // The command may have been called with something it cannot accept - a
-    // malformed `--range`, a text id that is not a number. That is still the
-    // user's to fix, so it exits 2 like every other usage error.
-    if (error instanceof UsageError) {
-      fail(error.message);
-      return;
-    }
-    failRom(error instanceof Error ? error.message : String(error));
-  }
+  await runAndEmit(resolved, { rom, flags, args });
 }
 
 main();

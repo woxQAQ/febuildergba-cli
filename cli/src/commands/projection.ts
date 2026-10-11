@@ -5,12 +5,12 @@
  * live in `analysis/projection.ts`; this is the shell.
  */
 
-import { parseRom } from "../load.ts";
 import { projectUnits } from "../analysis/projection.ts";
 import type { Command } from "./types.ts";
 
-export const projection: Command = {
+export const projection: Command<"db"> = {
   name: "projection",
+  input: "db",
   summary: "Project each roster unit's expected stats across the play order",
   description:
     "For every roster unit (support-data bearing, the same predicate the " +
@@ -21,5 +21,5 @@ export const projection: Command = {
     "ceiling (`maxed`). These are expectations for planning, not the game's " +
     "own simulation; see src/analysis/projection.ts for the difference from " +
     "derived_unit_stats.",
-  run: ({ rom }) => projectUnits(parseRom(rom)),
+  run: ({ data }) => projectUnits(data),
 };

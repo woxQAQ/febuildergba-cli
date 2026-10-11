@@ -300,9 +300,12 @@ export function findUnitById(units: readonly Unit[], id: number): Unit | undefin
 
 /**
  * Map unit id -> display name. Falls back to `Unit 0xNN` for ids the table
- * does not cover, so support output never has holes.
+ * does not cover, so support output never has holes. Typed on the two fields
+ * it reads, so the db loader's rows (a `Pick` of `Unit`) pass too.
  */
-export function buildUnitNameMap(units: readonly Unit[]): Map<number, string> {
+export function buildUnitNameMap(
+  units: readonly { id: number; name: string }[],
+): Map<number, string> {
   const map = new Map<number, string>();
   for (const unit of units) {
     if (unit.id !== 0) map.set(unit.id, unit.name);

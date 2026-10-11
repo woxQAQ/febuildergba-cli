@@ -35,6 +35,7 @@ import {
   type EventScriptTable,
 } from "./eventScript.ts";
 import type { Chapter } from "./chapters.ts";
+import type { TracedInstruction } from "./eventTrace.ts";
 import { hex } from "../format.ts";
 
 /** Category token the opcode table puts on every map-moving instruction. */
@@ -93,6 +94,46 @@ const MAX_CALL_DEPTH = 4;
 /** Instruction ceiling per script, matching the reference's own sanity bound. */
 const MAX_STEPS = 4000;
 
+/**
+ * One instruction of an event script, reduced to what the transition walk
+ * reads: the transition it carries (opcode + destination + where it sat) and
+ * the script it CALLs. The walk is key-space agnostic - the ROM reader keys
+ * scripts by address, the db reader by `event_scripts.id` - so both feed one
+ * walk implementation ({@link walkTransitions}).
+ */
+export interface TransitionStep {
+  transition: { opcode: string; targetMap: number; scriptAddress: number } | null;
+  call: number | null;
+}
+
+/**
+ * The END_EVENT walk, shared by the ROM reader and the db reader: depth-first
+ * from the seed script, CALLs followed to depth {@link MAX_CALL_DEPTH}, each
+ * script entered at most once per walk (a shared helper's transitions are
+ * attributed at the depth it was first reached). Transitions come out in
+ * encounter order: a CALLed helper's edges sit at the CALL instruction, before
+ * the caller's remaining ones.
+ */
+export function walkTransitions(
+  seed: number,
+  instructionsOf: (script: number) => Iterable<TransitionStep>,
+): ChapterTransition[] {
+  const transitions: ChapterTransition[] = [];
+  const visited = new Set<number>();
+  const walk = (script: number, depth: number): void => {
+    if (visited.has(script) || depth > MAX_CALL_DEPTH) return;
+    visited.add(script);
+    for (const step of instructionsOf(script)) {
+      if (step.transition !== null) {
+        transitions.push({ ...step.transition, callDepth: depth });
+      }
+      if (step.call !== null) walk(step.call, depth + 1);
+    }
+  };
+  walk(seed, 0);
+  return transitions;
+}
+
 /** The mnemonic in parentheses at the end of a description, e.g. `(MNC2)`. */
 export function mnemonicOf(description: string): string {
   const m = description.match(/\(([A-Z][A-Z0-9_+]*)\)/);
@@ -123,6 +164,61 @@ export function callTargetOf(rom: RomBuffer, code: EventCode): number {
   return last === undefined ? 0 : argValue(rom, code, last.symbol);
 }
 
+interface RomWalkProbe {
+  decoded: number;
+  stop: string;
+}
+
+/**
+ * Decode one script into {@link TransitionStep}s, ROM side. Linear from
+ * `start`, stopping at the first unrecognised opcode, at the reference's step
+ * ceiling, or at an exit opcode - and recording which in `probe`, because "no
+ * transitions found" and "the walk fell off a cliff" are different answers.
+ * The exit instruction is still yielded (the walk's CALL on it is followed),
+ * matching the loop this replaces.
+ */
+function* romTransitionSteps(
+  rom: RomBuffer,
+  table: EventScriptTable,
+  start: number,
+  probe: RomWalkProbe,
+): Generator<TransitionStep> {
+  let addr = start;
+  let lastBranch = 0;
+
+  for (let step = 0; step < MAX_STEPS; step++) {
+    const code = disassemble(rom, addr, table);
+
+    if (code.script.description === "UNKNOWN") {
+      probe.stop = `unrecognised opcode at ${hex(addr)}`;
+      return;
+    }
+
+    const mnemonic = mnemonicOf(code.script.description);
+    const transition =
+      code.script.category.includes(MAP_CATEGORY) && TRANSITION_OPCODES.has(mnemonic)
+        ? { opcode: mnemonic, targetMap: destinationOf(rom, code), scriptAddress: addr }
+        : null;
+
+    let call: number | null = null;
+    if (mnemonic === "CALL") {
+      const ptr = callTargetOf(rom, code);
+      if (ptr !== 0 && rom.isSafePointer(ptr)) call = rom.toOffset(ptr);
+    }
+
+    probe.decoded++;
+    addr += code.bytes.length;
+
+    if (mnemonic === "IF_CONDITIONAL" || mnemonic === "IF_CANCEL") lastBranch = addr;
+
+    const exit = isExitCode(rom, code, lastBranch);
+    if (exit) probe.stop = `terminated at ${hex(addr)}`;
+    yield { transition, call };
+    if (exit) return;
+  }
+  probe.stop = "step limit";
+}
+
 /**
  * Decode one chapter's END_EVENT into its outgoing transitions.
  *
@@ -137,56 +233,6 @@ export function readChapterTransitions(
   table: EventScriptTable,
   chapter: Chapter,
 ): ChapterEdges {
-  const edges: ChapterTransition[] = [];
-  const visited = new Set<number>();
-
-  const walk = (start: number, depth: number): { decoded: number; stop: string } => {
-    if (start === 0 || visited.has(start) || depth > MAX_CALL_DEPTH) {
-      return { decoded: 0, stop: "depth limit or loop" };
-    }
-    visited.add(start);
-
-    let addr = start;
-    let decoded = 0;
-    let lastBranch = 0;
-
-    for (let step = 0; step < MAX_STEPS; step++) {
-      const code = disassemble(rom, addr, table);
-
-      if (code.script.description === "UNKNOWN") {
-        return { decoded, stop: `unrecognised opcode at ${hex(addr)}` };
-      }
-
-      const mnemonic = mnemonicOf(code.script.description);
-
-      if (code.script.category.includes(MAP_CATEGORY) && TRANSITION_OPCODES.has(mnemonic)) {
-        edges.push({
-          opcode: mnemonic,
-          targetMap: destinationOf(rom, code),
-          scriptAddress: addr,
-          callDepth: depth,
-        });
-      }
-
-      if (mnemonic === "CALL") {
-        const ptr = callTargetOf(rom, code);
-        if (ptr !== 0 && rom.isSafePointer(ptr)) {
-          walk(rom.toOffset(ptr), depth + 1);
-        }
-      }
-
-      decoded++;
-      addr += code.bytes.length;
-
-      if (mnemonic === "IF_CONDITIONAL" || mnemonic === "IF_CANCEL") lastBranch = addr;
-
-      if (isExitCode(rom, code, lastBranch)) {
-        return { decoded, stop: `terminated at ${hex(addr)}` };
-      }
-    }
-    return { decoded, stop: "step limit" };
-  };
-
   if (chapter.endEventAddr === 0) {
     return {
       mapIndex: chapter.index,
@@ -199,15 +245,24 @@ export function readChapterTransitions(
     };
   }
 
-  const { decoded, stop } = walk(chapter.endEventAddr, 0);
+  // The walk enters each script at most once, so one probe per start address
+  // suffices; the seed's is the one `ChapterEdges` reports.
+  const probes = new Map<number, RomWalkProbe>();
+  const transitions = walkTransitions(chapter.endEventAddr, (start) => {
+    const probe: RomWalkProbe = { decoded: 0, stop: "step limit" };
+    probes.set(start, probe);
+    return romTransitionSteps(rom, table, start, probe);
+  });
+  const probe = probes.get(chapter.endEventAddr) as RomWalkProbe;
+
   return {
     mapIndex: chapter.index,
     chapterNumber: chapter.chapterNumber,
     title: chapter.title,
     endEventAddress: chapter.endEventAddr,
-    instructionsDecoded: decoded,
-    stopReason: stop,
-    transitions: edges,
+    instructionsDecoded: probe.decoded,
+    stopReason: probe.stop,
+    transitions,
   };
 }
 
@@ -218,6 +273,36 @@ export function readAllTransitions(
   chapters: readonly Chapter[],
 ): ChapterEdges[] {
   return chapters.map((c) => readChapterTransitions(rom, table, c));
+}
+
+/**
+ * `TransitionStep`s over the persisted event layer, for {@link walkTransitions}
+ * run from an extract db (key space: `event_scripts.id`). Two adaptations keep
+ * it identical to the ROM reader ({@link romTransitionSteps}):
+ *
+ *   - the trace decode tolerates a run of UNKNOWN opcodes where the ROM walk
+ *     stops at the first, so this adapter stops there too;
+ *   - the ROM walk follows a `CALL` mnemonic only, so a `call_script_id`
+ *     carried by any other opcode is not followed here either.
+ *
+ * The db stores no script addresses, so `scriptAddress` is 0 - a dead field
+ * for every current consumer (the `transitions` command does not emit it).
+ */
+export function traceTransitionSteps(
+  instructionsByScript: ReadonlyMap<number, readonly TracedInstruction[]>,
+): (scriptId: number) => Iterable<TransitionStep> {
+  return function* steps(scriptId: number): Generator<TransitionStep> {
+    for (const i of instructionsByScript.get(scriptId) ?? []) {
+      if (i.opcode === "UNKNOWN") return;
+      yield {
+        transition:
+          i.targetMap === null
+            ? null
+            : { opcode: i.opcode, targetMap: i.targetMap, scriptAddress: 0 },
+        call: i.opcode === "CALL" ? i.callScriptId : null,
+      };
+    }
+  };
 }
 
 /**

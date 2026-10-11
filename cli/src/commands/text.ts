@@ -29,8 +29,9 @@ function parseTextIds(specs: readonly string[], range: string | undefined): numb
   return ids;
 }
 
-export const text: Command = {
+export const text: Command<"rom"> = {
   name: "text",
+  input: "rom",
   summary: "Decode one or more text ids (diagnostic)",
   description:
     "Diagnostic: decode raw text ids to see what the ROM actually holds. Ids " +

@@ -1,5 +1,4 @@
-import { parseRom } from "../load.ts";
-import type { UnitClass } from "../tables/classes.ts";
+import type { AnalysisClass } from "../analysis/data.ts";
 import type { Command } from "./types.ts";
 
 export type Mobility = "flying" | "mounted" | "armour" | "normal";
@@ -11,7 +10,7 @@ export type Mobility = "flying" | "mounted" | "armour" | "normal";
  * When config/data is absent every mount is null and non-fliers read as
  * "normal" - inferring more is an analysis convention, not a fact of the ROM.
  */
-function mobilityOf(c: UnitClass): Mobility {
+function mobilityOf(c: AnalysisClass): Mobility {
   if (c.mount === "wyvern" || c.mount === "pegasus") return "flying";
   if (c.mount === "horse") return "mounted";
   if (c.mount === "armour") return "armour";
@@ -19,8 +18,9 @@ function mobilityOf(c: UnitClass): Mobility {
   return "normal";
 }
 
-export const roles: Command = {
+export const roles: Command<"db"> = {
   name: "roles",
+  input: "db",
   summary: "Classify every class's mobility (flying/mounted/armour/normal)",
   description:
     "One row per non-empty class with its mobility role. Replaces the former " +
@@ -28,9 +28,8 @@ export const roles: Command = {
     "flags first (wyvern/pegasus -> flying, horse -> mounted, armour -> " +
     "armour), then the mechanical flier checks on the movement-cost and " +
     "terrain-bonus tables.",
-  run: ({ rom }) => {
-    const parsed = parseRom(rom);
-    return parsed.classes
+  run: ({ data }) => {
+    return data.classes
       .filter((c) => !c.isEmpty)
       .map((c) => ({ classId: c.id, name: c.name, mount: c.mount, mobility: mobilityOf(c) }));
   },

@@ -86,14 +86,10 @@
  *     playable predicate.
  */
 
-import type { ParsedRom } from "../load.ts";
-import type { UnitClass } from "../tables/classes.ts";
-import type { EventTrace } from "../tables/eventTrace.ts";
-import { extractEventTrace } from "../tables/eventTrace.ts";
+import type { AnalysisClass, AnalysisData, AnalysisUnit } from "./data.ts";
 import type { Difficulty } from "../tables/unitStats.ts";
 import { collectAppearances } from "./appearances.ts";
-import type { Unit } from "../tables/units.ts";
-import type { CombatantProfile, ExpCurveResult } from "./expcurve.ts";
+import type { CombatantProfile } from "./expcurve.ts";
 import { battleExp, combatantOf, computeExpCurve } from "./expcurve.ts";
 
 export interface StatLine {
@@ -186,44 +182,6 @@ const MAX_LEVEL = 20;
 /** Tolerance for fractional-level comparisons; binary floats make `0.1` sums drift. */
 const EPSILON = 1e-9;
 
-// ----------------------------------------------------------------------- trace
-
-/**
- * `extractEventTrace` pays a full event-script walk and `ParsedRom` is
- * immutable, so the trace is cached per handle rather than re-walked on every
- * `projectUnits` call.
- */
-const traceCache = new WeakMap<ParsedRom, EventTrace>();
-
-function traceOf(parsed: ParsedRom): EventTrace {
-  const cached = traceCache.get(parsed);
-  if (cached !== undefined) return cached;
-  const trace = extractEventTrace(
-    parsed.rom,
-    parsed.layout,
-    parsed.chapters,
-    parsed.condSlots,
-    parsed.eventScripts,
-  );
-  traceCache.set(parsed, trace);
-  return trace;
-}
-
-/**
- * The exp budget, cached per parsed ROM for the same reason as the trace:
- * `computeExpCurve` pays a full unit-stats walk. The trace is shared with
- * {@link traceOf} so the event scripts are walked once across both.
- */
-const curveCache = new WeakMap<ParsedRom, ExpCurveResult>();
-
-function curveOf(parsed: ParsedRom): ExpCurveResult {
-  const cached = curveCache.get(parsed);
-  if (cached !== undefined) return cached;
-  const curve = computeExpCurve(parsed, { trace: traceOf(parsed) });
-  curveCache.set(parsed, curve);
-  return curve;
-}
-
 // ------------------------------------------------------------- exp efficiency
 
 /** Vanilla standard enemy class power; the fallback when a join chapter has no
@@ -242,11 +200,11 @@ const DEFAULT_EXP_SHARE = 0.1;
  * {@link ExpEfficiency} for the semantics.
  */
 function expEfficiencyOf(
-  unit: Unit,
-  cls: UnitClass | undefined,
+  unit: AnalysisUnit,
+  cls: AnalysisClass | undefined,
   enemyPowerRef: number,
-  classById: ReadonlyMap<number, UnitClass>,
-  game: ParsedRom["identity"]["version"],
+  classById: ReadonlyMap<number, AnalysisClass>,
+  game: AnalysisData["game"],
   difficulty: Difficulty,
 ): ExpEfficiency | null {
   if (cls === undefined) return null; // class id outside the table: no power
@@ -280,13 +238,13 @@ function expEfficiencyOf(
  * army. See the module doc for the semantics; appearances come from the
  * shared collector in `analysis/appearances.ts`.
  */
-function buildJoinPositions(parsed: ParsedRom, trace: EventTrace): Map<number, number> {
+function buildJoinPositions(data: AnalysisData): Map<number, number> {
   const best = new Map<number, number>();
-  for (const a of collectAppearances(parsed, trace)) {
+  for (const a of collectAppearances(data)) {
     if (a.side !== "player") continue;
     if (a.source !== "placement" && a.source !== "recruit") continue;
     // Off every known story path: there is no chapter slot to project from.
-    const position = parsed.playOrder.position.get(a.mapIndex);
+    const position = data.playOrder.position.get(a.mapIndex);
     if (position === undefined) continue;
     const current = best.get(a.unitId);
     if (current === undefined || position < current) best.set(a.unitId, position);
@@ -302,7 +260,7 @@ function buildJoinPositions(parsed: ParsedRom, trace: EventTrace): Map<number, n
  * export it: `promotesToClassId` links the pair **both ways**, so the tie is
  * broken by `sortOrder` - the higher value is the promoted side.
  */
-function promotedClassIds(classes: readonly UnitClass[]): Set<number> {
+function promotedClassIds(classes: readonly AnalysisClass[]): Set<number> {
   const byId = new Map(classes.map((c) => [c.id, c]));
   const promoted = new Set<number>();
   for (const c of classes) {
@@ -313,10 +271,10 @@ function promotedClassIds(classes: readonly UnitClass[]): Set<number> {
 }
 
 /** Base class id -> the class it promotes into, for classes that have one. */
-function buildPromotionTargets(classes: readonly UnitClass[]): Map<number, UnitClass> {
+function buildPromotionTargets(classes: readonly AnalysisClass[]): Map<number, AnalysisClass> {
   const byId = new Map(classes.map((c) => [c.id, c]));
   const promoted = promotedClassIds(classes);
-  const targets = new Map<number, UnitClass>();
+  const targets = new Map<number, AnalysisClass>();
   for (const c of classes) {
     if (!promoted.has(c.id)) continue;
     const base = byId.get(c.promotesToClassId);
@@ -331,8 +289,8 @@ function buildPromotionTargets(classes: readonly UnitClass[]): Map<number, UnitC
 
 interface SimContext {
   growths: Readonly<Record<GrownStat, number>>;
-  classById: ReadonlyMap<number, UnitClass>;
-  targets: ReadonlyMap<number, UnitClass>;
+  classById: ReadonlyMap<number, AnalysisClass>;
+  targets: ReadonlyMap<number, AnalysisClass>;
   promoteAt: number;
 }
 
@@ -352,7 +310,7 @@ function growBy(state: SimState, levels: number, ctx: SimContext): void {
 }
 
 /** Caps bind permanently until a promotion raises them, so truncation is stepwise. */
-function capAt(state: SimState, cls: UnitClass | undefined): void {
+function capAt(state: SimState, cls: AnalysisClass | undefined): void {
   if (cls === undefined) return; // class id outside the table: no caps to apply
   for (const s of GROWN_STATS) {
     // The cap row's seventh field is con, not luck (same order as `bases`):
@@ -362,7 +320,7 @@ function capAt(state: SimState, cls: UnitClass | undefined): void {
   }
 }
 
-function applyPromotion(state: SimState, target: UnitClass): void {
+function applyPromotion(state: SimState, target: AnalysisClass): void {
   // Six bonuses - the ROM has no promotion luck bonus (`tables/classes.ts`).
   for (const s of GROWN_STATS) {
     if (s === "lck") continue;
@@ -375,7 +333,7 @@ function applyPromotion(state: SimState, target: UnitClass): void {
   capAt(state, target);
 }
 
-function initState(unit: Unit, cls: UnitClass | undefined): SimState {
+function initState(unit: AnalysisUnit, cls: AnalysisClass | undefined): SimState {
   const stats = {} as Record<GrownStat, number>;
   for (const s of GROWN_STATS) stats[s] = unit.startingStats[s];
   const state: SimState = {
@@ -451,7 +409,7 @@ function snapshot(state: SimState, position: number): ProjectionPoint {
  * promotable class still gets its promotion (that is the in-game rule too),
  * so the pre-promotion growth span clamps at 0 rather than skipping it.
  */
-function maxedStats(unit: Unit, ctx: SimContext): StatLine {
+function maxedStats(unit: AnalysisUnit, ctx: SimContext): StatLine {
   const cls = ctx.classById.get(unit.classId);
   const state = initState(unit, cls);
   const target = unit.isPromotedClass ? undefined : ctx.targets.get(unit.classId);
@@ -473,16 +431,17 @@ function maxedStats(unit: Unit, ctx: SimContext): StatLine {
  * Units are returned by join position (earliest first, never-joining last,
  * unit id as tie-break) - the order a "who do I train" reader scans in.
  */
-export function projectUnits(parsed: ParsedRom, opts: ProjectionOptions = {}): UnitProjection[] {
+export function projectUnits(data: AnalysisData, opts: ProjectionOptions = {}): UnitProjection[] {
   const promoteAt = opts.promoteAt ?? MAX_LEVEL;
   const difficulty = opts.difficulty ?? "normal";
+  const curve = computeExpCurve(data);
 
   // Levels per chapter: an explicit flat override when given; else the
   // chapter's parity budget times the unit's share of it. The budget is a
   // roster-level resource (one fighter solo-clearing the chapter), so a unit
   // deployed alongside a full squad gets 1/deploySlots by default. Chapters
   // with no counted enemies grant nothing - there is no one to fight.
-  const deploySlotsByMap = new Map(parsed.chapters.map((c) => [c.index, c.deploySlots]));
+  const deploySlotsByMap = new Map(data.chapters.map((c) => [c.index, c.deploySlots]));
   const shareOf = (mapIndex: number): number => {
     if (opts.expShare !== undefined) return opts.expShare;
     const slots = deploySlotsByMap.get(mapIndex);
@@ -491,14 +450,14 @@ export function projectUnits(parsed: ParsedRom, opts: ProjectionOptions = {}): U
   const levelsOf = ((): (position: number, mapIndex: number) => number => {
     if (opts.levelsPerChapter !== undefined) return () => opts.levelsPerChapter as number;
     const byPosition = new Map<number, number>();
-    for (const b of curveOf(parsed).budgets) {
+    for (const b of curve.budgets) {
       if (b.difficulty === difficulty) byPosition.set(b.position, b.expectedLevelsAtParity);
     }
     return (position, mapIndex) => (byPosition.get(position) ?? 0) * shareOf(mapIndex);
   })();
   const powerRefOf = ((): ((position: number) => number) => {
     const byPosition = new Map<number, number>();
-    for (const b of curveOf(parsed).budgets) {
+    for (const b of curve.budgets) {
       if (b.difficulty === difficulty && b.typicalClassPower !== null) {
         byPosition.set(b.position, b.typicalClassPower);
       }
@@ -506,15 +465,15 @@ export function projectUnits(parsed: ParsedRom, opts: ProjectionOptions = {}): U
     return (position) => byPosition.get(position) ?? STANDARD_ENEMY_POWER;
   })();
 
-  const classById = new Map(parsed.classes.map((c) => [c.id, c]));
-  const targets = buildPromotionTargets(parsed.classes);
-  const joins = buildJoinPositions(parsed, traceOf(parsed));
+  const classById = new Map(data.classes.map((c) => [c.id, c]));
+  const targets = buildPromotionTargets(data.classes);
+  const joins = buildJoinPositions(data);
   // Non-playable rows (a chain's terminal transition stop) pass no chapter,
   // so they grant no levels and emit no points.
-  const playable = parsed.playOrder.steps.filter((s) => s.playable);
+  const playable = data.playOrder.steps.filter((s) => s.playable);
 
   const projections: UnitProjection[] = [];
-  for (const unit of parsed.units) {
+  for (const unit of data.units) {
     if (unit.isEmpty || !unit.hasSupportData) continue;
 
     const ctx: SimContext = { growths: unit.growths, classById, targets, promoteAt };
@@ -543,14 +502,7 @@ export function projectUnits(parsed: ParsedRom, opts: ProjectionOptions = {}): U
     const efficiency =
       joinPosition === null
         ? null
-        : expEfficiencyOf(
-            unit,
-            cls,
-            powerRefOf(joinPosition),
-            classById,
-            parsed.identity.version,
-            difficulty,
-          );
+        : expEfficiencyOf(unit, cls, powerRefOf(joinPosition), classById, data.game, difficulty);
 
     const points: ProjectionPoint[] = [];
     if (joinPosition !== null) {

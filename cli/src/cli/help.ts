@@ -1,6 +1,6 @@
 import { COMMANDS, commandColumnWidth } from "../commands/registry.ts";
 import { FLAGS, globalFlags, type FlagSpec } from "./flags.ts";
-import type { Command, CommandName } from "../commands/types.ts";
+import type { AnyCommand, CommandName } from "../commands/types.ts";
 
 const TEXT_WIDTH = 78;
 
@@ -67,8 +67,11 @@ export function usage(): string {
     "fe-rom - extract GBA Fire Emblem ROMs into SQLite",
     "",
     "Usage:",
-    "  fe-rom <command> <rom.gba> [options]",
+    "  fe-rom extract <rom.gba> [options]     parse the ROM once into a db",
+    "  fe-rom text <rom.gba> [id...]          decode raw text ids (diagnostic)",
+    "  fe-rom <command> <file.db> [options]  every other command reads the db",
     "  fe-rom <command> --help",
+    "",
     "",
     "Commands:",
     ...COMMANDS.map((c) => `  ${pad(c.name, width)}  ${c.summary}`),
@@ -79,28 +82,32 @@ export function usage(): string {
     'Each command documents its own options under "fe-rom <command> --help".',
     "A command-specific option is rejected by commands that do not read it.",
     "",
-    "Analysis happens against the extracted database, with SQL. Example:",
+    "Analysis happens against the extracted database: run `extract` once, then",
+    "hand the .db to the analysis commands, or query it with SQL directly:",
+    "  fe-rom extract ../fixtures/dream-of-five.gba   # writes dream-of-five.db",
+    "  fe-rom roster dream-of-five.db",
     "  sqlite3 dream-of-five.db 'SELECT id, name FROM units WHERE has_support_data'",
-    "Common derivations are commands of their own (roster, joins, ...), no db needed.",
     "The full schema and its conventions are documented in src/db/schema.ts.",
     "",
-    "Exit codes: 0 ok, 1 the ROM could not be parsed, 2 bad arguments.",
+    "Exit codes: 0 ok, 1 the input (ROM or db) could not be read, 2 bad arguments.",
     "",
     "Examples (run from cli/):",
     "  fe-rom extract  ../fixtures/dream-of-five.gba",
     "  fe-rom extract  ../fixtures/dream-of-five.gba --out do5.db --lang zh",
+    "  fe-rom roster   dream-of-five.db",
     "  fe-rom text     ../fixtures/dream-of-five.gba 703 704 --range 0x210-0x218",
   ].join("\n");
 }
 
 /** `fe-rom <command> --help` */
-export function commandHelp(command: Command): string {
+export function commandHelp(command: AnyCommand): string {
   const local = FLAGS.filter((f) => f.commands?.includes(command.name) === true);
+  const input = command.input === "db" ? "<file.db>" : "<rom.gba>";
   const lines = [
     `fe-rom ${command.name} - ${command.summary}`,
     "",
     "Usage:",
-    `  fe-rom ${command.name} <rom.gba> [options]${command.extraArgs ?? ""}`,
+    `  fe-rom ${command.name} ${input} [options]${command.extraArgs ?? ""}`,
     "",
   ];
 

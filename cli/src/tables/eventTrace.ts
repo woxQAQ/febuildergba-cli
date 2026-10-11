@@ -137,6 +137,19 @@ export interface EventTrace {
   loadBlockUnits: TracedBlockUnit[];
 }
 
+/**
+ * The slice of the trace the reach walk reads: the instruction stream, the
+ * chapter-to-script links and the load-block contents. `EventTrace` satisfies
+ * it structurally, and the db loader (`db/read.ts`) rebuilds exactly this
+ * shape from the persisted event tables - the walk below exists once and both
+ * data sources feed it.
+ */
+export interface EventGraph {
+  instructions: readonly TracedInstruction[];
+  chapterSlots: readonly ChapterEventSlot[];
+  loadBlockUnits: readonly TracedBlockUnit[];
+}
+
 /** `walkScript`'s consecutive-unknown tolerance, kept identical on purpose. */
 const MAX_CONSECUTIVE_UNKNOWNS = 10;
 /** Per-script instruction ceiling. */
@@ -416,7 +429,7 @@ export interface ScriptReachOptions {
  * chapter that reaches it, which is its in-game behaviour.
  */
 export function reachableScripts(
-  trace: EventTrace,
+  trace: EventGraph,
   options: ScriptReachOptions = {},
 ): Map<number, Map<number, number>> {
   // CALL edges per script, decoded once here so the breadth-first pass below
@@ -465,7 +478,7 @@ export interface ReachedInstruction {
  * seed order (chapters in table order), then script, then decode order.
  */
 export function reachableInstructions(
-  trace: EventTrace,
+  trace: EventGraph,
   options: ScriptReachOptions = {},
 ): ReachedInstruction[] {
   const byScript = new Map<number, TracedInstruction[]>();
@@ -502,7 +515,7 @@ export interface ReachedLoadSite {
  * `recruits` command prints this directly; `joins` folds it into the
  * per-unit earliest-appearance derivation.
  */
-export function reachedLoadSites(trace: EventTrace): ReachedLoadSite[] {
+export function reachedLoadSites(trace: EventGraph): ReachedLoadSite[] {
   const unitsByBlock = new Map<number, TracedBlockUnit[]>();
   for (const u of trace.loadBlockUnits) {
     const list = unitsByBlock.get(u.blockId);

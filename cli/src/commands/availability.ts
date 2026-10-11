@@ -2,16 +2,16 @@
  * `availability` command: the unit x chapter matrix behind "is this unit even
  * fieldable later" - the first filter a training recommendation applies. The
  * derivation and its heuristics live in `analysis/availability.ts`; this is
- * the shell: parse, compute, shape the rows for JSON (`chapters` is a Map
- * inside, which JSON.stringify would render as `{}`).
+ * the shell: load the db, compute, shape the rows for JSON (`chapters` is a
+ * Map inside, which JSON.stringify would render as `{}`).
  */
 
-import { parseRom } from "../load.ts";
 import { computeAvailability } from "../analysis/availability.ts";
 import type { Command } from "./types.ts";
 
-export const availability: Command = {
+export const availability: Command<"db"> = {
   name: "availability",
+  input: "db",
   summary: "Show which chapters each unit can be fielded in",
   description:
     "One row per unit seen anywhere: its join chapter (play-order position, " +
@@ -20,9 +20,8 @@ export const availability: Command = {
     "joining, and merged gap segments. The status rules are heuristic - " +
     "absence from a chapter's placement block is the normal case, not a " +
     "leave; see src/analysis/availability.ts for the rules and blind spots.",
-  run: ({ rom }) => {
-    const parsed = parseRom(rom);
-    return computeAvailability(parsed).map((u) => ({
+  run: ({ data }) => {
+    return computeAvailability(data).map((u) => ({
       unitId: u.unitId,
       name: u.name,
       joinPosition: u.joinPosition,

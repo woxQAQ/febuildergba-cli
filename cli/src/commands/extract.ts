@@ -25,20 +25,22 @@ function unlinkIfExists(path: string): void {
   }
 }
 
-export const extract: Command = {
+export const extract: Command<"rom"> = {
   name: "extract",
+  input: "rom",
   summary: "Parse the whole ROM once into a SQLite database for SQL analysis",
   description:
     "Parses every table the ROM carries - units, classes, supports, chapters " +
     "and their event-script walks, items, shops and map objects - and writes " +
-    "it all to one SQLite database. Analysis then queries the db instead of " +
-    "re-running the CLI: filtering is a WHERE clause, joining is a JOIN, and " +
+    "it all to one SQLite database. Analysis then reads the db instead of the " +
+    "ROM: the analysis commands take the .db as their input (`fe-rom roster " +
+    "dream-of-five.db`, `fe-rom joins dream-of-five.db`, ...), and ad-hoc " +
+    "questions are SQL - filtering is a WHERE clause, joining is a JOIN, and " +
     "neither costs a re-parse.\n\n" +
     "The schema stores facts, not presentations: names join by id, prices " +
     "are `uses * unit_price`; per-question derivations such as the roster of " +
-    "support-bearing units are commands of their own (`fe-rom roster`, " +
-    "`fe-rom joins`, ...). See src/db/schema.ts for the full table list and " +
-    "conventions.\n\n" +
+    "support-bearing units are commands of their own. See src/db/schema.ts " +
+    "for the full table list and conventions.\n\n" +
     "An existing output file is replaced atomically: the extract is built " +
     "into a scratch file next to the output and renamed over it, so a failed " +
     "run leaves the previous database intact. The schema has no migrations - " +

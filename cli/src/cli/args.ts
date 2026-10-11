@@ -3,13 +3,14 @@ import { parseArgs } from "node:util";
 import { FLAGS, flagsFor, type FlagSpec } from "./flags.ts";
 import { findCommand } from "../commands/registry.ts";
 import { isKnownLanguage, LANGUAGE_NAMES } from "../config/data.ts";
-import type { Command, ResolvedFlags } from "../commands/types.ts";
+import type { AnyCommand, ResolvedFlags } from "../commands/types.ts";
 
 export interface ParsedArgv {
   /** Command word exactly as typed, or `null` when the user gave none. */
   command: string | null;
   /** The registered command, or `null` when the word is not one. */
-  resolved: Command | null;
+  resolved: AnyCommand | null;
+  /** The ROM path for `"rom"` commands, the extract db path for `"db"` ones. */
   romPath: string;
   /** Positionals after the ROM path - `text` takes text ids here. */
   args: string[];
@@ -100,9 +101,10 @@ export function parseArgv(argv: readonly string[]): ParsedArgv {
     // Everything after `--` lands here too, which is what the terminator is for.
     const extra = positionals.slice(2);
     if (extra.length > 0 && resolved.extraArgs === undefined) {
+      const input = resolved.input === "db" ? "<file.db>" : "<rom.gba>";
       throw new Error(
         `"${resolved.name}" takes no extra arguments, but got: ${extra.join(" ")}\n` +
-          `Usage: fe-rom ${resolved.name} <rom.gba> [options]`,
+          `Usage: fe-rom ${resolved.name} ${input} [options]`,
       );
     }
   }

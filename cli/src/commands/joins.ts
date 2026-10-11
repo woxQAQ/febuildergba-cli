@@ -1,7 +1,5 @@
-import { parseRom } from "../load.ts";
 import { collectAppearances } from "../analysis/appearances.ts";
 import type { UnitAppearance } from "../analysis/appearances.ts";
-import { extractEventTrace } from "../tables/eventTrace.ts";
 import { buildUnitNameMap, unitNameOrId } from "../tables/units.ts";
 import type { Command } from "./types.ts";
 
@@ -14,8 +12,9 @@ function isJoin(a: UnitAppearance): boolean {
   return a.side === "player" && (a.source === "placement" || a.source === "recruit");
 }
 
-export const joins: Command = {
+export const joins: Command<"db"> = {
   name: "joins",
+  input: "db",
   summary: "List each unit's earliest join and first appearance, by chapter",
   description:
     "Two rows per unit that appears anywhere: `join` is the earliest chapter " +
@@ -25,23 +24,14 @@ export const joins: Command = {
     'at all. Replaces the former `unit_joins` db view. "Earliest" is play ' +
     "position, not chapter number: off-path maps sort last, the map index " +
     "breaks ties. `storyOrder` is null for a chapter on no known path.",
-  run: ({ rom }) => {
-    const parsed = parseRom(rom);
-    const trace = extractEventTrace(
-      parsed.rom,
-      parsed.layout,
-      parsed.chapters,
-      parsed.condSlots,
-      parsed.eventScripts,
-    );
-
-    const appearances = collectAppearances(parsed, trace);
+  run: ({ data }) => {
+    const appearances = collectAppearances(data);
 
     // Play-order position is the rank; off-path maps rank last. Ties fall to
     // the map index, and a full tie keeps the record encountered first -
     // placements are collected before event loads, matching the row order of
     // the old view's UNION ALL, so a same-chapter tie reports the placement.
-    const position = parsed.playOrder.position;
+    const position = data.playOrder.position;
     const rank = (a: UnitAppearance): number => position.get(a.mapIndex) ?? Number.MAX_SAFE_INTEGER;
     const earlier = (a: UnitAppearance, b: UnitAppearance): UnitAppearance =>
       rank(a) !== rank(b) ? (rank(a) < rank(b) ? a : b) : a.mapIndex < b.mapIndex ? a : b;
@@ -58,7 +48,7 @@ export const joins: Command = {
       else list.push(a);
     }
 
-    const names = buildUnitNameMap(parsed.units);
+    const names = buildUnitNameMap(data.units);
     const row = (kind: "join" | "appearance", a: UnitAppearance) => ({
       kind,
       unitId: a.unitId,
