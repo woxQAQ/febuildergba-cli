@@ -447,7 +447,7 @@ export function projectUnits(data: AnalysisData, opts: ProjectionOptions = {}): 
     const slots = deploySlotsByMap.get(mapIndex);
     return slots !== undefined && slots > 0 ? 1 / slots : DEFAULT_EXP_SHARE;
   };
-  const levelsOf = ((): (position: number, mapIndex: number) => number => {
+  const levelsOf = ((): ((position: number, mapIndex: number) => number) => {
     if (opts.levelsPerChapter !== undefined) return () => opts.levelsPerChapter as number;
     const byPosition = new Map<number, number>();
     for (const b of curve.budgets) {

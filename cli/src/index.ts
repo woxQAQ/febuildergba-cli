@@ -105,7 +105,9 @@ async function run(): Promise<void> {
   if (romPath === "") {
     const isDb = resolved.input === "db";
     const input = isDb ? "an extract db path" : "a ROM path";
-    fail(`"${command}" needs ${input}\n\nUsage: fe-rom ${command} ${isDb ? "<file.db>" : "<rom.gba>"} [options]`);
+    fail(
+      `"${command}" needs ${input}\n\nUsage: fe-rom ${command} ${isDb ? "<file.db>" : "<rom.gba>"} [options]`,
+    );
     return;
   }
 

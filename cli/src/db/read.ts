@@ -193,9 +193,11 @@ class SchemaMismatchError extends Error {}
  */
 function assertAnalysisSchema(sqlite: OpenDb["sqlite"], path: string): void {
   const tables = new Set(
-    (sqlite.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as {
-      name: string;
-    }[]).map((r) => r.name),
+    (
+      sqlite.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as {
+        name: string;
+      }[]
+    ).map((r) => r.name),
   );
   const missing: string[] = [];
   for (const [table, columns] of Object.entries(REQUIRED_COLUMNS)) {
@@ -205,9 +207,11 @@ function assertAnalysisSchema(sqlite: OpenDb["sqlite"], path: string): void {
     }
     // Table names are our own constants, safe to interpolate.
     const present = new Set(
-      (sqlite.prepare(`SELECT name FROM pragma_table_info('${table}')`).all() as {
-        name: string;
-      }[]).map((r) => r.name),
+      (
+        sqlite.prepare(`SELECT name FROM pragma_table_info('${table}')`).all() as {
+          name: string;
+        }[]
+      ).map((r) => r.name),
     );
     for (const column of columns) {
       if (!present.has(column)) missing.push(`${table}.${column}`);
