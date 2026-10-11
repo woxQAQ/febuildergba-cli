@@ -3,7 +3,9 @@
  * fe-rom - GBA Fire Emblem ROM extractor. Parses FE6/FE7/FE8 once into a SQLite
  * database so the data is analysed with SQL rather than a parser per question:
  *     node src/index.ts extract ../fixtures/dream-of-five.gba
- *     sqlite3 dream-of-five.db 'SELECT name FROM roster'
+ *     sqlite3 dream-of-five.db 'SELECT name, level FROM units WHERE has_support_data'
+ * Common derivations are commands of their own, no db needed:
+ *     node src/index.ts roster ../fixtures/dream-of-five.gba
  *
  * Runs on Node >= 22.18 (type stripping on by default; 22.6-22.17 need
  * `--experimental-strip-types`). Storage is Node's `node:sqlite`; drizzle-orm

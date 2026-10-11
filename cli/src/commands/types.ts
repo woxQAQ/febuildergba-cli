@@ -14,7 +14,16 @@ import type { RomHandle } from "../load.ts";
  * Adding a command: add the word here, then let `registry.ts` fail to compile
  * until you have registered it there too.
  */
-export type CommandName = "extract" | "text";
+export type CommandName =
+  | "extract"
+  | "text"
+  | "roster"
+  | "roles"
+  | "supports"
+  | "transitions"
+  | "recruits"
+  | "gains"
+  | "joins";
 
 /**
  * Flags resolved from the command line, after the command's own flag set has

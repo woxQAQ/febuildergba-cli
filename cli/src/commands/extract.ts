@@ -35,8 +35,9 @@ export const extract: Command = {
     "re-running the CLI: filtering is a WHERE clause, joining is a JOIN, and " +
     "neither costs a re-parse.\n\n" +
     "The schema stores facts, not presentations: names join by id, prices " +
-    "are `uses * unit_price`; the roster of support-bearing units is the " +
-    "`roster` view. See src/db/schema.ts for the full table list and " +
+    "are `uses * unit_price`; per-question derivations such as the roster of " +
+    "support-bearing units are commands of their own (`fe-rom roster`, " +
+    "`fe-rom joins`, ...). See src/db/schema.ts for the full table list and " +
     "conventions.\n\n" +
     "An existing output file is replaced atomically: the extract is built " +
     "into a scratch file next to the output and renamed over it, so a failed " +

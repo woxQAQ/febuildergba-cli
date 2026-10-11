@@ -13,19 +13,19 @@
  *     `uses * unit_price`, usability is `wl_* > 0`. Absence is NULL or a missing
  *     child row, never the ROM's zero-as-absence.
  *
- * Three physical layers, decreasing trust:
+ * Two physical layers, decreasing trust:
  *   1. Raw tables (plain names): mechanical decodes of ROM bytes or config/data
  *      files - records, lists, names. No inference.
- *   2. Views: derivations SQL can express per query - `roster`,
- *      `support_edges`, and the walk-based `chapter_transitions`,
- *      `chapter_recruits`, `chapter_recruit_units`, `chapter_gold`,
- *      `chapter_item_gives`, `unit_joins`, `class_roles` over the raw event
- *      layer (`event_scripts` / `event_instructions` / `chapter_event_slots` /
- *      `load_blocks`). They are the raw layer read differently, so cannot drift.
- *   3. `derived_*` tables: inference SQL cannot express - currently only
+ *   2. `derived_*` tables: inference SQL cannot express - currently only
  *      `derived_play_order` (branch splicing is a custom ordering). Materialized
  *      because the consumer cannot recompute it without ROM and parser; treat as
  *      a conclusion, not evidence.
+ *
+ * The derivations that used to be a third layer of db views (`roster`,
+ * `support_edges`, the walk-based `chapter_transitions`, `chapter_recruits`,
+ * `chapter_recruit_units`, `chapter_gold`, `chapter_item_gives`, `unit_joins`,
+ * `class_roles`) are CLI commands over the parsed ROM now: `roster`,
+ * `supports`, `transitions`, `recruits`, `gains`, `joins`, `roles`.
  *
  * Conventions:
  *   - Booleans use `integer({ mode: "boolean" })` (0/1).
@@ -40,7 +40,7 @@
  *     rank C/B/A is `half * 1/2/3` (`tables/supportBonus.ts`).
  *
  * Empty unit slots (no name, class or level, non-unique id 0) are not
- * extracted; their count is `meta` `units.emptySlots`. Views live in `ddl.ts`.
+ * extracted; their count is `meta` `units.emptySlots`.
  */
 
 import { integer, primaryKey, real, sqliteTable, text } from "drizzle-orm/sqlite-core";

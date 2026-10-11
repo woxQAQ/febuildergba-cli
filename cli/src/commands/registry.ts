@@ -2,6 +2,13 @@ import type { Command, CommandName } from "./types.ts";
 
 import { extract } from "./extract.ts";
 import { text } from "./text.ts";
+import { roster } from "./roster.ts";
+import { roles } from "./roles.ts";
+import { supports } from "./supports.ts";
+import { transitions } from "./transitions.ts";
+import { recruits } from "./recruits.ts";
+import { gains } from "./gains.ts";
+import { joins } from "./joins.ts";
 
 /**
  * Every command, keyed by the word the user types.
@@ -18,6 +25,13 @@ import { text } from "./text.ts";
 const REGISTRY: Readonly<Record<CommandName, Command>> = {
   extract,
   text,
+  roster,
+  roles,
+  supports,
+  transitions,
+  recruits,
+  gains,
+  joins,
 };
 
 /** Every command, in the order the usage table lists them. */

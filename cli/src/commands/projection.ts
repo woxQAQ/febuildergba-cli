@@ -1,0 +1,23 @@
+/**
+ * `projection` command: expected stats per chapter for every roster unit -
+ * the growth half of "who is worth training". The expectation arithmetic and
+ * its modelling choices (per-chapter levels, promotion timing, stepwise caps)
+ * live in `analysis/projection.ts`; this is the shell.
+ */
+
+import { parseRom } from "../load.ts";
+import { projectUnits } from "../analysis/projection.ts";
+import type { Command } from "./types.ts";
+
+export const projection: Command = {
+  name: "projection",
+  summary: "Project each roster unit's expected stats across the play order",
+  description:
+    "For every roster unit (support-data bearing, the same predicate the " +
+    "`roster` command uses): the class line, the expected stats at each " +
+    "chapter from its join on - one expected level per chapter, promotion at " +
+    "base level 20 - and the fully-trained ceiling (`maxed`). These are " +
+    "expectations for planning, not the game's own simulation; see " +
+    "src/analysis/projection.ts for the difference from derived_unit_stats.",
+  run: ({ rom }) => projectUnits(parseRom(rom)),
+};

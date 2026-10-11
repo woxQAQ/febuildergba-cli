@@ -3,8 +3,9 @@
  * disassembled instruction streams. This is the *evidence* the walk-based
  * derivations compute from: which slot of which chapter points at which script,
  * what instructions each contains, what their arguments are - nothing else.
- * Control-flow questions (CALL reach, which loads count as recruits) are SQL
- * views over this layer, not here.
+ * The control-flow layer (CALL reach, which loads count as recruits) is
+ * `reachableScripts` / `reachableInstructions` below, computed from this trace;
+ * the CLI commands consume those, `db/populate.ts` persists the raw layer.
  *
  * Extraction rules, all mechanical:
  *   - Scripts are identified by start offset and decoded **once**; a CALL-shared
@@ -397,4 +398,131 @@ export function extractEventTrace(
 
   trace.loadBlockCount = blockIds.size;
   return trace;
+}
+
+export interface ScriptReachOptions {
+  /** Seed only slots of this kind (e.g. `END_EVENT`); absent seeds every slot. */
+  slotKind?: string;
+  /** Deepest CALL chain to follow; absent means unbounded. */
+  maxDepth?: number;
+}
+
+/**
+ * The (mapIndex, scriptId) pairs reachable from chapter condition slots, each
+ * with the shallowest CALL depth it was reached at (0 = the chapter's own slot
+ * script). This is the in-memory form of the reachability the extract views
+ * used to compute with a recursive CTE over `chapter_event_slots` and
+ * `event_instructions`; both sides attribute a CALL-shared helper to every
+ * chapter that reaches it, which is its in-game behaviour.
+ */
+export function reachableScripts(
+  trace: EventTrace,
+  options: ScriptReachOptions = {},
+): Map<number, Map<number, number>> {
+  // CALL edges per script, decoded once here so the breadth-first pass below
+  // does not re-scan the instruction stream per chapter.
+  const calls = new Map<number, number[]>();
+  for (const i of trace.instructions) {
+    if (i.callScriptId === null) continue;
+    const list = calls.get(i.scriptId);
+    if (list === undefined) calls.set(i.scriptId, [i.callScriptId]);
+    else if (!list.includes(i.callScriptId)) list.push(i.callScriptId);
+  }
+
+  const reached = new Map<number, Map<number, number>>();
+  const queue: { mapIndex: number; scriptId: number; depth: number }[] = [];
+  for (const slot of trace.chapterSlots) {
+    if (slot.scriptId === null) continue;
+    if (options.slotKind !== undefined && slot.slotKind !== options.slotKind) continue;
+    queue.push({ mapIndex: slot.mapIndex, scriptId: slot.scriptId, depth: 0 });
+  }
+  for (let head = 0; head < queue.length; head++) {
+    const { mapIndex, scriptId, depth } = queue[head] as (typeof queue)[number];
+    let perMap = reached.get(mapIndex);
+    if (perMap === undefined) reached.set(mapIndex, (perMap = new Map()));
+    const known = perMap.get(scriptId);
+    if (known !== undefined && known <= depth) continue;
+    perMap.set(scriptId, depth);
+    if (options.maxDepth !== undefined && depth >= options.maxDepth) continue;
+    for (const target of calls.get(scriptId) ?? []) {
+      queue.push({ mapIndex, scriptId: target, depth: depth + 1 });
+    }
+  }
+  return reached;
+}
+
+/** One instruction of a script a chapter can reach. */
+export interface ReachedInstruction {
+  mapIndex: number;
+  instruction: TracedInstruction;
+  /** CALL depth the script was reached at: 0 = the chapter's own slot script. */
+  depth: number;
+}
+
+/**
+ * Every instruction of every reachable script, attributed to the chapter that
+ * reaches it - a shared helper appears once per calling chapter. Ordered by
+ * seed order (chapters in table order), then script, then decode order.
+ */
+export function reachableInstructions(
+  trace: EventTrace,
+  options: ScriptReachOptions = {},
+): ReachedInstruction[] {
+  const byScript = new Map<number, TracedInstruction[]>();
+  for (const i of trace.instructions) {
+    const list = byScript.get(i.scriptId);
+    if (list === undefined) byScript.set(i.scriptId, [i]);
+    else list.push(i);
+  }
+  const out: ReachedInstruction[] = [];
+  for (const [mapIndex, scripts] of reachableScripts(trace, options)) {
+    for (const [scriptId, depth] of scripts) {
+      for (const instruction of byScript.get(scriptId) ?? []) {
+        out.push({ mapIndex, instruction, depth });
+      }
+    }
+  }
+  return out;
+}
+
+/** A load site a chapter can reach, with the units its block brings in. */
+export interface ReachedLoadSite {
+  mapIndex: number;
+  scriptId: number;
+  seq: number;
+  /** Load classification of the POINTER_UNIT argument; never null or "other". */
+  kind: "recruit" | "load" | "cutscene";
+  blockId: number;
+  units: TracedBlockUnit[];
+}
+
+/**
+ * Every reachable POINTER_UNIT instruction with its unit block attached - the
+ * answer to "which units does this chapter load, and from which script". The
+ * `recruits` command prints this directly; `joins` folds it into the
+ * per-unit earliest-appearance derivation.
+ */
+export function reachedLoadSites(trace: EventTrace): ReachedLoadSite[] {
+  const unitsByBlock = new Map<number, TracedBlockUnit[]>();
+  for (const u of trace.loadBlockUnits) {
+    const list = unitsByBlock.get(u.blockId);
+    if (list === undefined) unitsByBlock.set(u.blockId, [u]);
+    else list.push(u);
+  }
+  const out: ReachedLoadSite[] = [];
+  for (const { mapIndex, instruction } of reachableInstructions(trace)) {
+    // A null loadKind never co-occurs with a blockId (decodeInstruction sets
+    // them together), and "other" loads are not unit loads at all.
+    if (instruction.blockId === null) continue;
+    if (instruction.loadKind === null || instruction.loadKind === "other") continue;
+    out.push({
+      mapIndex,
+      scriptId: instruction.scriptId,
+      seq: instruction.seq,
+      kind: instruction.loadKind,
+      blockId: instruction.blockId,
+      units: unitsByBlock.get(instruction.blockId) ?? [],
+    });
+  }
+  return out;
 }

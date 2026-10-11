@@ -12,7 +12,7 @@ import type { ParsedRom } from "../load.ts";
 import { extractEventTrace } from "../tables/eventTrace.ts";
 import type { EventTrace } from "../tables/eventTrace.ts";
 import { buildUnitStats } from "../tables/unitStats.ts";
-import { createSchemaSql } from "./ddl.ts";
+import { createTablesSql } from "./ddl.ts";
 import type { ExtractDb, OpenDb } from "./index.ts";
 import * as t from "./schema.ts";
 
@@ -23,7 +23,7 @@ export interface PopulateResult {
 
 export async function populate(handle: OpenDb, rom: ParsedRom): Promise<PopulateResult> {
   const { db, sqlite } = handle;
-  for (const statement of createSchemaSql(t.TABLES)) sqlite.exec(statement);
+  for (const statement of createTablesSql(t.TABLES)) sqlite.exec(statement);
 
   sqlite.exec("BEGIN");
   try {
@@ -261,7 +261,7 @@ async function insertSupports(db: ExtractDb, rom: ParsedRom): Promise<void> {
       });
     }
   }
-  // support_edges is a VIEW over support_partners now - nothing to insert.
+  // The deduplicated pair view is the `supports` command now - nothing to insert.
 }
 
 async function insertItemsAndTerrain(db: ExtractDb, rom: ParsedRom): Promise<void> {
@@ -390,7 +390,7 @@ async function insertChapters(db: ExtractDb, rom: ParsedRom): Promise<void> {
  * The play order is the one story-path artifact that stays materialized:
  * branch splicing ("a side chapter is played between its branch parent and
  * the next main chapter") is a custom ordering SQL cannot express. The
- * transitions it reads are the `chapter_transitions` view over the raw
+ * transitions it reads are what the `transitions` command prints over the raw
  * event layer.
  */
 async function insertStory(db: ExtractDb, rom: ParsedRom): Promise<void> {
@@ -466,8 +466,9 @@ async function insertSkills(db: ExtractDb, rom: ParsedRom): Promise<void> {
 
 /**
  * The raw event layer: scripts, instructions, slot links and load blocks.
- * Walk-based derivations (transitions, recruits, gold, joins) are views over
- * these tables - nothing derived is inserted here.
+ * Walk-based derivations (transitions, recruits, gold, joins) are CLI
+ * commands over the in-memory trace (`tables/eventTrace.ts`'s
+ * `reachableInstructions`) - nothing derived is inserted here.
  */
 async function insertEventTrace(db: ExtractDb, rom: ParsedRom, trace: EventTrace): Promise<void> {
   for (const script of trace.scripts) {
