@@ -6,7 +6,7 @@ export const recruits: Command = {
   name: "recruits",
   summary: "List each chapter's load sites and the units they bring in",
   description:
-    "One entry per reachable POINTER_UNIT instruction (a \"load site\"), with " +
+    'One entry per reachable POINTER_UNIT instruction (a "load site"), with ' +
     "the units of its unit block nested under it. Replaces the former " +
     "`chapter_recruits` and `chapter_recruit_units` db views, which were the " +
     "same data flat and pre-joined: sites were the recursive CALL reach over " +

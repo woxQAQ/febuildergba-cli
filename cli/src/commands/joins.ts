@@ -22,7 +22,7 @@ export const joins: Command = {
     "the unit enters the player's army (player-side placements whose class " +
     "override is absent or matches the unit's own class, plus player-side " +
     "`recruit` loads); `appearance` is the earliest chapter the unit is seen " +
-    "at all. Replaces the former `unit_joins` db view. \"Earliest\" is play " +
+    'at all. Replaces the former `unit_joins` db view. "Earliest" is play ' +
     "position, not chapter number: off-path maps sort last, the map index " +
     "breaks ties. `storyOrder` is null for a chapter on no known path.",
   run: ({ rom }) => {
@@ -42,16 +42,9 @@ export const joins: Command = {
     // placements are collected before event loads, matching the row order of
     // the old view's UNION ALL, so a same-chapter tie reports the placement.
     const position = parsed.playOrder.position;
-    const rank = (a: UnitAppearance): number =>
-      position.get(a.mapIndex) ?? Number.MAX_SAFE_INTEGER;
+    const rank = (a: UnitAppearance): number => position.get(a.mapIndex) ?? Number.MAX_SAFE_INTEGER;
     const earlier = (a: UnitAppearance, b: UnitAppearance): UnitAppearance =>
-      rank(a) !== rank(b)
-        ? rank(a) < rank(b)
-          ? a
-          : b
-        : a.mapIndex < b.mapIndex
-          ? a
-          : b;
+      rank(a) !== rank(b) ? (rank(a) < rank(b) ? a : b) : a.mapIndex < b.mapIndex ? a : b;
     const earliest = (list: UnitAppearance[]): UnitAppearance => {
       let best = list[0] as UnitAppearance;
       for (const a of list) best = earlier(a, best);

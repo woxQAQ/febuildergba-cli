@@ -158,7 +158,13 @@ function forceSortieIndex(parsed: ParsedRom): Map<number, Set<number> | null> {
 export function computeAvailability(parsed: ParsedRom, trace?: EventTrace): UnitAvailability[] {
   const effectiveTrace =
     trace ??
-    extractEventTrace(parsed.rom, parsed.layout, parsed.chapters, parsed.condSlots, parsed.eventScripts);
+    extractEventTrace(
+      parsed.rom,
+      parsed.layout,
+      parsed.chapters,
+      parsed.condSlots,
+      parsed.eventScripts,
+    );
   const appearances = appearancesByUnit(parsed, effectiveTrace);
   const forced = forceSortieIndex(parsed);
 
@@ -175,7 +181,10 @@ export function computeAvailability(parsed: ParsedRom, trace?: EventTrace): Unit
       if (a.side !== "player") continue;
       if (a.source !== "placement" && a.source !== "recruit") continue;
       const rank = positionOf.get(a.mapIndex) ?? Number.POSITIVE_INFINITY;
-      if (rank < joinRank || (rank === joinRank && (joinMapIndex === null || a.mapIndex < joinMapIndex))) {
+      if (
+        rank < joinRank ||
+        (rank === joinRank && (joinMapIndex === null || a.mapIndex < joinMapIndex))
+      ) {
         joinRank = rank;
         joinMapIndex = a.mapIndex;
       }
@@ -226,7 +235,9 @@ export function computeAvailability(parsed: ParsedRom, trace?: EventTrace): Unit
 
     results.push({
       unitId,
-      name: unitById.get(unitId)?.name ?? `Unit 0x${unitId.toString(16).toUpperCase().padStart(2, "0")}`,
+      name:
+        unitById.get(unitId)?.name ??
+        `Unit 0x${unitId.toString(16).toUpperCase().padStart(2, "0")}`,
       joinPosition,
       joinMapIndex,
       chapters,
