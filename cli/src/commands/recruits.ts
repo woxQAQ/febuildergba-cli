@@ -15,8 +15,8 @@ export const recruits: Command<"db"> = {
     "(`tables/eventTrace.ts`), read back from the db; `kind` is the load " +
     "classification - `recruit` loads join the player's army, " +
     "`load`/`cutscene` do not.",
-  run: ({ data }) => {
-    return reachedLoadSites(data.trace).map((site) => ({
+  run: async ({ extract }) => {
+    return reachedLoadSites(await extract.trace()).map((site) => ({
       mapIndex: site.mapIndex,
       scriptId: site.scriptId,
       seq: site.seq,

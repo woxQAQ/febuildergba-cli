@@ -11,13 +11,14 @@ export const supports: Command<"db"> = {
     "record when it exists (otherwise the b-side), `reciprocal` marks whether " +
     "both directions declare the pair, and the reverse numbers are exposed so " +
     "a mismatch is visible rather than a parse error.",
-  run: ({ data }) => {
-    const names = buildUnitNameMap(data.units);
+  run: async ({ extract }) => {
+    const names = buildUnitNameMap(await extract.units());
+    const supportPartners = await extract.supportPartners();
 
     // Directed records keyed "unit>partner"; pairs keyed "a:b" with a < b.
     const directed = new Map<string, { initial: number; growth: number }>();
     const pairs = new Set<string>();
-    for (const p of data.supportPartners) {
+    for (const p of supportPartners) {
       directed.set(`${p.unitId}>${p.partnerId}`, { initial: p.initial, growth: p.growth });
       pairs.add(`${Math.min(p.unitId, p.partnerId)}:${Math.max(p.unitId, p.partnerId)}`);
     }

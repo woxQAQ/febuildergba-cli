@@ -2,7 +2,7 @@
  * Per-chapter unit availability: "can unit U be fielded in chapter N?" -
  * the first constraint on "who is worth training" (a unit that leaves the
  * army stops paying back investment). Pure derivation over the extract db
- * ({@link AnalysisData}); nothing here is persisted.
+ * ({@link AvailabilityInput}); nothing here is persisted.
  *
  * ## Data sources
  *
@@ -65,10 +65,10 @@
  *
  * The trace is read back from the db (`data.trace`), not re-walked:
  * `extract` persists the raw event layer and the loader rebuilds the same
- * shape (`db/read.ts`), so this module never touches the ROM.
+ * shape (`db/queries.ts`), so this module never touches the ROM.
  */
 
-import type { AnalysisData, AnalysisUnit } from "./data.ts";
+import type { AnalysisUnit, AvailabilityInput } from "./data.ts";
 import { collectAppearances } from "./appearances.ts";
 import type { UnitAppearance } from "./appearances.ts";
 import type { ForceSortieRecord } from "../tables/forceSortie.ts";
@@ -114,7 +114,7 @@ type Appearance = UnitAppearance;
 // --- appearance collection ------------------------------------------------
 
 /** Appearances grouped by unit id; the collection rules live in `appearances.ts`. */
-function appearancesByUnit(data: AnalysisData): Map<number, Appearance[]> {
+function appearancesByUnit(data: AvailabilityInput): Map<number, Appearance[]> {
   const out = new Map<number, Appearance[]>();
   for (const a of collectAppearances(data)) {
     const list = out.get(a.unitId);
@@ -153,7 +153,7 @@ function forceSortieIndex(
  * load), sorted by unit id. Units with no recorded appearance at all are
  * omitted - there is nothing to say about them.
  */
-export function computeAvailability(data: AnalysisData): UnitAvailability[] {
+export function computeAvailability(data: AvailabilityInput): UnitAvailability[] {
   const appearances = appearancesByUnit(data);
   const forced = forceSortieIndex(data.forceSortie);
 

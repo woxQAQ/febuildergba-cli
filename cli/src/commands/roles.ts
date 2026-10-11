@@ -28,8 +28,8 @@ export const roles: Command<"db"> = {
     "flags first (wyvern/pegasus -> flying, horse -> mounted, armour -> " +
     "armour), then the mechanical flier checks on the movement-cost and " +
     "terrain-bonus tables.",
-  run: ({ data }) => {
-    return data.classes
+  run: async ({ extract }) => {
+    return (await extract.classes())
       .filter((c) => !c.isEmpty)
       .map((c) => ({ classId: c.id, name: c.name, mount: c.mount, mobility: mobilityOf(c) }));
   },

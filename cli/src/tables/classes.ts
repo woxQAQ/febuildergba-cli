@@ -135,11 +135,16 @@ export interface UnitClass {
   name: string;
   description: string;
   /**
-   * **The class this one is promoted FROM** - a reverse link despite the
-   * reference's naming. Verified FE8U: `Knight`(1) stores 3 (`General`),
-   * `Paladin`(7) stores 5 (`Lance Cavalier`); reading it forward gives nonsense.
-   * To test "already promoted", count *inbound* links; {@link sortOrder} is the
-   * forward view (base/promoted share a value).
+   * The class this one is promoted FROM - a **reverse** link despite the name.
+   * Verified FE8U: `Knight`(1) stores 3 (`General`), `Paladin`(7) stores 5
+   * (`Lance Cavalier`); reading it forward gives nonsense. The name is kept
+   * because {@link CLASS_OFFSET.promotesToClassId} reads byte `+5` and
+   * FEBuilderGBA's own label for it is 転職先 (promotion *destination*), so a
+   * reader comparing the two should not find them quietly disagreeing. Read
+   * {@link buildPromotionGraph} instead of resolving the direction here.
+   *
+   * The pair links **both ways** (base -> promoted and promoted -> base), so
+   * the byte alone cannot order it; `sortOrder` breaks the tie.
    */
   promotesToClassId: number;
   /**
@@ -407,4 +412,43 @@ export function buildClassNameMap(classes: readonly UnitClass[]): Map<number, st
     if (cls.name.length > 0) map.set(cls.id, cls.name);
   }
   return map;
+}
+
+/**
+ * The class table's promotion graph, resolved once. `+5` is a reverse link (see
+ * {@link UnitClass.promotesToClassId}) and the pair links both ways, so the
+ * direction can only be recovered by comparing {@link UnitClass.sortOrder} -
+ * across the vanilla base/promoted pairs the **higher** value is the promoted
+ * side. Both halves of the answer are needed often enough that reading the byte
+ * directly is how the two callers of this used to drift apart, so the rule
+ * lives here and nowhere else.
+ */
+export interface PromotionGraph {
+  /** Class ids that are the promoted half of a pair, with a promotion left. */
+  readonly promoted: ReadonlySet<number>;
+  /** Base class id -> the class it promotes into. Absent when it has none. */
+  readonly targets: ReadonlyMap<number, UnitClass>;
+}
+
+/**
+ * Three-tier chains exist (trainee -> base -> promoted) and `+5` names each
+ * class's *own* base, so a promoted class whose reverse link points at another
+ * promoted class still yields a correct base -> promoted edge.
+ */
+export function buildPromotionGraph(classes: readonly UnitClass[]): PromotionGraph {
+  const byId = new Map(classes.map((c) => [c.id, c]));
+  const promoted = new Set<number>();
+  for (const c of classes) {
+    const target = byId.get(c.promotesToClassId);
+    if (target && target.sortOrder < c.sortOrder) promoted.add(c.id);
+  }
+
+  const targets = new Map<number, UnitClass>();
+  for (const c of classes) {
+    if (!promoted.has(c.id)) continue;
+    const base = byId.get(c.promotesToClassId);
+    if (base !== undefined && base.id !== c.id) targets.set(base.id, c);
+  }
+
+  return { promoted, targets };
 }

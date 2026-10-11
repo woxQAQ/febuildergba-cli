@@ -22,7 +22,7 @@
  * and forcing one policy on all three would hide that.
  */
 
-import type { AnalysisData } from "./data.ts";
+import type { AppearancesInput } from "./data.ts";
 import type { UnitSide } from "../tables/chapters.ts";
 import { reachedLoadSites } from "../tables/eventTrace.ts";
 
@@ -42,7 +42,7 @@ export interface UnitAppearance {
  * calling script. Ordering is collection order (placements first, then event
  * loads) - consumers that rank appearances apply their own sort.
  */
-export function collectAppearances(data: AnalysisData): UnitAppearance[] {
+export function collectAppearances(data: AppearancesInput): UnitAppearance[] {
   const unitById = new Map(data.units.filter((u) => !u.isEmpty).map((u) => [u.id, u]));
   const out: UnitAppearance[] = [];
   const seen = new Set<string>();

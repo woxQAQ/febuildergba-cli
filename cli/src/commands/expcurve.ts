@@ -6,7 +6,7 @@
  * one fractional field for display.
  */
 
-import { computeExpCurve } from "../analysis/expcurve.ts";
+import { expCurveOf } from "../db/analysis.ts";
 import type { Command } from "./types.ts";
 
 /** Display rounding: levels are fractional by construction (exp / 100). */
@@ -27,8 +27,8 @@ export const expcurve: Command<"db"> = {
     "driven by enemy count, class powers and boss/thief flags. The formula " +
     "constants and their sources are in src/analysis/expcurve.ts; the " +
     "`meta.assumptions` block lists what is modelled rather than read.",
-  run: ({ data }) => {
-    const result = computeExpCurve(data);
+  run: async ({ extract }) => {
+    const result = await expCurveOf(extract);
     return {
       meta: result.meta,
       budgets: result.budgets.map((b) => ({

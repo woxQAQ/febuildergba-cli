@@ -140,7 +140,8 @@ export interface EventTrace {
 /**
  * The slice of the trace the reach walk reads: the instruction stream, the
  * chapter-to-script links and the load-block contents. `EventTrace` satisfies
- * it structurally, and the db loader (`db/read.ts`) rebuilds exactly this
+ * it structurally, and the db loader (`db/queries.ts` `trace()`) rebuilds
+ * exactly this
  * shape from the persisted event tables - the walk below exists once and both
  * data sources feed it.
  */

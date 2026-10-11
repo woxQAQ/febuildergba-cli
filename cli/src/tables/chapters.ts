@@ -349,8 +349,9 @@ export interface PlacedUnit {
 /**
  * Read a placement block: `layout.map.unitDataSize`-byte records, ending at the
  * first `+0 == 0` (`EventUnitForm.Init`, EventUnitForm.cs:147). The same reader
- * serves player, NPC and enemy blocks - that mirrors the game, not convenience
- * (`docs/chapters-and-events.md` §3.19).
+ * serves player, NPC and enemy blocks - that mirrors the game, not convenience:
+ * FE8 has no enemy placement table, so allegiance is a bitfield inside the
+ * record (`docs/chapters-and-events.md` §3.19).
  */
 export function readPlacements(
   rom: RomBuffer,

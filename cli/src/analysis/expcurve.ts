@@ -1,7 +1,7 @@
 /**
  * Per-chapter experience budget: how much combat exp a chapter offers, the
  * resource pool behind "who is worth training". Pure derivation over the
- * extract db ({@link AnalysisData}); nothing here is persisted.
+ * extract db ({@link ExpCurveInput}); nothing here is persisted.
  *
  * ## The formula and its sources
  *
@@ -49,10 +49,13 @@
  *   - FE6: never - SF's FE6 formula has no coefficient.
  *   - FE7: Eliwood/Hector **Normal** and the Link Arena (SF-FE7); modelled
  *     here as every difficulty except `hard`.
- *   - FE8: SF-FE8 states the rule without a difficulty qualifier, but the
- *     decomp gates it on `chapterModeIndex == 1` (the pre-route-split
- *     tutorial route) and off for the Link Arena. We proxy "tutorial route"
- *     with difficulty `easy` - see {@link EXP_CURVE_ASSUMPTIONS}.
+ *   - FE8: never. The decomp's `GetUnitKillExpBonus` reaches the halving
+ *     branch only when `chapterModeIndex == 1 && !(gameStateBits & 0x40)`,
+ *     and `chapterModeIndex` is a save-file field the extract does not carry:
+ *     `SaveMenuWriteNewGame` passes a literal mode of 1 to `WriteNewGameSave`
+ *     for every difficulty, so the game runs the *unhalved* branch except on
+ *     chapters 0-8. We model the whole game rather than those eight chapters
+ *     - see {@link EXP_CURVE_ASSUMPTIONS}.
  *
  * The budget itself
  *
@@ -74,7 +77,7 @@
  * chapters. See `EXP_CURVE_ASSUMPTIONS`.
  */
 
-import type { AnalysisClass, AnalysisData } from "./data.ts";
+import type { AnalysisClass, ExpCurveInput } from "./data.ts";
 import type { GameVersion } from "../rom/detect.ts";
 import type { Difficulty, UnitStatRow } from "../tables/unitStats.ts";
 import { DIFFICULTIES } from "../tables/unitStats.ts";
@@ -212,12 +215,13 @@ function powerLevel(c: CombatantProfile): number {
 
 /**
  * Whether this game/difficulty halves the actor's power-level term when the
- * kill base would be <= 0. Per-version rules in the module doc.
+ * kill base would be <= 0. Per-version rules in the module doc; the FE8 halving
+ * branch is unreachable here because it needs a save-file field, not ROM data.
  */
 function usesModeCoefficient(game: GameVersion, difficulty: Difficulty): boolean {
   if (game.startsWith("FE6")) return false;
   if (game.startsWith("FE7")) return difficulty !== "hard";
-  return difficulty === "easy"; // FE8: tutorial-route proxy; see assumptions
+  return false;
 }
 
 /** DEComp `GetUnitRoundExp`: clamped before the division, never negative. */
@@ -335,9 +339,11 @@ const EXP_CURVE_ASSUMPTIONS: readonly string[] = [
   "FE8 class-id special cases not modelled except the Entombed bonus: Gorgon " +
     "Egg fixed 50 / Demon King kill 0 / Phantom attacker 0 " +
     "(ModifyUnitSpecialExp) - vanilla class ids do not survive hacks.",
-  "FE8 mode coefficient: DEComp gates the halving branch on the tutorial " +
-    "route (chapterModeIndex == 1); we proxy it with difficulty 'easy'. SF-FE8 " +
-    "states the rule without a difficulty qualifier; the decomp wins.",
+  "FE8 mode coefficient not applied: the decomp's halving branch needs " +
+    "chapterModeIndex == 1, a save-file field no extract carries " +
+    "(SaveMenuWriteNewGame writes a literal 1 for every difficulty). The " +
+    "branch is reachable only on chapters 0-8; chapters 9+ are modelled, " +
+    "where the engine always uses the unhalved form.",
   "FE7 mode coefficient applied on easy/normal, not hard (SF-FE7: Eliwood " +
     "Normal, Hector Normal, Link Arena).",
   "FE6 has no difficulty level adjustment in its map settings, so its three " +
@@ -380,7 +386,7 @@ function typicalClassPowerOf(powers: readonly number[]): number | null {
  * The per-chapter exp budget for every playable chapter, one entry per
  * difficulty (FE6's three are identical - see assumptions).
  */
-export function computeExpCurve(data: AnalysisData, opts: ExpCurveOptions = {}): ExpCurveResult {
+export function computeExpCurve(data: ExpCurveInput, opts: ExpCurveOptions = {}): ExpCurveResult {
   const rows = data.unitStats;
   const classById = new Map(data.classes.map((c) => [c.id, c]));
   const game = data.game;

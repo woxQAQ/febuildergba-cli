@@ -5,7 +5,7 @@
  * live in `analysis/projection.ts`; this is the shell.
  */
 
-import { projectUnits } from "../analysis/projection.ts";
+import { projectionOf } from "../db/analysis.ts";
 import type { Command } from "./types.ts";
 
 export const projection: Command<"db"> = {
@@ -21,5 +21,5 @@ export const projection: Command<"db"> = {
     "ceiling (`maxed`). These are expectations for planning, not the game's " +
     "own simulation; see src/analysis/projection.ts for the difference from " +
     "derived_unit_stats.",
-  run: ({ data }) => projectUnits(data),
+  run: ({ extract }) => projectionOf(extract),
 };

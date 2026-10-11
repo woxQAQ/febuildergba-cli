@@ -17,15 +17,16 @@
  * dispatcher all read that registry.
  */
 
-import { loadRom, RomNotFoundError, UnsupportedRomError } from "./load.ts";
-import { loadAnalysisData } from "./db/read.ts";
+import { load, readRom, RomNotFoundError, UnsupportedRomError } from "./load.ts";
+import { openExtract } from "./db/queries.ts";
 import { UsageError } from "./commands/types.ts";
 import type {
   AnyCommand,
   Command,
   CommandContext,
   DbCommandContext,
-  RomCommandContext,
+  ParsedCommandContext,
+  TextCommandContext,
 } from "./commands/types.ts";
 import { parseArgv } from "./cli/args.ts";
 import { commandHelp, suggestions, usage } from "./cli/help.ts";
@@ -48,12 +49,33 @@ function failRom(message: string): void {
   process.exitCode = 1;
 }
 
+/**
+ * The two ROM errors a user can act on, as one-line messages: an unsupported or
+ * truncated file, and a path that does not exist (the most common mistake
+ * here). Anything else is a bug and propagates. Returns whether it reported.
+ */
+function reportRomError(error: unknown): boolean {
+  if (error instanceof UnsupportedRomError) {
+    failRom(error.message);
+    return true;
+  }
+  if (error instanceof RomNotFoundError) {
+    failRom(`${error.message}\n  tried: ${error.path}`);
+    return true;
+  }
+  return false;
+}
+
 function main(): void {
   void run();
 }
 
 /** Run the command and print its payload; turns a UsageError into exit 2. */
-async function runAndEmit(command: Command<"rom">, context: RomCommandContext): Promise<void>;
+async function runAndEmit(command: Command<"rom", "text">, context: TextCommandContext): Promise<void>;
+async function runAndEmit(
+  command: Command<"rom", "parsed">,
+  context: ParsedCommandContext,
+): Promise<void>;
 async function runAndEmit(command: Command<"db">, context: DbCommandContext): Promise<void>;
 async function runAndEmit(command: AnyCommand, context: CommandContext): Promise<void> {
   try {
@@ -114,36 +136,49 @@ async function run(): Promise<void> {
   if (resolved.input === "db") {
     // The analysis commands' input is the db `extract` wrote, opened
     // read-only; a missing file or a non-extract db is a one-line exit 1,
-    // the same treatment an unreadable ROM gets.
-    let data;
+    // the same treatment an unreadable ROM gets. The handle stays open with
+    // the command - `ExtractHandle.close` runs once it has finished, so a
+    // query the command never reaches is never run at all.
+    let extract;
     try {
-      data = await loadAnalysisData(romPath);
+      extract = openExtract(romPath);
     } catch (error) {
       failRom(error instanceof Error ? error.message : String(error));
       return;
     }
-    await runAndEmit(resolved, { data, flags, args });
+    try {
+      await runAndEmit(resolved, { extract, flags, args });
+    } finally {
+      extract.close();
+    }
+    return;
+  }
+
+  // `text` decodes ids and needs no table, so it stops at the identified ROM;
+  // `extract` is the only command that pays for the full parse. `romInput` is a
+  // per-command literal, so dispatch is a switch rather than a runtime lookup:
+  // the guard below is the one place the pair of overloads is picked apart.
+  if (resolved.romInput === "text") {
+    let rom;
+    try {
+      rom = readRom(romPath);
+    } catch (error) {
+      if (reportRomError(error)) return;
+      throw error;
+    }
+    await runAndEmit(resolved as Command<"rom", "text">, { rom, flags, args });
     return;
   }
 
   let rom;
   try {
-    rom = loadRom(romPath);
+    rom = load(romPath, flags.lang === undefined ? {} : { language: flags.lang });
   } catch (error) {
-    if (error instanceof UnsupportedRomError) {
-      failRom(error.message);
-      return;
-    }
-    // A path that does not exist is the single most common mistake here, so it
-    // gets the same one-line treatment as an unsupported ROM - not a stack.
-    if (error instanceof RomNotFoundError) {
-      failRom(`${error.message}\n  tried: ${error.path}`);
-      return;
-    }
+    if (reportRomError(error)) return;
     throw error;
   }
 
-  await runAndEmit(resolved, { rom, flags, args });
+  await runAndEmit(resolved as Command<"rom", "parsed">, { rom, flags, args });
 }
 
 main();

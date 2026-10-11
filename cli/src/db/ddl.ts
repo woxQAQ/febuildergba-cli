@@ -4,10 +4,11 @@
  * integer/text/real columns, NOT NULL, inline/composite primary keys,
  * single-column foreign keys; anything else fails here, loudly, at extract time.
  *
- * Tables only. The derivations that used to ship as db views (roster,
- * class_roles, support_edges, chapter_transitions, chapter_recruits(+_units),
- * chapter_gold, chapter_item_gives, unit_joins) are CLI commands over the
- * parsed ROM now - see `src/commands/`.
+ * Tables only, because tables are all the extract creates: the derivations that
+ * used to ship as db views (roster, class_roles, support_edges,
+ * chapter_transitions, chapter_recruits(+_units), chapter_gold,
+ * chapter_item_gives, unit_joins) are CLI commands over the parsed ROM now -
+ * see `src/commands/`.
  */
 
 import { getTableConfig } from "drizzle-orm/sqlite-core";

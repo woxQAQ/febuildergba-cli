@@ -24,10 +24,9 @@
  *     promotion included.
  *   - Promotion adds the class table's six `promotionBonuses`
  *     (`tables/classes.ts` `+34..39` - the ROM has no luck bonus) and resets
- *     the level to 1. The promotion *direction* is recovered from the
- *     reverse `promotesToClassId` link plus `sortOrder`, the same tie-break
- *     `promotedClassIdsOf` in `load.ts` uses (duplicated here, not imported:
- *     `load.ts` does not export it).
+ *     the level to 1. The promotion *direction* is recovered from the reverse
+ *     `promotesToClassId` link plus `sortOrder`, by `buildPromotionGraph` in
+ *     `tables/classes.ts` - the one implementation, shared with `load.ts`.
  *   - Caps (`tables/classes.ts` `+19..25`) bind stepwise: once a stat
  *     reaches its current class's cap it stays there until a promotion
  *     raises the ceiling. That mirrors the in-game rule that a capped stat
@@ -86,8 +85,10 @@
  *     playable predicate.
  */
 
-import type { AnalysisClass, AnalysisData, AnalysisUnit } from "./data.ts";
+import type { AnalysisClass, AnalysisUnit, ExpCurveInput, ProjectionInput } from "./data.ts";
 import type { Difficulty } from "../tables/unitStats.ts";
+import type { PromotionGraph, UnitClass } from "../tables/classes.ts";
+import { buildPromotionGraph } from "../tables/classes.ts";
 import { collectAppearances } from "./appearances.ts";
 import type { CombatantProfile } from "./expcurve.ts";
 import { battleExp, combatantOf, computeExpCurve } from "./expcurve.ts";
@@ -204,7 +205,7 @@ function expEfficiencyOf(
   cls: AnalysisClass | undefined,
   enemyPowerRef: number,
   classById: ReadonlyMap<number, AnalysisClass>,
-  game: AnalysisData["game"],
+  game: ExpCurveInput["game"],
   difficulty: Difficulty,
 ): ExpEfficiency | null {
   if (cls === undefined) return null; // class id outside the table: no power
@@ -238,7 +239,7 @@ function expEfficiencyOf(
  * army. See the module doc for the semantics; appearances come from the
  * shared collector in `analysis/appearances.ts`.
  */
-function buildJoinPositions(data: AnalysisData): Map<number, number> {
+function buildJoinPositions(data: ProjectionInput): Map<number, number> {
   const best = new Map<number, number>();
   for (const a of collectAppearances(data)) {
     if (a.side !== "player") continue;
@@ -255,34 +256,14 @@ function buildJoinPositions(data: AnalysisData): Map<number, number> {
 // ----------------------------------------------------------------- promotion
 
 /**
- * Class ids that are the promoted half of a base/promoted pair. The same rule
- * as `promotedClassIdsOf` in `load.ts`, duplicated because `load.ts` does not
- * export it: `promotesToClassId` links the pair **both ways**, so the tie is
- * broken by `sortOrder` - the higher value is the promoted side.
+ * The promotion graph over the classes the db carries. `buildPromotionGraph`
+ * is the one implementation - `AnalysisClass` picks exactly the fields it
+ * reads (`id`, `promotesToClassId`, `sortOrder`), so the class rows the loader
+ * rebuilds satisfy it structurally and the rule cannot drift from `load.ts`'s
+ * use of the same function.
  */
-function promotedClassIds(classes: readonly AnalysisClass[]): Set<number> {
-  const byId = new Map(classes.map((c) => [c.id, c]));
-  const promoted = new Set<number>();
-  for (const c of classes) {
-    const target = byId.get(c.promotesToClassId);
-    if (target && target.sortOrder < c.sortOrder) promoted.add(c.id);
-  }
-  return promoted;
-}
-
-/** Base class id -> the class it promotes into, for classes that have one. */
-function buildPromotionTargets(classes: readonly AnalysisClass[]): Map<number, AnalysisClass> {
-  const byId = new Map(classes.map((c) => [c.id, c]));
-  const promoted = promotedClassIds(classes);
-  const targets = new Map<number, AnalysisClass>();
-  for (const c of classes) {
-    if (!promoted.has(c.id)) continue;
-    const base = byId.get(c.promotesToClassId);
-    // A promoted class whose reverse link points at another promoted class is
-    // a third tier; the link still names *its* base, so the map stays correct.
-    if (base !== undefined && base.id !== c.id) targets.set(base.id, c);
-  }
-  return targets;
+function promotionGraph(classes: readonly AnalysisClass[]): PromotionGraph {
+  return buildPromotionGraph(classes as readonly UnitClass[]);
 }
 
 // ----------------------------------------------------------------- simulation
@@ -431,7 +412,7 @@ function maxedStats(unit: AnalysisUnit, ctx: SimContext): StatLine {
  * Units are returned by join position (earliest first, never-joining last,
  * unit id as tie-break) - the order a "who do I train" reader scans in.
  */
-export function projectUnits(data: AnalysisData, opts: ProjectionOptions = {}): UnitProjection[] {
+export function projectUnits(data: ProjectionInput, opts: ProjectionOptions = {}): UnitProjection[] {
   const promoteAt = opts.promoteAt ?? MAX_LEVEL;
   const difficulty = opts.difficulty ?? "normal";
   const curve = computeExpCurve(data);
@@ -466,7 +447,7 @@ export function projectUnits(data: AnalysisData, opts: ProjectionOptions = {}): 
   })();
 
   const classById = new Map(data.classes.map((c) => [c.id, c]));
-  const targets = buildPromotionTargets(data.classes);
+  const targets = promotionGraph(data.classes).targets;
   const joins = buildJoinPositions(data);
   // Non-playable rows (a chain's terminal transition stop) pass no chapter,
   // so they grant no levels and emit no points.

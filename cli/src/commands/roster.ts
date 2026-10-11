@@ -9,8 +9,8 @@ export const roster: Command<"db"> = {
     "former `roster` db view (`SELECT * FROM units WHERE has_support_data = 1`); " +
     "like that view, empty unit slots are excluded - the extract never persists " +
     "them either.",
-  run: ({ data }) => {
-    return data.units
+  run: async ({ extract }) => {
+    return (await extract.units())
       .filter((u) => !u.isEmpty && u.hasSupportData)
       .map((u) => ({
         id: u.id,

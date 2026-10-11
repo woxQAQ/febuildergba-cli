@@ -1,7 +1,6 @@
 import { renameSync, unlinkSync } from "node:fs";
 import { basename, extname, resolve } from "node:path";
 
-import { parseRom } from "../load.ts";
 import { openDb } from "../db/index.ts";
 import { populate } from "../db/populate.ts";
 import type { Command } from "./types.ts";
@@ -25,9 +24,10 @@ function unlinkIfExists(path: string): void {
   }
 }
 
-export const extract: Command<"rom"> = {
+export const extract: Command<"rom", "parsed"> = {
   name: "extract",
   input: "rom",
+  romInput: "parsed",
   summary: "Parse the whole ROM once into a SQLite database for SQL analysis",
   description:
     "Parses every table the ROM carries - units, classes, supports, chapters " +
@@ -49,7 +49,6 @@ export const extract: Command<"rom"> = {
     "ExperimentalWarning on stderr. It is harmless.",
   run: async ({ rom, flags }) => {
     const out = flags.out ?? defaultOutPath(rom.path);
-    const parsed = parseRom(rom, flags.lang === undefined ? {} : { language: flags.lang });
 
     // Rebuild into a scratch file, then rename over the output: a failed
     // extract must not take the previous good database down with it. The
@@ -63,7 +62,7 @@ export const extract: Command<"rom"> = {
     try {
       const handle = openDb(tmp);
       try {
-        result = await populate(handle, parsed);
+        result = await populate(handle, rom);
       } finally {
         handle.close();
       }

@@ -25,7 +25,8 @@
  * `support_edges`, the walk-based `chapter_transitions`, `chapter_recruits`,
  * `chapter_recruit_units`, `chapter_gold`, `chapter_item_gives`, `unit_joins`,
  * `class_roles`) are CLI commands over the parsed ROM now: `roster`,
- * `supports`, `transitions`, `recruits`, `gains`, `joins`, `roles`.
+ * `supports`, `transitions`, `recruits`, `gains`, `joins`, `roles`. Nothing in
+ * this file is a view; `TABLES` below is every table the extract creates.
  *
  * Conventions:
  *   - Booleans use `integer({ mode: "boolean" })` (0/1).
@@ -221,7 +222,11 @@ export const classTerrainBonuses = sqliteTable(
   (t) => [primaryKey({ columns: [t.classId, t.terrainId] })],
 );
 
-/** Mobility is the `class_roles` VIEW over classes.mount - see ddl.ts. */
+/**
+ * Mobility is the `roles` command's classification over `classes.mount` - the
+ * mount flags first, then the mechanical flier checks. Deliberately not a
+ * column: the fallbacks in `commands/roles.ts` are an analysis convention.
+ */
 
 /**
  * Skill-system tables; empty unless the ROM carries the FE8U `SkillSystem` patch
@@ -359,7 +364,11 @@ export const supportPartners = sqliteTable(
   (t) => [primaryKey({ columns: [t.unitId, t.partnerId] })],
 );
 
-/** Deduplicated support pairs are the `support_edges` VIEW - see ddl.ts. */
+/**
+ * Deduplicated support pairs: the `supports` command normalizes these two
+ * directions into one row per pair. Not a table - the pair has no identity of
+ * its own in the ROM.
+ */
 
 export const items = sqliteTable("items", {
   id: integer("id").primaryKey(),
@@ -663,7 +672,8 @@ export const condSlots = sqliteTable("cond_slots", {
 
 // ---------------------------------------------------------- raw event layer
 // See tables/eventTrace.ts for the extraction rules. Everything walk-based
-// (transitions, recruits, gold, joins) is a VIEW over these tables - ddl.ts.
+// (transitions, recruits, gold, joins) is a CLI command over these tables -
+// `src/commands/`, nothing here is a view.
 
 /**
  * One unique event script, decoded once. Helpers shared via CALL appear once
@@ -784,7 +794,8 @@ export const loadBlockUnits = sqliteTable(
   ],
 );
 
-/** Every data table, in insertion order. `roster` is a view, not in here. */
+/** Every data table, in insertion order. Derived views (roster, class_roles, ...)
+ * are CLI commands, so nothing here is computed - see the module doc. */
 export const TABLES = [
   meta,
   units,

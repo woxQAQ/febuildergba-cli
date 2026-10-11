@@ -6,7 +6,7 @@
  * Map inside, which JSON.stringify would render as `{}`).
  */
 
-import { computeAvailability } from "../analysis/availability.ts";
+import { availabilityOf } from "../db/analysis.ts";
 import type { Command } from "./types.ts";
 
 export const availability: Command<"db"> = {
@@ -20,8 +20,8 @@ export const availability: Command<"db"> = {
     "joining, and merged gap segments. The status rules are heuristic - " +
     "absence from a chapter's placement block is the normal case, not a " +
     "leave; see src/analysis/availability.ts for the rules and blind spots.",
-  run: ({ data }) => {
-    return computeAvailability(data).map((u) => ({
+  run: async ({ extract }) => {
+    return (await availabilityOf(extract)).map((u) => ({
       unitId: u.unitId,
       name: u.name,
       joinPosition: u.joinPosition,

@@ -15,8 +15,8 @@ export const gains: Command<"db"> = {
     "`items`, `unitId` 0xFFFF means the unit currently acting. Chests and " +
     "villages are map objects, not event grants - they are in the extract's " +
     "`map_objects` table.",
-  run: ({ data }) => {
-    const reached = reachableInstructions(data.trace);
+  run: async ({ extract }) => {
+    const reached = reachableInstructions(await extract.trace());
     return {
       gold: reached
         .filter((r) => r.instruction.goldDelta !== null)

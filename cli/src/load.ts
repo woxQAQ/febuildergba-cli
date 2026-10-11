@@ -1,12 +1,15 @@
 /**
- * ROM loading, in two stages with an explicit cost split.
+ * ROM loading, in one stage: read the file, identify the game, read every table
+ * the extractor persists.
  *
- * `loadRom` reads the file and identifies the game - cheap, and all the
- * `text` command needs. `parseRom` reads every table the extractor persists;
- * it exists separately because a full parse walks every event script of
- * every chapter (~650 ms on a 30 MB hack), which a diagnostic like `text`
- * should not have to pay for. The two granularities are "identity" and
- * "everything"; there is deliberately no lazy middle layer between them.
+ * It used to be two (`loadRom` for the identity, `parseRom` for everything), so
+ * that a diagnostic like `text` would not pay the ~650 ms a full parse costs on
+ * a 30 MB hack. `text` was the only consumer of the cheap half, and it needs
+ * nothing from the parse stage - it wants a text decoder, which
+ * `tables/huffman.ts` builds from a buffer and a layout. That is `text`'s own
+ * dependency, not a second granularity of ROM loading; the split, the two
+ * entry points and the two types it required were the cost of pretending
+ * otherwise.
  */
 
 import { readFileSync } from "node:fs";
@@ -20,7 +23,7 @@ import type { TextContext } from "./text/huffman.ts";
 import { makeTextContext } from "./text/huffman.ts";
 import { resolveTable } from "./tables/common.ts";
 import type { UnitClass } from "./tables/classes.ts";
-import { buildClassNameMap, readAllClasses } from "./tables/classes.ts";
+import { buildClassNameMap, buildPromotionGraph, readAllClasses } from "./tables/classes.ts";
 import type { Unit } from "./tables/units.ts";
 import { buildUnitNameMap, readAllUnits } from "./tables/units.ts";
 import type { SupportReadResult } from "./tables/supports.ts";
@@ -54,10 +57,12 @@ import type { ChapterObjects } from "./tables/mapObjects.ts";
 import { readAllObjects } from "./tables/mapObjects.ts";
 
 /**
- * An identified ROM: the file, which game it is, the pointer layout for that
- * game and a ready text decoder. Nothing here walks a table.
+ * The ROM plus what `text` needs to decode it: no table walk, no
+ * `config/data`. Separate from `load` because it is a different dependency set,
+ * not a cheaper granularity of the same one - decoding a text id needs the
+ * Huffman context, which is built from the buffer and the layout.
  */
-export interface RomHandle {
+export interface LoadedRom {
   path: string;
   rom: RomBuffer;
   identity: RomIdentity & { version: GameVersion };
@@ -66,11 +71,94 @@ export interface RomHandle {
 }
 
 /**
- * A fully parsed ROM: the handle plus every table the extractor persists.
- * Building this is the ~650 ms the `text` command avoids by stopping at
- * {@link RomHandle}.
+ * Read the ROM file and identify the game: every check `load` performs, minus
+ * the parse. Throws `RomNotFoundError` for an unreadable path and
+ * `UnsupportedRomError` for a file that is not a supported ROM - both carry a
+ * one-line message, not a stack trace.
  */
-export interface ParsedRom extends RomHandle {
+export function readRom(path: string): LoadedRom {
+  return identify(path).rom;
+}
+
+/**
+ * `load`'s two halves: `rom` is what `readRom` returns, `bare` is the same
+ * without a Huffman context for callers that build one themselves.
+ */
+function identify(path: string): { rom: LoadedRom; bare: Omit<LoadedRom, "text"> } {
+  // A wrong path is the most common way to invoke this CLI wrong, so it gets a
+  // message instead of Node's stack trace.
+  let bytes: Buffer;
+  try {
+    bytes = readFileSync(path);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ENOENT") throw new RomNotFoundError(path, "no such file");
+    if (code === "EISDIR") throw new RomNotFoundError(path, "is a directory");
+    if (code === "EACCES") throw new RomNotFoundError(path, "permission denied");
+    throw new RomNotFoundError(path, (error as Error).message);
+  }
+  const rom = new RomBuffer(bytes);
+  const identity = detectVersion(rom);
+
+  if (!identity.version) {
+    // `detectVersion` already explains why (too small, or an unknown code).
+    throw new UnsupportedRomError(
+      `${identity.notes.join(" ")} ` +
+        "Supported game codes: AFEJ01 (FE6J), AE7J01 (FE7J), AE7E01 (FE7U), " +
+        "BE8J01 (FE8J), BE8E01 (FE8U).",
+    );
+  }
+
+  // `detectVersion` already knows the file is too short for the game it claims
+  // to be. Failing here turns what would otherwise be a `RangeError: read out
+  // of range` from some table read deep in a command into exit 1 with a reason
+  // the user can act on.
+  if (!identity.sizeOk) {
+    const min = MIN_ROM_SIZES[identity.version];
+    throw new UnsupportedRomError(
+      `ROM is ${identity.size} bytes but ${identity.version} needs at least ` +
+        `${min} (0x${min.toString(16).toUpperCase()}). The file is truncated or ` +
+        "was patched onto a trimmed base; no table in it can be read safely.",
+    );
+  }
+
+  const layout = getLayout(identity.version);
+  if (!layout.supported) {
+    throw new UnsupportedRomError(
+      `${layout.displayName} is not supported yet. ${layout.unsupportedReason ?? ""}`.trim(),
+    );
+  }
+
+  // The checks above narrowed `version`, which is why the returned identity's
+  // `version` is not nullable.
+  const narrowed: RomIdentity & { version: GameVersion } = { ...identity, version: identity.version };
+  const bare = { path, rom, identity: narrowed, layout };
+  return { rom: { ...bare, text: makeTextContext(rom, layout.text) }, bare };
+}
+
+/**
+ * Read the ROM file and read every table the extractor persists - the whole
+ * pipeline `extract` runs. `options.warn` also carries the "config/data is
+ * missing" warning, so a caller that wants silence passes a no-op.
+ */
+export function load(path: string, options: LoadOptions = {}): ParsedRom {
+  const { rom: loaded, bare } = identify(path);
+  const language = options.language;
+  const warn = options.warn ?? ((message: string) => console.error(`warning: ${message}`));
+  if (language !== undefined && !isKnownLanguage(language)) {
+    // `load` is also a library entry point, so it cannot assume the CLI
+    // validated `--lang` first. Same predicate as the CLI raises on - see
+    // `isKnownLanguage`; only the response differs (warn, not exit 2).
+    warn(`unknown --lang "${language}"; falling back to the default language`);
+  }
+  return parse(bare, loaded.text, options);
+}
+
+/**
+ * A loaded ROM plus every table the extractor persists - the ~650 ms a full
+ * parse costs on a 30 MB hack. This is what `extract` walks into the db.
+ */
+export interface ParsedRom extends LoadedRom {
   /** Resolved `config/data` directory, or `null` when not found. */
   configDir: string | null;
   /**
@@ -121,7 +209,7 @@ export interface ParsedRom extends RomHandle {
   skills: SkillReadResult | null;
 }
 
-export interface ParseOptions {
+export interface LoadOptions {
   /**
    * Explicit `config/data` directory. Defaults to the vendored `cli/data/`
    * copy (see `config/data.ts`); override only to test against an upstream tree.
@@ -173,102 +261,20 @@ function titleFragment(version: string): string {
 }
 
 /**
- * Read the ROM file and identify the game. Throws `RomNotFoundError` for an
- * unreadable path and `UnsupportedRomError` for a file that is not a
- * supported ROM - both carry a one-line message, not a stack trace.
+ * Read every table the extractor persists, over a buffer that has already been
+ * identified. Statement order carries the dependencies: units need class bases
+ * (stats are signed deltas on them), shops need items (entries are priced
+ * through them), shops and chapters need the object walk.
  */
-export function loadRom(path: string): RomHandle {
-  // A wrong path is the most common way to invoke this CLI wrong, so it gets a
-  // message instead of Node's stack trace.
-  let bytes: Buffer;
-  try {
-    bytes = readFileSync(path);
-  } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code;
-    if (code === "ENOENT") throw new RomNotFoundError(path, "no such file");
-    if (code === "EISDIR") throw new RomNotFoundError(path, "is a directory");
-    if (code === "EACCES") throw new RomNotFoundError(path, "permission denied");
-    throw new RomNotFoundError(path, (error as Error).message);
-  }
-  const buffer = new RomBuffer(bytes);
-  const identity = detectVersion(buffer);
-
-  if (!identity.version) {
-    // `detectVersion` already explains why (too small, or an unknown code).
-    throw new UnsupportedRomError(
-      `${identity.notes.join(" ")} ` +
-        "Supported game codes: AFEJ01 (FE6J), AE7J01 (FE7J), AE7E01 (FE7U), " +
-        "BE8J01 (FE8J), BE8E01 (FE8U).",
-    );
-  }
-
-  // `detectVersion` already knows the file is too short for the game it claims
-  // to be. Failing here turns what would otherwise be a `RangeError: read out
-  // of range` from some table read deep in a command into exit 1 with a reason
-  // the user can act on.
-  if (!identity.sizeOk) {
-    const min = MIN_ROM_SIZES[identity.version];
-    throw new UnsupportedRomError(
-      `ROM is ${identity.size} bytes but ${identity.version} needs at least ` +
-        `${min} (0x${min.toString(16).toUpperCase()}). The file is truncated or ` +
-        "was patched onto a trimmed base; no table in it can be read safely.",
-    );
-  }
-
-  const layout = getLayout(identity.version);
-  if (!layout.supported) {
-    throw new UnsupportedRomError(
-      `${layout.displayName} is not supported yet. ${layout.unsupportedReason ?? ""}`.trim(),
-    );
-  }
-
-  // `makeTextContext` sets up the Huffman tables without decoding anything.
-  // The checks above narrowed `version`: a returned handle is always a known
-  // game, which is why `RomHandle.identity.version` is not nullable.
-  const version = identity.version;
-  return {
-    path,
-    rom: buffer,
-    identity: { ...identity, version },
-    layout,
-    text: makeTextContext(buffer, layout.text),
-  };
-}
-
-/**
- * Which classes are already promoted. NOT via `promotesToClassId`: in a
- * base/promoted pair that field links **both ways** (FE8U: `Brawler`(1)<->3,
- * 5/7, 9/11, 15/17), so it cannot break the tie. `sortOrder` can: across 9
- * pairs the **higher** value is the promoted side. If `promotesToClassId`'s
- * target sorts higher than self, self is still base.
- */
-function promotedClassIdsOf(classes: readonly UnitClass[]): Set<number> {
-  const byId = new Map(classes.map((c) => [c.id, c]));
-  const promoted = new Set<number>();
-  for (const c of classes) {
-    const target = byId.get(c.promotesToClassId);
-    if (target && target.sortOrder < c.sortOrder) promoted.add(c.id);
-  }
-  return promoted;
-}
-
-/**
- * Read every table the extractor persists. Statement order carries the
- * dependencies: units need class bases (stats are signed deltas on them), shops
- * need items (entries are priced through them), shops and chapters need the
- * object walk. Called once, by `extract`; nothing is memoised.
- */
-export function parseRom(handle: RomHandle, options: ParseOptions = {}): ParsedRom {
-  const { rom: buffer, layout, text } = handle;
-  const game = titleFragment(handle.identity.version);
+function parse(
+  base: Omit<LoadedRom, "text">,
+  text: TextContext,
+  options: LoadOptions,
+): ParsedRom {
+  const { path, rom: buffer, identity, layout } = base;
+  const game = titleFragment(identity.version);
   const warn = options.warn ?? ((message: string) => console.error(`warning: ${message}`));
   const language = options.language;
-  if (language !== undefined && !isKnownLanguage(language)) {
-    // parseRom is also a library entry point, so it cannot assume the CLI
-    // validated `--lang` first. Same predicate as the CLI raises on - see
-    // `isKnownLanguage`; only the response differs (warn, not exit 2).
-    warn(`unknown --lang "${language}"; falling back to the default language`);
-  }
 
   // `config/data` supplies the names of class ability bits and the opcode
   // table. Without it we can still parse, but the event-script walks and the
@@ -301,7 +307,7 @@ export function parseRom(handle: RomHandle, options: ParseOptions = {}): ParsedR
     // Class base stats turn a unit's per-unit deltas into the stats it
     // actually starts with (`startingStat = class base + unit base`).
     classBases: new Map(classes.map((c) => [c.id, c.bases])),
-    promotedClassIds: promotedClassIdsOf(classes),
+    promotedClassIds: buildPromotionGraph(classes).promoted,
   });
   const supports = readSupports(buffer, units, buildUnitNameMap(units));
   const supportBonuses = layout.support
@@ -357,14 +363,18 @@ export function parseRom(handle: RomHandle, options: ParseOptions = {}): ParsedR
   // dereferencing a known slot.
   const skills = readSkills({
     rom: buffer,
-    skillSystem: handle.identity.skillSystem,
+    skillSystem: identity.skillSystem,
     unitCount: units.length,
     classCount: classes.length,
     text,
   });
 
   return {
-    ...handle,
+    path,
+    rom: buffer,
+    identity,
+    layout,
+    text,
     configDir,
     configLanguage: language ?? null,
     classes,

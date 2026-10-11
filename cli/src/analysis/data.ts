@@ -1,15 +1,16 @@
 /**
- * The analysis commands' input: everything the ten db-backed commands need,
- * with field semantics identical to the `ParsedRom` pieces they replace. The
- * extract writes the db once (`db/populate.ts`); `db/read.ts` loads it back
- * into this shape, and the modules under `analysis/` compute over it. Nothing
- * here re-parses the ROM - the db is the single source of truth, so a field
- * that is not persisted cannot appear here.
+ * These are the *domain* types the extract db round-trips into: the loader
+ * (`db/queries.ts`) builds them from rows, and `analysis/` reads them. They are
+ * `Pick`s of the parser's types rather than parallel interfaces, because the
+ * arithmetic in `analysis/` was written against `Unit` / `UnitClass` /
+ * `PlacedUnit` and sharing the field types keeps it honest (same `growths`
+ * shape, same `abilityFlags` tuple).
  *
- * The row types are `Pick`s of the parser's types, not parallel interfaces:
- * the analysis modules and their helpers were written against `Unit` /
- * `UnitClass` / `PlacedUnit`, and keeping the field types shared keeps the
- * arithmetic honest (same `growths` shape, same `abilityFlags` tuple).
+ * There is deliberately no aggregate "everything the commands need" type: each
+ * analysis module declares the fields it reads, and its command asks the loader
+ * only for those - so a module that needs no unit stats does not pay for them.
+ * Nothing here re-parses the ROM - the db is the single source of truth, so a
+ * field that is not persisted cannot appear here.
  */
 
 import type { GameVersion } from "../rom/detect.ts";
@@ -74,33 +75,53 @@ export interface AnalysisChapter {
   hardPlacements: AnalysisPlacement[];
 }
 
-export interface AnalysisData {
-  /** The ROM's game id (the db's `meta` `rom.version`), for the per-version formula branches. */
-  game: GameVersion;
-  /** Unit-table order. Empty slots are not persisted; see {@link AnalysisUnit}. */
-  units: AnalysisUnit[];
-  /** Class-table order, empty entries included. */
-  classes: AnalysisClass[];
-  /** Map-setting order. */
-  chapters: AnalysisChapter[];
-  /** `derived_play_order`: the steps, and map index -> 1-based position. */
-  playOrder: Pick<PlayOrder, "steps" | "position">;
-  /** `force_sortie` records; empty when the game has no such table. */
-  forceSortie: readonly Pick<ForceSortieRecord, "unitId" | "mapIndex">[];
-  /** `support_partners` rows, in extract (directed-record) order. */
-  supportPartners: readonly {
-    unitId: number;
-    partnerId: number;
-    initial: number;
-    growth: number;
-  }[];
-  /**
-   * The raw event layer, rebuilt from `chapter_event_slots`,
-   * `event_instructions` and `load_block_units` in insertion order - the same
-   * shape `extractEventTrace` produces in memory, so the reach walk in
-   * `tables/eventTrace.ts` runs over either unchanged.
-   */
-  trace: EventGraph;
-  /** `derived_unit_stats` - the same simulator output `populate` computes. */
-  unitStats: UnitStatRow[];
+/** `support_partners` row, in extract (directed-record) order. */
+export interface SupportPartnerRow {
+  unitId: number;
+  partnerId: number;
+  initial: number;
+  growth: number;
 }
+
+/** `force_sortie` row; empty when the game has no such table. */
+export type ForceSortieRow = Pick<ForceSortieRecord, "unitId" | "mapIndex">;
+
+/** `derived_play_order`: the steps, and map index -> 1-based position. */
+export type PlayOrderRows = Pick<PlayOrder, "steps" | "position">;
+
+// ------------------------------------------------------------------ module inputs
+//
+// Each analysis module declares the rows it reads, here rather than in an
+// aggregate: a caller (a command, or the adapter in `db/analysis.ts`) hands over
+// exactly these, so a module's dependencies are visible in its signature and a
+// command pays only for what it calls. Fields are the same objects the loader
+// builds - these interfaces only name the subsets, they add no structure.
+
+/** `analysis/appearances.ts` - the shared collector behind joins/availability/projection. */
+export interface AppearancesInput {
+  units: readonly AnalysisUnit[];
+  chapters: readonly AnalysisChapter[];
+  trace: EventGraph;
+}
+
+/** `analysis/availability.ts` - the unit x chapter matrix. */
+export interface AvailabilityInput extends AppearancesInput {
+  playOrder: PlayOrderRows;
+  forceSortie: readonly ForceSortieRow[];
+}
+
+/** `analysis/expcurve.ts` - the per-chapter experience budget. */
+export interface ExpCurveInput {
+  game: GameVersion;
+  classes: readonly AnalysisClass[];
+  /** `derived_unit_stats`: the simulator output the budget counts enemies from. */
+  unitStats: readonly UnitStatRow[];
+  playOrder: PlayOrderRows;
+}
+
+/**
+ * `analysis/projection.ts` - expected stats. A superset of {@link ExpCurveInput}
+ * (the projection consumes the curve) plus the roster it projects and the
+ * appearances it ranks joins by.
+ */
+export interface ProjectionInput extends ExpCurveInput, AppearancesInput {}
