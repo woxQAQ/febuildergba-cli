@@ -9,6 +9,8 @@ import { transitions } from "./transitions.ts";
 import { recruits } from "./recruits.ts";
 import { gains } from "./gains.ts";
 import { joins } from "./joins.ts";
+import { availability } from "./availability.ts";
+import { projection } from "./projection.ts";
 
 /**
  * Every command, keyed by the word the user types.
@@ -32,6 +34,8 @@ const REGISTRY: Readonly<Record<CommandName, Command>> = {
   recruits,
   gains,
   joins,
+  availability,
+  projection,
 };
 
 /** Every command, in the order the usage table lists them. */

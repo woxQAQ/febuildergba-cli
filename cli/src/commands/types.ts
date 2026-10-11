@@ -23,7 +23,9 @@ export type CommandName =
   | "transitions"
   | "recruits"
   | "gains"
-  | "joins";
+  | "joins"
+  | "availability"
+  | "projection";
 
 /**
  * Flags resolved from the command line, after the command's own flag set has
