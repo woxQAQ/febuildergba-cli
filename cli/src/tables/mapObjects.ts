@@ -67,11 +67,11 @@ export function readChapterObjects(
   chapter: Chapter,
 ): MapObject[] {
   const shop = layout.shop;
-  // The OBJECT slot index and record size live on the shop layout, which
-  // only FE8U has transcribed; other versions have no readable object list -
-  // parsing one with FE8U's constants would silently produce wrong records
-  // (FE7, for one, shifts the object types down by two).
-  if (shop === null) return [];
+  // The OBJECT slot index and record size live on the shop layout, which is
+  // only transcribed for FE8U so far; every other version omits it - a porting
+  // gap, not a missing table. Parsing one with FE8U's constants would silently
+  // produce wrong records (FE7, for one, shifts the object types down by two).
+  if (shop === undefined) return [];
   const slot = shop.objectCondSlot;
   const recordSize = shop.objectRecordSize;
   const listAddr = chapter.condPointers[slot] ?? 0;

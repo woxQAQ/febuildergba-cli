@@ -7,9 +7,15 @@
  * Inserts are chunked, not one statement per row - see `insertInChunks`.
  *
  * Foreign keys are enforced: the connection runs `PRAGMA foreign_keys = ON`
- * and asserts it took, and the insert order below is the schema's dependency
- * order, so a dangling reference fails the extract instead of silently
- * storing null.
+ * and asserts it took, and the insert order is the dependency order. That
+ * order is declared once, in {@link TABLE_WRITERS} at the bottom of this file,
+ * and checked against the schema's foreign keys by
+ * {@link assertWritePipeline} before the transaction opens - it is no longer a
+ * call sequence a reader has to trust.
+ *
+ * Dependency order matters because enforcement is immediate (not deferred):
+ * a parent row must land before anything referencing it, so a dangling
+ * reference fails the extract instead of silently storing null.
  */
 
 import { sql } from "drizzle-orm";
@@ -20,6 +26,8 @@ import type { EventTrace } from "../model/events.ts";
 import type { UnitStatRow } from "../model/stats.ts";
 import { createTablesSql } from "./ddl.ts";
 import type { ExtractDb, OpenDb } from "./open.ts";
+import type { TableWriter } from "./pipeline.ts";
+import { assertWritePipeline } from "./pipeline.ts";
 import * as t from "./schema.ts";
 
 export interface WriteReceipt {
@@ -32,6 +40,11 @@ export async function writeSnapshot(
   rom: ExtractionSnapshot,
 ): Promise<WriteReceipt> {
   const { db, sqlite } = handle;
+  // The write order is data, checked here before anything is written: a
+  // writer filling an unregistered table, a registered table with no writer,
+  // or a foreign target written after its referrer all fail now rather than
+  // mid-transaction. See `pipeline.ts`.
+  assertWritePipeline(TABLE_WRITERS, t.TABLES);
   for (const statement of createTablesSql(t.TABLES)) sqlite.exec(statement);
 
   // Foreign-key enforcement is a per-connection setting. SQLite's own default
@@ -47,21 +60,12 @@ export async function writeSnapshot(
 
   sqlite.exec("BEGIN");
   try {
-    // Dependency order: every parent table is written before the tables that
-    // reference it, because enforcement is immediate (not deferred).
-    await insertMeta(db, rom);
-    await insertClasses(db, rom);
-    await insertSkillSystem(db, rom);
-    await insertUnits(db, rom);
-    await insertSkillAssignments(db, rom);
-    await insertAffinities(db, rom);
-    await insertSupportLinks(db, rom);
-    await insertItemsAndTerrain(db, rom);
-    await insertChapters(db, rom);
-    await insertStory(db, rom);
-    await insertEventTrace(db, rom.eventTrace);
-    await insertUnitStats(db, rom.unitStats);
-    await insertWorldData(db, rom);
+    // Dependency order is TABLE_WRITERS' array order (asserted above): every
+    // parent table is written before the tables that reference it, because
+    // enforcement is immediate (not deferred).
+    for (const writer of TABLE_WRITERS) {
+      await writer.write(db, rom);
+    }
     sqlite.exec("COMMIT");
 
     // Row counts measured, not tallied: the number reported is the number
@@ -787,3 +791,71 @@ async function insertWorldData(db: ExtractDb, rom: ExtractionSnapshot): Promise<
     );
   }
 }
+
+/**
+ * Every inserter, in dependency order: the single declaration of write order,
+ * asserted against the schema's foreign keys by {@link assertWritePipeline}
+ * before each extract writes anything (see `pipeline.ts` for what is checked).
+ *
+ * A writer fills one domain - possibly several tables - and a table may be
+ * filled by several writers (`meta` is written by the metadata, skill, and
+ * unit writers). Grouping is deliberate: the invariants that span tables (the
+ * shop id map in `insertWorldData`, the empty-slot count in `insertUnits`)
+ * stay inside one inserter and one transaction.
+ *
+ * Adding a table means adding its inserter here in the right position; a
+ * wrong position fails the extract at the assertion, not at the INSERT.
+ */
+export const TABLE_WRITERS: readonly TableWriter[] = [
+  { name: "meta", tables: [t.meta], write: insertMeta },
+  {
+    name: "classes",
+    tables: [t.classes, t.classAbilityFlags, t.classMovementCosts, t.classTerrainBonuses],
+    write: insertClasses,
+  },
+  { name: "skills", tables: [t.skills, t.meta], write: insertSkillSystem },
+  { name: "units", tables: [t.units, t.meta], write: insertUnits },
+  {
+    name: "skillAssignments",
+    tables: [t.unitSkills, t.classSkills, t.unitSkillLearn, t.classSkillLearn],
+    write: insertSkillAssignments,
+  },
+  { name: "affinities", tables: [t.affinities, t.supportBonuses], write: insertAffinities },
+  { name: "supportLinks", tables: [t.supportEntries, t.supportPartners], write: insertSupportLinks },
+  {
+    name: "items",
+    tables: [t.items, t.itemEffectiveness, t.itemPromotions, t.terrains],
+    write: insertItemsAndTerrain,
+  },
+  {
+    name: "chapters",
+    tables: [t.chapters, t.chapterPlacements, t.chapterPlacementSteps],
+    write: insertChapters,
+  },
+  { name: "story", tables: [t.derivedPlayOrder], write: insertStory },
+  {
+    name: "eventTrace",
+    tables: [
+      t.eventScripts,
+      t.eventInstructions,
+      t.chapterEventSlots,
+      t.loadBlocks,
+      t.eventUnitLoads,
+      t.eventCalls,
+      t.eventGold,
+      t.eventItemGrants,
+      t.loadBlockUnits,
+    ],
+    write: (db, rom) => insertEventTrace(db, rom.eventTrace),
+  },
+  {
+    name: "unitStats",
+    tables: [t.derivedUnitStats],
+    write: (db, rom) => insertUnitStats(db, rom.unitStats),
+  },
+  {
+    name: "worldData",
+    tables: [t.condSlots, t.shops, t.shopItems, t.mapObjects, t.forceSortie],
+    write: insertWorldData,
+  },
+];

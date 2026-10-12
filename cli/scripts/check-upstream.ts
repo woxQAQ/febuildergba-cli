@@ -231,8 +231,9 @@ function describeValue(value: CsValue): string {
 /**
  * Compare one game's layout against its C# source.
  *
- * Fields we do not transcribe (FE6 items and shops, say) are skipped rather
- * than reported - this check is about the numbers we claim, not about coverage.
+ * Fields a game omits because the constants are not transcribed yet (items and
+ * shops for every game but FE8U) are skipped rather than reported - this check
+ * is about the numbers we claim, not about coverage.
  */
 function layoutDrift(version: GameVersion, cs: ReadonlyMap<string, string>): Drift[] {
   const layout = LAYOUTS[version];
@@ -298,11 +299,11 @@ function layoutDrift(version: GameVersion, cs: ReadonlyMap<string, string>): Dri
   if (layout.forceSortie !== null) {
     expect("forceSortie.slot", num(layout.forceSortie.slot), "event_force_sortie_pointer");
   }
-  if (layout.item !== null) {
+  if (layout.item !== undefined) {
     expect("item.slot", slot(layout.item.slot), "item_pointer");
     expect("item.recordSize", num(layout.item.recordSize), "item_datasize");
   }
-  if (layout.shop !== null) {
+  if (layout.shop !== undefined) {
     expect("shop.prepShopSlot", num(layout.shop.prepShopSlot), "item_shop_hensei_pointer");
   }
 

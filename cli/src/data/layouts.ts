@@ -13,6 +13,19 @@
  * the first candidate whose slot is a safe offset, whose value is a safe GBA
  * pointer, and whose `u32(table + checkPointer)` is safe too - e.g. the unit
  * table's `checkPointer = 0x2c`, the support-data pointer every unit has.
+ *
+ * Two ways a table can be missing from a game's entry, deliberately not
+ * interchangeable:
+ *   - **Omitted optional field** - the constants are not transcribed yet
+ *     (`item`, `promotion`, `shop` for every game but FE8U). The game has the
+ *     table; the port does not. Extraction emits a diagnostic and leaves the
+ *     related tables empty, rather than letting an empty table read as a legal
+ *     empty set.
+ *   - **`null`** - the game genuinely has no such table (`support`,
+ *     `forceSortie` on FE6, each evidenced in its field's doc). No diagnostic:
+ *     an empty table is the truth.
+ * `scripts/check-upstream.ts` re-derives every transcribed number from the C#
+ * sources, so a value that rots fails `npm run check` instead of drifting.
  */
 
 import type { GameVersion } from "../model/game.ts";
@@ -264,20 +277,35 @@ export interface GameLayout {
   unit: TableLayout;
   unitClass: TableLayout;
   text: TextLayout;
+  /** Support pointers, or `null` when the game has no support system (FE6). */
   support: SupportLayout | null;
   terrainNames: TerrainNameLayout;
   map: MapLayout | null;
-  /** Forced-deployment table, or `null` when the game has none / it is unknown. */
-  forceSortie: ForceSortieLayout | null;
-  /** Item table, or `null` when it has not been transcribed for this game. */
-  item: ItemLayout | null;
   /**
-   * Promotion-item class lists keyed by use-effect code, or `null` when the
-   * game has not been transcribed. See {@link PromotionItemLayout}.
+   * Forced-deployment table, or `null` when the game genuinely has none:
+   * `ROMFE6JP.cs` sets `event_force_sortie_pointer = 0`, which is evidence of
+   * absence, not a porting gap.
    */
-  promotion: readonly PromotionItemLayout[] | null;
-  /** Shop sources, or `null` when unknown for this game. */
-  shop: ShopLayout | null;
+  forceSortie: ForceSortieLayout | null;
+  /**
+   * Item table. **Omitted** when the constants are not transcribed for this
+   * game yet (every game but FE8U): the game has items, the port does not.
+   * Never `null` - no game lacks an item table, so `null`'s "genuinely absent"
+   * meaning has nothing to say here; extraction emits a diagnostic instead of
+   * storing silently empty item tables.
+   */
+  item?: ItemLayout;
+  /**
+   * Promotion-item class lists keyed by use-effect code, or **omitted** when
+   * not transcribed (every game but FE8U). See {@link PromotionItemLayout}.
+   */
+  promotion?: readonly PromotionItemLayout[];
+  /**
+   * Shop sources, or **omitted** when not transcribed (every game but FE8U).
+   * The OBJECT condition-slot constants other readers borrow (`mapObjects`)
+   * live here, which is why an omission also empties the map-object table.
+   */
+  shop?: ShopLayout;
 }
 
 /** FE8U unit/class pointer slots moved between revisions, so they are searched. */
@@ -435,9 +463,6 @@ const FE8J: GameLayout = {
     difficultyPos: 0x14,
   },
   forceSortie: { slot: 0x86b08, recordSize: 4, termination: "terminator" },
-  item: null,
-  promotion: null,
-  shop: null,
 };
 
 const FE7U: GameLayout = {
@@ -478,9 +503,6 @@ const FE7U: GameLayout = {
   // with `GetMapName(i + 0x17)`, i.e. the table is a dense array over map ids
   // 0x17..0x2D with no terminator. Not verified against a real FE7 ROM.
   forceSortie: { slot: 0x8ddcc, recordSize: 4, termination: "fixed", count: 23, mapIdBase: 0x17 },
-  item: null,
-  promotion: null,
-  shop: null,
 };
 
 const FE7J: GameLayout = {
@@ -516,9 +538,6 @@ const FE7J: GameLayout = {
     difficultyPos: 0x14, // `MapSettingFE7Form.J_20`, same as FE7U. Unverified.
   },
   forceSortie: { slot: 0x8e6f8, recordSize: 4, termination: "fixed", count: 23, mapIdBase: 0x17 },
-  item: null,
-  promotion: null,
-  shop: null,
 };
 
 /**
@@ -561,9 +580,6 @@ const FE6J: GameLayout = {
   },
   // `ROMFE6JP.cs` sets `event_force_sortie_pointer = 0x0` - FE6 has no table.
   forceSortie: null,
-  item: null,
-  promotion: null,
-  shop: null,
 };
 
 export const LAYOUTS: Readonly<Record<GameVersion, GameLayout>> = {

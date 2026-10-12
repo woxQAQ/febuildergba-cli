@@ -281,21 +281,35 @@ function parse(
 
   const forceSortie = readForceSortie(buffer, layout);
 
+  // A layout the CLI has not transcribed yet is not a table the game lacks:
+  // FE7U has items, promotion lists and shops - the constants are simply not
+  // ported. Say so, so an empty `items` table is not read as a legal empty
+  // set (the same stance the chapter/event availability warnings take).
+  const untranscribed = (["item", "promotion", "shop"] as const).filter(
+    (field) => layout[field] === undefined,
+  );
+  if (untranscribed.length > 0) {
+    warn(
+      `${untranscribed.join("/")} layout not transcribed for ${identity.version}; ` +
+        "the related tables stay empty - the ROM has the data, the constants are not ported yet",
+    );
+  }
+
   // Items come first: shop entries are priced through them, and map objects
   // only need the chapter list. The `+30` use-effect names come from
   // `config/data`; the promotion class lists come from the ROM itself.
   const itemEffectNames =
     configDir === null ? null : loadItemEffectNames(configDir, game, language);
   const promotionTables =
-    layout.promotion === null ? null : readPromotionTables(buffer, layout.promotion);
+    layout.promotion === undefined ? null : readPromotionTables(buffer, layout.promotion);
   const itemData: ItemReadResult | null =
-    layout.item === null
+    layout.item === undefined
       ? null
       : readItems(buffer, layout.item, text, itemEffectNames, promotionTables);
   const items = itemData?.items ?? [];
   const chapterObjects = readAllObjects(buffer, layout, chapters);
   const shopData =
-    layout.shop === null || items.length === 0
+    layout.shop === undefined || items.length === 0
       ? null
       : readShops(buffer, layout.shop, chapterObjects, buildItemMap(items));
 
