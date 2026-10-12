@@ -8,12 +8,11 @@ export const transitions: Command<"db"> = {
   summary: "List where each chapter's END_EVENT advances the story to",
   description:
     "One row per story-advancing destination found in a chapter's END_EVENT " +
-    "script or its CALL closure. Replaces the former `chapter_transitions` db " +
-    "view; the data source is the same END_EVENT walk `tables/storyPath.ts` " +
-    "has always done, run over the event layer the extract persisted. " +
-    "`callDepth` > 0 means the instruction lives in a shared helper and fires " +
-    "for every chapter that calls it. Note the walk follows CALLs 4 deep " +
-    "(deeper chains are boilerplate) where the old view went 8.",
+    "script or its sub-event closure, including composite instructions. " +
+    "Uses the same decoded event evidence and END_EVENT walk as the " +
+    "extractor's play-order derivation. `callDepth` > 0 means the instruction " +
+    "lives in a shared helper. Sub-event references are followed 4 deep; " +
+    "reachability does not prove that conditional events execute.",
   run: async ({ extract }) => {
     const trace = await extract.trace();
     const chapters = await extract.chapters();

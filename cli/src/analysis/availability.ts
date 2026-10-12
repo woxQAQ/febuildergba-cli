@@ -69,7 +69,7 @@
  */
 
 import type { AnalysisUnit, AvailabilityInput } from "./data.ts";
-import { collectAppearances } from "./appearances.ts";
+import { collectAppearances, isPlayerArmyAppearance } from "./appearances.ts";
 import type { UnitAppearance } from "./appearances.ts";
 import type { ForceSortieRecord } from "../tables/forceSortie.ts";
 
@@ -167,8 +167,7 @@ export function computeAvailability(data: AvailabilityInput): UnitAvailability[]
     let joinMapIndex: number | null = null;
     let joinRank = Number.POSITIVE_INFINITY;
     for (const a of apps) {
-      if (a.side !== "player") continue;
-      if (a.source !== "placement" && a.source !== "recruit") continue;
+      if (!isPlayerArmyAppearance(a)) continue;
       const rank = positionOf.get(a.mapIndex) ?? Number.POSITIVE_INFINITY;
       if (
         rank < joinRank ||

@@ -5,26 +5,24 @@
  * copy to drift.
  *
  * Two shaping principles:
- *   - Model the game, not the ROM bytes: no file offsets, raw pointers or
- *     extraction diagnostics as columns. What a ROM address was needed to reach
- *     (stat-bonus tables, effectiveness lists, post-placement steps) is parsed
- *     and modelled.
+ *   - Model game records, retaining source bytes and offsets in the event
+ *     evidence layer so composite instructions can be re-interpreted.
  *   - Store facts, derive at query time: names join by id, prices are
  *     `uses * unit_price`, usability is `wl_* > 0`. Absence is NULL or a missing
  *     child row, never the ROM's zero-as-absence.
  *
  * Two physical layers, decreasing trust:
- *   1. Raw tables (plain names): mechanical decodes of ROM bytes or config/data
- *      files - records, lists, names. No inference.
+ *   1. Evidence tables (plain names): records, lists, names, source event bytes
+ *      and decoded effects. Event classifications preserve their source operands.
  *   2. `derived_*` tables: inference SQL cannot express - currently only
- *      `derived_play_order` (branch splicing is a custom ordering). Materialized
+ *      `derived_play_order` and `derived_unit_stats`. Materialized
  *      because the consumer cannot recompute it without ROM and parser; treat as
  *      a conclusion, not evidence.
  *
  * The derivations that used to be a third layer of db views (`roster`,
  * `support_edges`, the walk-based `chapter_transitions`, `chapter_recruits`,
  * `chapter_recruit_units`, `chapter_gold`, `chapter_item_gives`, `unit_joins`,
- * `class_roles`) are CLI commands over the parsed ROM now: `roster`,
+ * `class_roles`) are CLI commands over the extract now: `roster`,
  * `supports`, `transitions`, `recruits`, `gains`, `joins`, `roles`. Nothing in
  * this file is a view; `TABLES` below is every table the extract creates.
  *
@@ -46,6 +44,7 @@
 
 import { integer, primaryKey, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
 import { foreignKey } from "drizzle-orm/sqlite-core";
+import type { TracedArgument } from "../tables/eventTrace.ts";
 
 /** Provenance and run-level facts, as key/value pairs. */
 export const meta = sqliteTable("meta", {
@@ -681,9 +680,11 @@ export const condSlots = sqliteTable("cond_slots", {
  */
 export const eventScripts = sqliteTable("event_scripts", {
   id: integer("id").primaryKey(),
+  address: integer("address").notNull(),
   /** Why the linear decode stopped; "exit" is the clean case. */
   stopReason: text("stop_reason").notNull(),
   instructionCount: integer("instruction_count").notNull(),
+  unknownInstructionCount: integer("unknown_instruction_count").notNull(),
 });
 
 export const eventInstructions = sqliteTable(
@@ -692,24 +693,16 @@ export const eventInstructions = sqliteTable(
     scriptId: integer("script_id").notNull(),
     /** Ordinal within the script's linear decode. */
     seq: integer("seq").notNull(),
+    address: integer("address").notNull(),
+    bytes: text("bytes").notNull(),
+    pattern: text("pattern").notNull(),
+    args: text("args", { mode: "json" }).$type<TracedArgument[]>().notNull(),
     /** Mnemonic from the opcode table, e.g. MNC2; UNKNOWN when unmatched. */
     opcode: text("opcode").notNull(),
     /** The opcode table's {CATEGORY} tokens. */
     category: text("category").notNull(),
-    /** Load classification of a POINTER_UNIT argument; NULL when not a load. */
-    loadKind: text("load_kind", { enum: ["recruit", "load", "cutscene", "other"] }),
-    /** Unit block a POINTER_UNIT argument points at; NULL otherwise. */
-    blockId: integer("block_id"),
-    /** Script a POINTER_EVENT argument (CALL) points at; NULL otherwise. */
-    callScriptId: integer("call_script_id"),
     /** Destination map of a transition opcode; NULL otherwise. */
     targetMap: integer("target_map"),
-    /** First gold literal inside the instruction, signed; NULL otherwise. */
-    goldDelta: integer("gold_delta"),
-    /** Item handed over by a {ITEM}-category instruction; NULL otherwise. */
-    itemId: integer("item_id"),
-    /** Unit receiving it; 0xFFFF = the unit currently acting. */
-    giveUnitId: integer("give_unit_id"),
   },
   (t) => [
     primaryKey({ columns: [t.scriptId, t.seq] }),
@@ -758,7 +751,69 @@ export const chapterEventSlots = sqliteTable(
  */
 export const loadBlocks = sqliteTable("load_blocks", {
   id: integer("id").primaryKey(),
+  address: integer("address").notNull(),
 });
+
+/** One row per operand, preserving multiple effects in composite instructions. */
+export const eventUnitLoads = sqliteTable(
+  "event_unit_loads",
+  {
+    scriptId: integer("script_id").notNull(),
+    seq: integer("seq").notNull(),
+    position: integer("position").notNull(),
+    kind: text("kind", { enum: ["recruit", "load", "cutscene", "other"] }).notNull(),
+    blockId: integer("block_id").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.scriptId, t.seq, t.position] }),
+    foreignKey({ columns: [t.scriptId, t.seq], foreignColumns: [eventInstructions.scriptId, eventInstructions.seq] }),
+    foreignKey({ columns: [t.blockId], foreignColumns: [loadBlocks.id] }),
+  ],
+);
+
+export const eventCalls = sqliteTable(
+  "event_calls",
+  {
+    scriptId: integer("script_id").notNull(),
+    seq: integer("seq").notNull(),
+    position: integer("position").notNull(),
+    targetScriptId: integer("target_script_id").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.scriptId, t.seq, t.position] }),
+    foreignKey({ columns: [t.scriptId, t.seq], foreignColumns: [eventInstructions.scriptId, eventInstructions.seq] }),
+    foreignKey({ columns: [t.targetScriptId], foreignColumns: [eventScripts.id] }),
+  ],
+);
+
+export const eventGold = sqliteTable(
+  "event_gold",
+  {
+    scriptId: integer("script_id").notNull(),
+    seq: integer("seq").notNull(),
+    offset: integer("offset").notNull(),
+    delta: integer("delta").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.scriptId, t.seq, t.offset] }),
+    foreignKey({ columns: [t.scriptId, t.seq], foreignColumns: [eventInstructions.scriptId, eventInstructions.seq] }),
+  ],
+);
+
+export const eventItemGrants = sqliteTable(
+  "event_item_grants",
+  {
+    scriptId: integer("script_id").notNull(),
+    seq: integer("seq").notNull(),
+    position: integer("position").notNull(),
+    itemId: integer("item_id").notNull(),
+    unitId: integer("unit_id"),
+  },
+  (t) => [
+    primaryKey({ columns: [t.scriptId, t.seq, t.position] }),
+    foreignKey({ columns: [t.scriptId, t.seq], foreignColumns: [eventInstructions.scriptId, eventInstructions.seq] }),
+  ],
+);
 
 export const loadBlockUnits = sqliteTable(
   "load_block_units",
@@ -794,8 +849,8 @@ export const loadBlockUnits = sqliteTable(
   ],
 );
 
-/** Every data table, in insertion order. Derived views (roster, class_roles, ...)
- * are CLI commands, so nothing here is computed - see the module doc. */
+/** Every data table, in dependency order. Per-question views are CLI commands;
+ * materialized conclusions are listed separately at the end. */
 export const TABLES = [
   meta,
   units,
@@ -824,11 +879,15 @@ export const TABLES = [
   mapObjects,
   forceSortie,
   condSlots,
-  // Raw event layer - walk-based derivations are views over these (ddl.ts).
+  // Event evidence and its decoded effects.
   eventScripts,
   eventInstructions,
   chapterEventSlots,
   loadBlocks,
+  eventUnitLoads,
+  eventCalls,
+  eventGold,
+  eventItemGrants,
   loadBlockUnits,
   // Materialized inference SQL cannot express - see the module doc.
   derivedPlayOrder,

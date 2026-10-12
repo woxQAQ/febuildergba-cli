@@ -26,40 +26,73 @@ import type { RomBuffer } from "../rom/RomBuffer.ts";
 import { RomBuffer as RB } from "../rom/RomBuffer.ts";
 import type { GameLayout } from "../data/layouts.ts";
 import type { EventCode, EventScriptTable } from "./eventScript.ts";
-import { argValue, disassemble, isExitCode } from "./eventScript.ts";
-import type { Chapter, CondSlotInfo, PlacedUnit, UnitSide } from "./chapters.ts";
-import { classifyUnitArg, findGoldLiteralsIn, readPlacements } from "./chapters.ts";
-import { callTargetOf, destinationOf, mnemonicOf, TRANSITION_OPCODES } from "./storyPath.ts";
+import {
+  classifyUnitArg, destinationOf, disassemble, findGoldLiteralsIn, isExitCode, TRANSITION_OPCODES,
+} from "./eventScript.ts";
+import type { LoadKind } from "./eventScript.ts";
+import type { Chapter, CondSlotInfo, UnitSide } from "./chapters.ts";
+import { readPlacements } from "./chapters.ts";
 
 export interface TracedScript {
   id: number;
+  address: number;
   /** Why the linear decode stopped; "exit" is the clean case. */
   stopReason: string;
   instructionCount: number;
+  unknownInstructionCount: number;
+}
+
+export interface TracedArgument {
+  position: number;
+  size: number;
+  symbol: string;
+  type: string;
+  value: number;
+}
+
+export interface UnitLoad {
+  position: number;
+  kind: LoadKind;
+  blockId: number;
+}
+
+export interface ScriptCall {
+  position: number;
+  scriptId: number;
+}
+
+export interface GoldWrite {
+  offset: number;
+  delta: number;
+}
+
+export interface ItemGrant {
+  position: number;
+  itemId: number;
+  unitId: number | null;
 }
 
 export interface TracedInstruction {
   scriptId: number;
   /** Ordinal within the script's linear decode. */
   seq: number;
+  address: number;
+  /** Hex-encoded bytes and matched pattern, retained for re-interpretation. */
+  bytes: string;
+  pattern: string;
+  args: TracedArgument[];
   /** Mnemonic from the opcode table, e.g. `MNC2`; "UNKNOWN" when unmatched. */
   opcode: string;
   /** The opcode table's `{CATEGORY}` tokens. */
   category: string;
-  /** Load classification of a POINTER_UNIT argument; NULL when not a load. */
-  loadKind: "recruit" | "load" | "cutscene" | "other" | null;
-  /** Unit block a POINTER_UNIT argument points at; NULL otherwise. */
-  blockId: number | null;
-  /** Script a POINTER_EVENT argument (CALL) points at; NULL otherwise. */
-  callScriptId: number | null;
+  /** Composite instructions can reference several blocks and sub-events. */
+  loads: UnitLoad[];
+  calls: ScriptCall[];
   /** Destination map of a transition opcode; NULL otherwise. */
   targetMap: number | null;
-  /** First gold literal inside the instruction, signed; NULL otherwise. */
-  goldDelta: number | null;
-  /** Item handed over by a `{ITEM}`-category instruction; NULL otherwise. */
-  itemId: number | null;
-  /** Unit receiving it; 0xFFFF = the unit currently acting. */
-  giveUnitId: number | null;
+  gold: GoldWrite[];
+  /** Unit id 0xFFFF denotes the unit currently acting. */
+  items: ItemGrant[];
 }
 
 /**
@@ -132,8 +165,7 @@ export interface EventTrace {
   scripts: TracedScript[];
   instructions: TracedInstruction[];
   chapterSlots: ChapterEventSlot[];
-  /** Ids only - the rows are in `loadBlockUnits`. */
-  loadBlockCount: number;
+  blocks: { id: number; address: number }[];
   loadBlockUnits: TracedBlockUnit[];
 }
 
@@ -146,12 +178,13 @@ export interface EventTrace {
  * data sources feed it.
  */
 export interface EventGraph {
+  scripts: readonly TracedScript[];
   instructions: readonly TracedInstruction[];
   chapterSlots: readonly ChapterEventSlot[];
   loadBlockUnits: readonly TracedBlockUnit[];
 }
 
-/** `walkScript`'s consecutive-unknown tolerance, kept identical on purpose. */
+/** One decode policy for every event consumer. */
 const MAX_CONSECUTIVE_UNKNOWNS = 10;
 /** Per-script instruction ceiling. */
 const MAX_SCRIPT_INSTRUCTIONS = 4000;
@@ -162,6 +195,15 @@ function turnPhase(byte: number): TurnPhase | null {
   if (byte === 0x40) return "ally";
   if (byte === 0x80) return "enemy";
   return null;
+}
+
+/** Shared diagnostic for extract, census and database-backed analyses. */
+export function eventDecodeWarning(scripts: readonly TracedScript[]): string | null {
+  const incomplete = scripts.filter((s) => s.stopReason !== "exit" || s.unknownInstructionCount > 0);
+  if (incomplete.length === 0) return null;
+  return `${incomplete.length}/${scripts.length} event scripts contain unknown instructions ` +
+    "or stopped without an exit; event-derived results are partial. " +
+    "Inspect event_scripts.stop_reason and unknown_instruction_count.";
 }
 
 export function extractEventTrace(
@@ -175,27 +217,22 @@ export function extractEventTrace(
     scripts: [],
     instructions: [],
     chapterSlots: [],
-    loadBlockCount: 0,
+    blocks: [],
     loadBlockUnits: [],
   };
   if (table.scripts.length === 0) return trace;
 
   const scriptIds = new Map<number, number>();
   const blockIds = new Map<number, number>();
-  const decoded = new Set<number>();
   /** Scripts queued by CALL edges, decoded after the slot pass. */
   const queue: number[] = [];
-  const queued = new Set<number>();
 
   const scriptIdOf = (addr: number): number => {
     const known = scriptIds.get(addr);
     if (known !== undefined) return known;
     const id = scriptIds.size;
     scriptIds.set(addr, id);
-    if (!queued.has(addr)) {
-      queued.add(addr);
-      queue.push(addr);
-    }
+    queue.push(addr);
     return id;
   };
 
@@ -204,6 +241,7 @@ export function extractEventTrace(
     if (known !== undefined) return known;
     const id = blockIds.size;
     blockIds.set(addr, id);
+    trace.blocks.push({ id, address: addr });
     for (const [position, u] of readPlacements(rom, addr, layout).entries()) {
       trace.loadBlockUnits.push({
         blockId: id,
@@ -223,59 +261,85 @@ export function extractEventTrace(
   };
 
   const decodeInstruction = (code: EventCode, scriptId: number, seq: number): TracedInstruction => {
-    const mnemonic =
-      code.script.description === "UNKNOWN" ? "UNKNOWN" : mnemonicOf(code.script.description);
     const row: TracedInstruction = {
       scriptId,
       seq,
-      opcode: mnemonic || code.script.description,
+      address: code.addr,
+      bytes: code.bytes.toString("hex"),
+      pattern: code.script.pattern,
+      args: code.script.args
+        .filter((arg) => arg.type !== "FIXED")
+        .map((arg) => ({
+          position: arg.position,
+          size: arg.size,
+          symbol: arg.symbol,
+          type: arg.type,
+          value: readArgument(rom, code, arg.position, arg.size),
+        })),
+      opcode: code.script.opcode,
       category: code.script.category,
-      loadKind: null,
-      blockId: null,
-      callScriptId: null,
+      loads: [],
+      calls: [],
       targetMap: null,
-      goldDelta: null,
-      itemId: null,
-      giveUnitId: null,
+      gold: findGoldLiteralsIn(code),
+      items: [],
     };
 
-    for (const arg of code.script.args) {
+    for (const arg of row.args) {
       if (arg.type === "POINTER_EVENT") {
-        const target = rom.toOffset(argValue(rom, code, arg.symbol));
-        if (rom.isSafeOffset(target)) row.callScriptId = scriptIdOf(target);
+        if (!rom.isSafePointer(arg.value)) continue;
+        row.calls.push({ position: arg.position, scriptId: scriptIdOf(rom.toOffset(arg.value)) });
       } else if (arg.type === "POINTER_UNIT") {
-        const raw = argValue(rom, code, arg.symbol);
+        const raw = arg.value;
         if (!rom.isSafePointer(raw)) continue;
         const target = rom.toOffset(raw);
         if (target === 0xff_ffff) continue; // INVALIDATE_UNIT_POINTER
         if (!rom.isSafeOffset(target)) continue;
-        row.loadKind = classifyUnitArg(code.script.pattern, arg.position);
-        row.blockId = blockIdOf(target);
+        row.loads.push({
+          position: arg.position,
+          kind: classifyUnitArg(code.script.pattern, arg.position),
+          blockId: blockIdOf(target),
+        });
       }
     }
 
-    if (code.script.category.includes("MAP") && TRANSITION_OPCODES.has(mnemonic)) {
+    if (code.script.category.includes("MAP") && TRANSITION_OPCODES.has(row.opcode)) {
       row.targetMap = destinationOf(rom, code);
     }
-    // Gold literals and item grants do not depend on the opcode being known.
-    row.goldDelta = findGoldLiteralsIn(code)[0]?.delta ?? null;
     if (code.script.category.includes("{ITEM}")) {
-      const itemArg = code.script.args.find((a) => a.type === "ITEM");
-      const unitArg = code.script.args.find((a) => a.type === "UNIT");
-      row.itemId = itemArg === undefined ? null : argValue(rom, code, itemArg.symbol);
-      row.giveUnitId = unitArg === undefined ? null : argValue(rom, code, unitArg.symbol);
+      for (const arg of row.args) {
+        if (arg.type === "ITEM") {
+          // Bind each item to its own following GIVEITEMTO operand. A fixed
+          // 0xFFFF recipient denotes the active unit even without a UNIT arg.
+          let unitId: number | null = null;
+          for (let offset = Math.ceil((arg.position + arg.size) / 4) * 4;
+            offset + 4 <= code.bytes.length; offset += 4) {
+            if (code.script.pattern.slice(offset * 2, offset * 2 + 4) === "2037") {
+              unitId = code.bytes.readUInt16LE(offset + 2);
+              break;
+            }
+          }
+          if (unitId === null) {
+            const units = row.args.filter((a) => a.type === "UNIT");
+            const unitArg = units.find((a) => a.position > arg.position) ??
+              (units.length === 1 ? units[0] : undefined);
+            unitId = unitArg?.value ?? null;
+          }
+          row.items.push({ position: arg.position, itemId: arg.value, unitId });
+        }
+      }
     }
     return row;
   };
 
   const decodeScript = (start: number): void => {
     const id = scriptIds.get(start);
-    if (id === undefined || decoded.has(id)) return;
-    decoded.add(id);
+    if (id === undefined) throw new Error(`unqueued event script at ${start}`);
 
     let addr = start;
     let lastBranchAddr = 0;
     let unknowns = 0;
+    let unknownInstructionCount = 0;
     let seq = 0;
     let stopReason = "budget";
 
@@ -285,15 +349,18 @@ export function extractEventTrace(
         break;
       }
       const code = disassemble(rom, addr, table);
-      if (isExitCode(rom, code, lastBranchAddr)) {
-        stopReason = "exit";
-        break;
-      }
+      // The terminating instruction is evidence too, and may carry effects.
+      const exit = isExitCode(rom, code, lastBranchAddr);
       trace.instructions.push(decodeInstruction(code, id, seq));
       seq++;
 
+      if (exit) {
+        stopReason = "exit";
+        break;
+      }
       if (code.script.has === "UNKNOWN") {
         unknowns++;
+        unknownInstructionCount++;
         if (unknowns > MAX_CONSECUTIVE_UNKNOWNS) {
           stopReason = "unknowns";
           break;
@@ -305,7 +372,7 @@ export function extractEventTrace(
       }
       addr += code.script.size;
     }
-    trace.scripts.push({ id, stopReason, instructionCount: seq });
+    trace.scripts.push({ id, address: start, stopReason, instructionCount: seq, unknownInstructionCount });
   };
 
   // Slot pass: link every chapter's condition slots to their scripts.
@@ -406,12 +473,19 @@ export function extractEventTrace(
   }
 
   // Decode the queue: slot scripts first, CALL-reachable helpers after.
-  while (queue.length > 0) {
-    decodeScript(queue.shift() as number);
+  for (let head = 0; head < queue.length; head++) {
+    decodeScript(queue[head] as number);
   }
 
-  trace.loadBlockCount = blockIds.size;
   return trace;
+}
+
+function readArgument(rom: RomBuffer, code: EventCode, position: number, size: number): number {
+  const at = code.addr + position;
+  if (size === 1) return rom.u8(at);
+  if (size === 2) return rom.u16(at);
+  if (size === 4) return rom.u32(at);
+  throw new Error(`unsupported event operand width ${size} at ${code.addr}+${position}`);
 }
 
 export interface ScriptReachOptions {
@@ -437,10 +511,11 @@ export function reachableScripts(
   // does not re-scan the instruction stream per chapter.
   const calls = new Map<number, number[]>();
   for (const i of trace.instructions) {
-    if (i.callScriptId === null) continue;
-    const list = calls.get(i.scriptId);
-    if (list === undefined) calls.set(i.scriptId, [i.callScriptId]);
-    else if (!list.includes(i.callScriptId)) list.push(i.callScriptId);
+    for (const call of i.calls) {
+      const list = calls.get(i.scriptId);
+      if (list === undefined) calls.set(i.scriptId, [call.scriptId]);
+      else if (!list.includes(call.scriptId)) list.push(call.scriptId);
+    }
   }
 
   const reached = new Map<number, Map<number, number>>();
@@ -504,6 +579,8 @@ export interface ReachedLoadSite {
   mapIndex: number;
   scriptId: number;
   seq: number;
+  /** Operand position distinguishes multiple loads in one instruction. */
+  position: number;
   /** Load classification of the POINTER_UNIT argument; never null or "other". */
   kind: "recruit" | "load" | "cutscene";
   blockId: number;
@@ -525,18 +602,18 @@ export function reachedLoadSites(trace: EventGraph): ReachedLoadSite[] {
   }
   const out: ReachedLoadSite[] = [];
   for (const { mapIndex, instruction } of reachableInstructions(trace)) {
-    // A null loadKind never co-occurs with a blockId (decodeInstruction sets
-    // them together), and "other" loads are not unit loads at all.
-    if (instruction.blockId === null) continue;
-    if (instruction.loadKind === null || instruction.loadKind === "other") continue;
-    out.push({
-      mapIndex,
-      scriptId: instruction.scriptId,
-      seq: instruction.seq,
-      kind: instruction.loadKind,
-      blockId: instruction.blockId,
-      units: unitsByBlock.get(instruction.blockId) ?? [],
-    });
+    for (const load of instruction.loads) {
+      if (load.kind === "other") continue;
+      out.push({
+        mapIndex,
+        scriptId: instruction.scriptId,
+        seq: instruction.seq,
+        position: load.position,
+        kind: load.kind,
+        blockId: load.blockId,
+        units: unitsByBlock.get(load.blockId) ?? [],
+      });
+    }
   }
   return out;
 }

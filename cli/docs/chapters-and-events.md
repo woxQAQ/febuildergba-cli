@@ -6,13 +6,12 @@ FEBuilderGBA 反汇编读出来的，哪些是推断。代码里的引用（如
 
 ## 1. 地图设置表
 
-`map_setting` 记录按 `layout.map.settingRecordSize` 步进，末尾以 `+0 == 0`
-的哨兵记录结束（`readMapSettingTable`，`tables/chapters.ts`）。记录数不是
-常量：不同版本、不同 hack 都可能扩表，所以读取以哨兵为准，`count` 只是上
-界。
+地图设置记录按 `layout.map.settingRecordSize` 步进。`readMapSettingTable`
+先使用参考实现的终止判定；首条记录不符合时再尝试结构扫描。记录数不是常量，
+不同版本、不同 hack 都可能扩表，布局中的最大条数只是上界。
 
-`readMapSettingTable` 返回的 `countSource` 记录这个数是从哪来的（哨兵 /
-布局上限），因为「表多长」本身是一条需要可见的推断。
+`readMapSettingTable` 返回的 `countSource` 区分 `terminator` /
+`structural`，因为「表多长」本身是一条需要可见的推断。
 
 章节号与地图设置行不是一回事：`chapterNumber`（含 gaiden 的 8.5 半步）是
 准备画面的编号，`map_index` 才是行号。分析一律用 `map_index`，顺序用
@@ -20,11 +19,14 @@ FEBuilderGBA 反汇编读出来的，哪些是推断。代码里的引用（如
 
 ## 2. 条件槽与事件脚本
 
-每章的 `condTableAddr` 指向一张条件槽表。槽的种类由 `config/data` 的
-`eventcond_<game>.txt` 给出名字；`SLOT_TABLE_KINDS` 里的种类（TURN / TALK /
-OBJECT / ALWAYS）是**小记录表**，每条 12 字节，脚本指针在 `+4`，读 64 条或
-直到 `+0 == 0`；`START_EVENT` / `END_EVENT` 直接就是脚本指针；其余种类
-（PLAYER_UNIT / ENEMY_UNIT / TRAP / FREEMAP_*）不是脚本。
+每章的 `condTableAddr` 指向一张条件槽表。槽序与种类固定读取
+`eventcond_<game>.en.txt`；语言选择只覆盖显示名字，不改变解析规则。
+TURN / TALK / OBJECT / ALWAYS 是**小记录表**，脚本指针在 `+4`：
+TURN / TALK 步长来自布局，FE7 TURN 另有 12 字节短记录；OBJECT / ALWAYS
+为 12 字节。TURN / ALWAYS 检查 `u32(+0)` 终止，TALK / OBJECT 检查
+`u8(+0)`。TUTORIAL 是 4 字节脚本指针数组。START_EVENT / END_EVENT 直接
+就是脚本指针；其余种类（PLAYER_UNIT / ENEMY_UNIT / TRAP / FREEMAP_*）
+不是脚本。
 
 以上对应 `EventCondForm.MakeUnitPointer`（`tables/eventTrace.ts` 的模块
 注释）。
@@ -33,6 +35,17 @@ OBJECT / ALWAYS）是**小记录表**，每条 12 字节，脚本指针在 `+4`�
 `isExitCode`）、连续 10 条以上 UNKNOWN、或 4000 条上限就停。停下来的原因
 写进 `event_scripts.stop_reason` —— UNKNOWN 指令的宽度是猜的
 （`UNKNOWN_SIZE`），所以「在哪停、为什么停」是数据，不是日志。
+
+事件语义固定来自 `event_<game>.en.txt`；翻译只能覆盖描述及参数显示名字。
+缺少 canonical 英文定义时明确标记不可用，不选择另一种语言作为语义来源。
+`load()` 解码一次，剧情顺序、数据库写入、单位属性模拟和普查均消费这份 trace。
+退出指令也保留；`UNKNOWN` 使用稳定操作标识，与翻译字符串无关。
+
+`event_instructions` 保存源地址、原始字节（hex）、匹配模式和变量操作数。
+一条复合指令可有多个效果，分别存在 `event_unit_loads`、`event_calls`、
+`event_gold`、`event_item_grants`，按指令及操作数位置关联。脚本和单位块也保留
+源地址。动态 memory-slot 切图不生成确定的章节目标；固定 `0xFFFF` 物品接收者
+保留为当前行动单位。
 
 ## 3. 单位配置块
 
@@ -86,13 +99,13 @@ FE8 把坐标打包进一个 u16：`x = bits 0-5`、`y = bits 6-11`、`ext = bit
 
 ## 4. 谁能到达哪一章
 
-`collectPlacementSites` 以一章为范围，从它的每个条件槽出发，沿 `CALL`
-闭包收集所有 `POINTER_UNIT` 指令及其单位块。**同一章内**按
-`(指令地址, 块地址)` 去重；不同章之间不去重——一个块被两章共享，在整体普查
-里是一个块，在逐章投影里是两章的敌人，两者都对，回答的是不同问题
-（`scripts/unit-placement-census.ts` 因此自己做跨章去重）。
+`reachableInstructions` 以章节条件槽为根，沿所有子事件引用收集指令及其单位块，
+包括复合指令里的多个引用。共享脚本在同一章只归属一次，不同章之间分别归属。
+`scripts/unit-placement-census.ts` 直接消费已解码 trace，按
+`(指令地址, 操作数位置, 块 ID)` 做跨章去重；单位属性模拟则按
+`(章节, 难度, 来源块, 块内位置)` 去重，两者回答不同的问题。
 
-`classifyUnitArg`（`tables/chapters.ts`）从指令的模式串和参数位置判定这次
+`classifyUnitArg`（`tables/eventScript.ts`）从指令的模式串和参数位置判定这次
 加载的性质：`recruit`（LOAD1 一类，进玩家军）／`load` / `cutscene` /
 `other`。「到达」不等于「触发」——带旗标或回合条件的脚本可能永不执行，所有
 基于到达的派生（`recruits`、`gains`、`joins`、`expcurve` 的增援计数）都带
@@ -105,3 +118,15 @@ FE8 把坐标打包进一个 u16：`x = bits 0-5`、`y = bits 6-11`、`ext = bit
 是各章 `END_EVENT` 脚本（及其 CALL 闭包）里的转移目标，即 `transitions`
 命令打印的东西。外传之外的分支（`playOrder.branches`）和闭环检测
 （`closedLoop`）只有运行时的形状，没有表能表达，所以留在 `meta` 里。
+
+## 6. 产物版本与完整性
+
+`meta.extract.revision` 同时约束解码及物化推导规则。规则变化即使不改 SQL 列，
+也必须提升 `db/revision.ts` 中的 revision。读取旧库要求重新 extract，不迁移
+旧结论。
+
+`chapters.available` / `events.available` 区分缺失输入与合法空集合。依赖缺失
+数据的查询失败，职业等独立查询仍可运行。`event_scripts` 保存
+`stop_reason`、`instruction_count`、`unknown_instruction_count`；提取、普查和
+DB 分析共用质量提示。未知指令或非退出终止会提示 partial，但允许检查已解码
+证据。即便没有解码错误，可达性仍不等于条件事件一定执行。

@@ -24,6 +24,7 @@ import {
   parseTwoColumnTable,
   readTextFile,
   resolveDataFile,
+  resolveCanonicalDataFile,
   splitTab,
   isComment,
 } from "../config/data.ts";
@@ -90,6 +91,8 @@ export interface EventArg {
 
 export interface EventScriptDef {
   pattern: string;
+  /** Stable mnemonic extracted from the canonical English description. */
+  opcode: string;
   size: number;
   /** Literal bytes; positions covered by a variable argument are zeroed. */
   data: Buffer;
@@ -291,6 +294,7 @@ export function parseScriptLine(line: string): EventScriptDef | null {
 
   return {
     pattern,
+    opcode: mnemonicOf(info),
     size: pattern.length / 2,
     data,
     args,
@@ -317,6 +321,7 @@ function sortScripts(scripts: EventScriptDef[]): EventScriptDef[] {
 
 const UNKNOWN_SCRIPT: EventScriptDef = {
   pattern: "",
+  opcode: "UNKNOWN",
   size: UNKNOWN_SIZE,
   data: Buffer.alloc(UNKNOWN_SIZE),
   args: [],
@@ -331,20 +336,41 @@ export interface EventScriptTable {
   source: string | null;
 }
 
-/** Load `event_<game>.txt`. */
+/** Load English semantics, then overlay display fields from the requested language. */
 export function loadEventScripts(
   configDir: string,
   game: string,
   language?: string,
 ): EventScriptTable {
-  const path = resolveDataFile(configDir, "event_", game, language);
+  const path = resolveCanonicalDataFile(configDir, "event_", game);
   if (path === null) return { scripts: [], source: null };
+
+  const displayPath = resolveDataFile(configDir, "event_", game, language);
+  const descriptions = new Map<string, string>();
+  if (displayPath !== null && displayPath !== path) {
+    for (const raw of readTextFile(displayPath).split(/\r?\n/)) {
+      if (isComment(raw)) continue;
+      const [pattern, description] = raw.split("\t");
+      if (pattern !== undefined && description !== undefined) {
+        descriptions.set(pattern, description);
+      }
+    }
+  }
 
   const scripts: EventScriptDef[] = [];
   for (const raw of readTextFile(path).split(/\r?\n/)) {
     if (isComment(raw)) continue;
     const parsed = parseScriptLine(raw);
-    if (parsed !== null) scripts.push(parsed);
+    if (parsed === null) continue;
+    const description = descriptions.get(parsed.pattern);
+    if (description !== undefined) {
+      parsed.description = description;
+      for (const arg of parsed.args) {
+        if (arg.type === ARG_TYPE_FIXED || !description.includes(`[${arg.symbol}`)) continue;
+        arg.name = parseInfoString(description, arg.symbol).name;
+      }
+    }
+    scripts.push(parsed);
   }
   return { scripts: sortScripts(scripts), source: path };
 }
@@ -421,6 +447,79 @@ export function argValue(rom: RomBuffer, code: EventCode, symbol: string): numbe
   }
 }
 
+/** Map-moving opcodes whose operand names a destination chapter. */
+export const TRANSITION_OPCODES: ReadonlySet<string> = new Set(["MNCH", "MNC2", "MNC3", "LOMA"]);
+
+/** Extract a mnemonic from canonical description text, e.g. `(MNC2)`. */
+export function mnemonicOf(description: string): string {
+  return description.match(/\(([A-Z][A-Z0-9_+]*)\)/)?.[1] ?? "";
+}
+
+/** Prefer the chapter-typed operand, then the last variable operand. */
+export function destinationOf(rom: RomBuffer, code: EventCode): number | null {
+  const typed = code.script.args.find((arg) => arg.type === "MAPCHAPTER");
+  if (typed !== undefined) {
+    const value = argValue(rom, code, typed.symbol);
+    return value === 0xffff ? null : value;
+  }
+  const vars = code.script.args.filter((arg) => arg.type !== ARG_TYPE_FIXED);
+  const last = vars[vars.length - 1];
+  // A fully fixed LOMA can read an event-memory slot, not a literal map id.
+  if (last === undefined) return null;
+  const value = argValue(rom, code, last.symbol);
+  return value === 0xffff ? null : value;
+}
+
+/** Classification of a unit-pointer operand, independent of its display label. */
+export type LoadKind = "recruit" | "load" | "cutscene" | "other";
+
+function patternByte(pattern: string, i: number): number {
+  if (i < 0) return -1;
+  const at = i * 2;
+  if (at + 2 > pattern.length) return -1;
+  return Number.parseInt(pattern.slice(at, at + 2), 16);
+}
+
+/**
+ * FE8 LOAD1/2/3 (`402C`/`412C`/`422C`) respectively recruit, reload and stage
+ * cutscene units. Composite `4005` forms use selector 02/03 before the pointer
+ * instead of a `2C` opcode; these load blocks without adding them to the party.
+ * Each operand is classified separately, including multiple loads in one code.
+ */
+export function classifyUnitArg(pattern: string, position: number): LoadKind {
+  if (patternByte(pattern, position - 3) === 0x2c) {
+    const lead = patternByte(pattern, position - 4);
+    if (lead === 0x40) return "recruit";
+    if (lead === 0x41) return "load";
+    if (lead === 0x42) return "cutscene";
+    return "other";
+  }
+  const isCompositeHead =
+    patternByte(pattern, position - 4) === 0x40 &&
+    patternByte(pattern, position - 3) === 0x05;
+  const selector = patternByte(pattern, position - 2);
+  return isCompositeHead && (selector === 0x02 || selector === 0x03) ? "load" : "other";
+}
+
+/**
+ * Gold literals can occur inside composite instructions. Match aligned
+ * `40050300<amount>0000<21|22>370000` writes, preserving every gain or loss.
+ */
+export function findGoldLiteralsIn(code: EventCode): { offset: number; delta: number }[] {
+  const b = code.bytes;
+  const out: { offset: number; delta: number }[] = [];
+  for (let off = 0; off + 12 <= b.length; off += 4) {
+    if (b[off] !== 0x40 || b[off + 1] !== 0x05 || b[off + 2] !== 0x03 || b[off + 3] !== 0x00) continue;
+    if (b[off + 6] !== 0 || b[off + 7] !== 0) continue;
+    if (b[off + 9] !== 0x37 || b[off + 10] !== 0 || b[off + 11] !== 0) continue;
+    const op = b[off + 8];
+    if (op !== 0x21 && op !== 0x22) continue;
+    const amount = b.readUInt16LE(off + 4);
+    out.push({ offset: off, delta: op === 0x21 ? amount : -amount });
+  }
+  return out;
+}
+
 /**
  * Port of `EventScript.IsExitCode` (EventScript.cs), with the FE8 dummy-end
  * check. `lastBranchAddr` is 0 when we have not seen an `IF_CONDITIONAL` yet.
@@ -453,9 +552,14 @@ export interface CondSlot {
 }
 
 export function loadConditionSlots(configDir: string, game: string, language?: string): CondSlot[] {
-  const path = resolveDataFile(configDir, "eventcond_", game, language);
+  const path = resolveCanonicalDataFile(configDir, "eventcond_", game);
   if (path === null) return [];
-  return parseTwoColumnTable(readTextFile(path));
+  const slots = parseTwoColumnTable(readTextFile(path));
+  const displayPath = resolveDataFile(configDir, "eventcond_", game, language);
+  if (displayPath === null || displayPath === path) return slots;
+  const translated = parseTwoColumnTable(readTextFile(displayPath));
+  // Slots are positional, including repeated flags and multiple placement pointers.
+  return slots.map((slot, index) => ({ ...slot, name: translated[index]?.name ?? slot.name }));
 }
 
 export { splitTab };

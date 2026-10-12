@@ -87,9 +87,8 @@
 
 import type { AnalysisClass, AnalysisUnit, ExpCurveInput, ProjectionInput } from "./data.ts";
 import type { Difficulty } from "../tables/unitStats.ts";
-import type { PromotionGraph, UnitClass } from "../tables/classes.ts";
 import { buildPromotionGraph } from "../tables/classes.ts";
-import { collectAppearances } from "./appearances.ts";
+import { collectAppearances, isPlayerArmyAppearance } from "./appearances.ts";
 import type { CombatantProfile } from "./expcurve.ts";
 import { battleExp, combatantOf, computeExpCurve } from "./expcurve.ts";
 
@@ -242,8 +241,7 @@ function expEfficiencyOf(
 function buildJoinPositions(data: ProjectionInput): Map<number, number> {
   const best = new Map<number, number>();
   for (const a of collectAppearances(data)) {
-    if (a.side !== "player") continue;
-    if (a.source !== "placement" && a.source !== "recruit") continue;
+    if (!isPlayerArmyAppearance(a)) continue;
     // Off every known story path: there is no chapter slot to project from.
     const position = data.playOrder.position.get(a.mapIndex);
     if (position === undefined) continue;
@@ -251,19 +249,6 @@ function buildJoinPositions(data: ProjectionInput): Map<number, number> {
     if (current === undefined || position < current) best.set(a.unitId, position);
   }
   return best;
-}
-
-// ----------------------------------------------------------------- promotion
-
-/**
- * The promotion graph over the classes the db carries. `buildPromotionGraph`
- * is the one implementation - `AnalysisClass` picks exactly the fields it
- * reads (`id`, `promotesToClassId`, `sortOrder`), so the class rows the loader
- * rebuilds satisfy it structurally and the rule cannot drift from `load.ts`'s
- * use of the same function.
- */
-function promotionGraph(classes: readonly AnalysisClass[]): PromotionGraph {
-  return buildPromotionGraph(classes as readonly UnitClass[]);
 }
 
 // ----------------------------------------------------------------- simulation
@@ -447,7 +432,7 @@ export function projectUnits(data: ProjectionInput, opts: ProjectionOptions = {}
   })();
 
   const classById = new Map(data.classes.map((c) => [c.id, c]));
-  const targets = promotionGraph(data.classes).targets;
+  const targets = buildPromotionGraph(data.classes).targets;
   const joins = buildJoinPositions(data);
   // Non-playable rows (a chain's terminal transition stop) pass no chapter,
   // so they grant no levels and emit no points.

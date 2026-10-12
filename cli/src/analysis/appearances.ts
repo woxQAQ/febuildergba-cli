@@ -16,10 +16,9 @@
  *     deliberate load, and the old `unit_joins` view reported them without a
  *     unit-table join - filtering here would lose parity for no gain.
  *
- * What counts as a *join* is deliberately not decided here: the consumers
- * disagree (off-path maps rank last but still count for `joins`, while
- * `projection` has nothing to project from without a play-order position),
- * and forcing one policy on all three would hide that.
+ * Player-army membership shares one predicate. Consumers still decide how
+ * to rank appearances and handle off-path maps: `joins` counts them, while
+ * `projection` needs a play-order position to project from.
  */
 
 import type { AppearancesInput } from "./data.ts";
@@ -34,6 +33,11 @@ export interface UnitAppearance {
   source: "placement" | "recruit" | "load" | "cutscene";
   /** Class override of the record; 0 means the unit's own class. */
   placedClassId: number;
+}
+
+/** A player-side placement or recruit load puts the unit in the player's army. */
+export function isPlayerArmyAppearance(a: Pick<UnitAppearance, "side" | "source">): boolean {
+  return a.side === "player" && (a.source === "placement" || a.source === "recruit");
 }
 
 /**

@@ -32,7 +32,7 @@ import type { SupportBonus } from "./tables/supportBonus.ts";
 import { readAffinityNames, readSupportBonuses } from "./tables/supportBonus.ts";
 import type { TerrainReadResult } from "./tables/terrainNames.ts";
 import { readTerrainNames } from "./tables/terrainNames.ts";
-import { findConfigDataDir, isKnownLanguage } from "./config/data.ts";
+import { DEFAULT_LANGUAGE, findConfigDataDir, isKnownLanguage } from "./config/data.ts";
 import { loadClassFlags } from "./tables/classFlags.ts";
 import type { EventScriptTable } from "./tables/eventScript.ts";
 import { loadConditionSlots, loadEventScripts } from "./tables/eventScript.ts";
@@ -55,6 +55,8 @@ import type { ShopReadResult } from "./tables/shops.ts";
 import { readShops } from "./tables/shops.ts";
 import type { ChapterObjects } from "./tables/mapObjects.ts";
 import { readAllObjects } from "./tables/mapObjects.ts";
+import type { EventTrace } from "./tables/eventTrace.ts";
+import { eventDecodeWarning, extractEventTrace } from "./tables/eventTrace.ts";
 
 /**
  * The ROM plus what `text` needs to decode it: no table walk, no
@@ -150,6 +152,7 @@ export function load(path: string, options: LoadOptions = {}): ParsedRom {
     // validated `--lang` first. Same predicate as the CLI raises on - see
     // `isKnownLanguage`; only the response differs (warn, not exit 2).
     warn(`unknown --lang "${language}"; falling back to the default language`);
+    return parse(bare, loaded.text, { ...options, language: DEFAULT_LANGUAGE });
   }
   return parse(bare, loaded.text, options);
 }
@@ -183,6 +186,10 @@ export interface ParsedRom extends LoadedRom {
   condSlots: CondSlotInfo[];
   /** Event-script opcode table; empty when `config/data` is missing. */
   eventScripts: EventScriptTable;
+  /** Decoded once; story order, persistence and census consume this evidence. */
+  eventTrace: EventTrace;
+  /** Missing chapter inputs must not be mistaken for a game with no chapters. */
+  chaptersAvailable: boolean;
   /** One entry per map setting record. */
   chapters: Chapter[];
   /**
@@ -276,10 +283,8 @@ function parse(
   const warn = options.warn ?? ((message: string) => console.error(`warning: ${message}`));
   const language = options.language;
 
-  // `config/data` supplies the names of class ability bits and the opcode
-  // table. Without it we can still parse, but the event-script walks and the
-  // chapter-condition names are unavailable, and an extract leaves the related
-  // tables empty.
+  // Labels are optional; canonical event definitions are required to interpret
+  // chapter slots and scripts. Missing inputs remain explicit in the extract.
   const configDir = findConfigDataDir(options.configDir);
   if (configDir === null) {
     warn(
@@ -291,7 +296,7 @@ function parse(
     );
   }
 
-  const classFlagDefs = configDir === null ? [] : loadClassFlags(configDir, game, language);
+  const classFlagDefs = loadClassFlags(configDir, game, language);
   const classes = readAllClasses({
     rom: buffer,
     table: resolveTable(buffer, layout.unitClass),
@@ -333,8 +338,17 @@ function parse(
       ? []
       : readChapters(buffer, layout, mapSettings, condSlots, text);
 
-  const transitions =
-    eventScripts.scripts.length === 0 ? [] : readAllTransitions(buffer, eventScripts, chapters);
+  const chaptersAvailable = mapSettings !== null && condSlots.length > 0;
+  if (!chaptersAvailable) {
+    warn("chapter data unavailable: map-setting table or canonical English condition slots are missing");
+  }
+  if (eventScripts.scripts.length === 0) {
+    warn("event data unavailable: canonical English opcode definitions are missing");
+  }
+  const eventTrace = extractEventTrace(buffer, layout, chapters, condSlots, eventScripts);
+  const eventWarning = eventDecodeWarning(eventTrace.scripts);
+  if (eventWarning !== null) warn(eventWarning);
+  const transitions = readAllTransitions(eventTrace, chapters);
   const realMaps = new Set(chapters.filter((c) => isRealMap(buffer, c)).map((c) => c.index));
   const playOrder = buildPlayOrder(transitions, (m) => realMaps.has(m));
 
@@ -385,6 +399,8 @@ function parse(
     terrainNames,
     condSlots,
     eventScripts,
+    eventTrace,
+    chaptersAvailable,
     chapters,
     playOrder,
     forceSortie,

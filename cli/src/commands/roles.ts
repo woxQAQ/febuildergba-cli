@@ -7,8 +7,8 @@ export type Mobility = "flying" | "mounted" | "armour" | "normal";
  * Mobility classification of one class. The mount flag decides first; the two
  * mechanical flier cross-checks (uniform movement costs / total terrain-bonus
  * immunity) only catch the airborne monster classes that carry no mount flag.
- * When config/data is absent every mount is null and non-fliers read as
- * "normal" - inferring more is an analysis convention, not a fact of the ROM.
+ * Stable mount flags remain decodable without config/data display labels.
+ * Inferring more from movement costs is an analysis convention.
  */
 function mobilityOf(c: AnalysisClass): Mobility {
   if (c.mount === "wyvern" || c.mount === "pegasus") return "flying";

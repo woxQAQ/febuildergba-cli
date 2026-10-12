@@ -12,12 +12,8 @@
  */
 
 import { load } from "../src/load.ts";
-import {
-  collectPlacementSites,
-  classifyUnitArg,
-  type PlacedUnit,
-  type UnitPointerHit,
-} from "../src/tables/chapters.ts";
+import { classifyUnitArg, type LoadKind } from "../src/tables/eventScript.ts";
+import { reachableInstructions, type TracedBlockUnit } from "../src/tables/eventTrace.ts";
 
 const argv = process.argv.slice(2);
 const romPath =
@@ -27,46 +23,54 @@ const chapterFlag = argv.indexOf("--chapter");
 const onlyChapter = chapterFlag >= 0 ? Number(argv[chapterFlag + 1]) : null;
 
 const loaded = load(romPath);
-const { rom, layout, chapters, condSlots, eventScripts } = loaded;
+const { chapters, eventTrace } = loaded;
+if (!loaded.chaptersAvailable || loaded.eventScripts.scripts.length === 0) {
+  throw new Error("chapter/event evidence is unavailable; supply canonical cli/data resources");
+}
 
 const hex = (n: number): string => "0x" + n.toString(16).padStart(7, "0");
 const SIDE = ["player", "ally", "enemy", "removed"] as const;
 
 interface Block {
-  hit: UnitPointerHit;
-  units: PlacedUnit[];
+  hit: { addr: number; blockAddr: number; instruction: string; kind: LoadKind };
+  units: TracedBlockUnit[];
   chapterIndex: number;
-  slot: string;
+  scriptId: number;
 }
 
 /**
- * Deduplicate **across chapters** on top of `collectPlacementSites`, which
- * deduplicates within one. A block shared by two chapters (Lagdou Ruins reuses
- * the story layouts) is one block in a whole-ROM census but two chapters' worth
- * of enemies in a per-chapter projection - both are correct, they answer
- * different questions.
+ * Decode only in load(), then attribute instructions through the shared reach
+ * walk. A load site shared by chapters is counted once in this whole-ROM
+ * census, but appears in each chapter's projection.
  */
 const blocks: Block[] = [];
 const seen = new Set<string>();
+const addresses = new Map(eventTrace.blocks.map((b) => [b.id, b.address]));
+const unitsByBlock = new Map<number, TracedBlockUnit[]>();
+for (const unit of eventTrace.loadBlockUnits) {
+  const units = unitsByBlock.get(unit.blockId);
+  if (units === undefined) unitsByBlock.set(unit.blockId, [unit]);
+  else units.push(unit);
+}
 
-for (const ch of chapters) {
-  if (ch.condTableAddr === 0) continue;
-  if (onlyChapter !== null && ch.index !== onlyChapter) continue;
-
-  for (const site of collectPlacementSites(rom, eventScripts, layout, ch, condSlots)) {
-    const key = `${site.addr}:${site.blockAddr}`;
+for (const { mapIndex, instruction } of reachableInstructions(eventTrace)) {
+  if (onlyChapter !== null && mapIndex !== onlyChapter) continue;
+  for (const load of instruction.loads) {
+    const blockAddr = addresses.get(load.blockId);
+    if (blockAddr === undefined) throw new Error(`missing load block ${load.blockId}`);
+    const key = `${instruction.address}:${load.position}:${load.blockId}`;
     if (seen.has(key)) continue;
     seen.add(key);
     blocks.push({
       hit: {
-        addr: site.addr,
-        blockAddr: site.blockAddr,
-        instruction: site.instruction,
-        kind: site.kind,
+        addr: instruction.address,
+        blockAddr,
+        instruction: instruction.pattern,
+        kind: load.kind,
       },
-      units: site.units,
-      chapterIndex: ch.index,
-      slot: `${site.slotIndex}/${site.slotKind}`,
+      units: unitsByBlock.get(load.blockId) ?? [],
+      chapterIndex: mapIndex,
+      scriptId: instruction.scriptId,
     });
   }
 }
@@ -76,14 +80,14 @@ for (const ch of chapters) {
 if (onlyChapter !== null) {
   for (const b of blocks) {
     console.log(
-      `map${b.chapterIndex} slot ${b.slot}  ${b.hit.kind.padEnd(8)} insn ${hex(b.hit.addr)} -> block ${hex(b.hit.blockAddr)}  n=${b.units.length}`,
+      `map${b.chapterIndex} script ${b.scriptId}  ${b.hit.kind.padEnd(8)} insn ${hex(b.hit.addr)} -> block ${hex(b.hit.blockAddr)}  n=${b.units.length}`,
     );
     console.log(`    ${b.hit.instruction}`);
     for (const u of b.units.slice(0, 12)) {
       console.log(
-        `    +${String(u.addr - b.hit.blockAddr).padStart(3)}  unit ${String(u.unitId).padStart(3)} class ${String(u.classId).padStart(3)} ` +
+        `    #${String(u.position).padStart(3)}  unit ${String(u.unitId).padStart(3)} class ${String(u.classId).padStart(3)} ` +
           `lv ${String(u.level).padStart(2)} ${u.side.padEnd(7)} auto ${u.autolevel} ` +
-          `pos (${u.prePlacementCoord.x},${u.prePlacementCoord.y}) items [${u.items.join(",")}]`,
+          `pos (${u.x},${u.y}) items [${u.items.join(",")}]`,
       );
     }
     if (b.units.length > 12) console.log(`    ... ${b.units.length - 12} more`);
@@ -126,9 +130,12 @@ for (const [k, m] of [...bySide].sort()) {
   );
 }
 
-console.log("\n-- blocks by condition slot --");
+console.log("\n-- blocks by script --");
 const bySlot = new Map<string, number>();
-for (const b of blocks) bySlot.set(b.slot, (bySlot.get(b.slot) ?? 0) + 1);
+for (const b of blocks) {
+  const key = String(b.scriptId);
+  bySlot.set(key, (bySlot.get(key) ?? 0) + 1);
+}
 for (const [k, n] of [...bySlot].sort()) console.log(`  ${k.padEnd(22)} ${n}`);
 
 // ---------------------------------------------------------------- records

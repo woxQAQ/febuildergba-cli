@@ -17,44 +17,16 @@
  * description text (FE6/FE7 spell the mnemonics differently, so searching
  * "マップ"/"JUMP" misses these).
  *
- * We walk the script rather than scan bytes because disassembly matches
- * patterns **longest first**: an ad-hoc byte scan desynchronises on the first
- * variable-length operand and turns the rest to noise. This goes through
- * {@link disassemble} / {@link isExitCode} as the reference does.
+ * eventTrace owns byte decoding and termination. This module walks that
+ * evidence, unchanged whether it came from load() or an extract database.
  *
  * The table names each argument by a single letter from its pattern
  * (`222AXXXX` -> `symbol: "X"`), so match on the `MAPCHAPTER` type, not the name.
  */
 
 import type { RomBuffer } from "../rom/RomBuffer.ts";
-import {
-  argValue,
-  disassemble,
-  isExitCode,
-  type EventCode,
-  type EventScriptTable,
-} from "./eventScript.ts";
 import type { Chapter } from "./chapters.ts";
-import type { TracedInstruction } from "./eventTrace.ts";
-import { hex } from "../format.ts";
-
-/** Category token the opcode table puts on every map-moving instruction. */
-const MAP_CATEGORY = "MAP";
-
-/**
- * Opcodes that name a destination chapter.
- *
- * Keyed by the mnemonic in parentheses at the end of the table's description
- * column. Anything else tagged `{MAP}` is a graphics or timing instruction
- * whose operand coincidentally lands in the map-id range, so membership here is
- * what makes a transition trustworthy.
- */
-export const TRANSITION_OPCODES: ReadonlySet<string> = new Set([
-  "MNCH", // next chapter, world map
-  "MNC2", // next chapter, no world map
-  "MNC3", // next chapter, no save
-  "LOMA", // switch to a specific map
-]);
+import type { EventGraph, TracedInstruction } from "./eventTrace.ts";
 
 /** One decoded "this chapter goes to that chapter" edge. */
 export interface ChapterTransition {
@@ -91,15 +63,11 @@ export interface ChapterEdges {
 /** Maximum `CALL` nesting followed. Deeper helpers are shared boilerplate. */
 const MAX_CALL_DEPTH = 4;
 
-/** Instruction ceiling per script, matching the reference's own sanity bound. */
-const MAX_STEPS = 4000;
-
 /**
  * One instruction of an event script, reduced to what the transition walk
  * reads: the transition it carries (opcode + destination + where it sat) and
- * the script it CALLs. The walk is key-space agnostic - the ROM reader keys
- * scripts by address, the db reader by `event_scripts.id` - so both feed one
- * walk implementation ({@link walkTransitions}).
+ * the sub-event it references. Both in-memory and persisted evidence use
+ * event script ids, and feed the same walk implementation.
  */
 export interface TransitionStep {
   transition: { opcode: string; targetMap: number; scriptAddress: number } | null;
@@ -107,7 +75,7 @@ export interface TransitionStep {
 }
 
 /**
- * The END_EVENT walk, shared by the ROM reader and the db reader: depth-first
+ * The END_EVENT walk, shared by extraction and db queries: depth-first
  * from the seed script, CALLs followed to depth {@link MAX_CALL_DEPTH}, each
  * script entered at most once per walk (a shared helper's transitions are
  * attributed at the depth it was first reached). Transitions come out in
@@ -134,173 +102,58 @@ export function walkTransitions(
   return transitions;
 }
 
-/** The mnemonic in parentheses at the end of a description, e.g. `(MNC2)`. */
-export function mnemonicOf(description: string): string {
-  const m = description.match(/\(([A-Z][A-Z0-9_+]*)\)/);
-  return m?.[1] ?? "";
-}
-
-/**
- * The destination of a map-moving instruction.
- *
- * Prefers the argument typed `MAPCHAPTER` and falls back to the last
- * non-fixed one, because the pointer-shaped instructions use different letters
- * again.
- */
-export function destinationOf(rom: RomBuffer, code: EventCode): number {
-  const typed = code.script.args.find((a) => a.type === "MAPCHAPTER");
-  if (typed !== undefined) return argValue(rom, code, typed.symbol);
-  const vars = code.script.args.filter((a) => a.type !== "FIXED");
-  const last = vars[vars.length - 1];
-  return last === undefined ? 0 : argValue(rom, code, last.symbol);
-}
-
-/** The script pointer of a `CALL`, whatever letter the table gave it. */
-export function callTargetOf(rom: RomBuffer, code: EventCode): number {
-  const typed = code.script.args.find((a) => a.type === "POINTER_EVENT");
-  if (typed !== undefined) return argValue(rom, code, typed.symbol);
-  const vars = code.script.args.filter((a) => a.type !== "FIXED");
-  const last = vars[vars.length - 1];
-  return last === undefined ? 0 : argValue(rom, code, last.symbol);
-}
-
-interface RomWalkProbe {
-  decoded: number;
-  stop: string;
-}
-
-/**
- * Decode one script into {@link TransitionStep}s, ROM side. Linear from
- * `start`, stopping at the first unrecognised opcode, at the reference's step
- * ceiling, or at an exit opcode - and recording which in `probe`, because "no
- * transitions found" and "the walk fell off a cliff" are different answers.
- * The exit instruction is still yielded (the walk's CALL on it is followed),
- * matching the loop this replaces.
- */
-function* romTransitionSteps(
-  rom: RomBuffer,
-  table: EventScriptTable,
-  start: number,
-  probe: RomWalkProbe,
-): Generator<TransitionStep> {
-  let addr = start;
-  let lastBranch = 0;
-
-  for (let step = 0; step < MAX_STEPS; step++) {
-    const code = disassemble(rom, addr, table);
-
-    if (code.script.description === "UNKNOWN") {
-      probe.stop = `unrecognised opcode at ${hex(addr)}`;
-      return;
-    }
-
-    const mnemonic = mnemonicOf(code.script.description);
-    const transition =
-      code.script.category.includes(MAP_CATEGORY) && TRANSITION_OPCODES.has(mnemonic)
-        ? { opcode: mnemonic, targetMap: destinationOf(rom, code), scriptAddress: addr }
-        : null;
-
-    let call: number | null = null;
-    if (mnemonic === "CALL") {
-      const ptr = callTargetOf(rom, code);
-      if (ptr !== 0 && rom.isSafePointer(ptr)) call = rom.toOffset(ptr);
-    }
-
-    probe.decoded++;
-    addr += code.bytes.length;
-
-    if (mnemonic === "IF_CONDITIONAL" || mnemonic === "IF_CANCEL") lastBranch = addr;
-
-    const exit = isExitCode(rom, code, lastBranch);
-    if (exit) probe.stop = `terminated at ${hex(addr)}`;
-    yield { transition, call };
-    if (exit) return;
+/** Transitions over the same decoded evidence used by every event consumer. */
+export function readAllTransitions(
+  trace: EventGraph,
+  chapters: readonly Chapter[],
+): ChapterEdges[] {
+  const byScript = new Map<number, TracedInstruction[]>();
+  for (const instruction of trace.instructions) {
+    const rows = byScript.get(instruction.scriptId);
+    if (rows === undefined) byScript.set(instruction.scriptId, [instruction]);
+    else rows.push(instruction);
   }
-  probe.stop = "step limit";
-}
-
-/**
- * Decode one chapter's END_EVENT into its outgoing transitions.
- *
- * `CALL`s are followed so a transition written into a shared helper event is
- * still attributed to the chapters that use it. The walk stops at the
- * terminating opcode, at the reference's step ceiling, or at an opcode the
- * table does not recognise - and records which, because "no transitions found"
- * and "the walk fell off a cliff" are different answers.
- */
-export function readChapterTransitions(
-  rom: RomBuffer,
-  table: EventScriptTable,
-  chapter: Chapter,
-): ChapterEdges {
-  if (chapter.endEventAddr === 0) {
+  const stepsOf = traceTransitionSteps(byScript);
+  const scripts = new Map(trace.scripts.map((s) => [s.id, s]));
+  const seeds = new Map<number, number>();
+  for (const slot of trace.chapterSlots) {
+    if (slot.slotKind === "END_EVENT" && slot.scriptId !== null && !seeds.has(slot.mapIndex)) {
+      seeds.set(slot.mapIndex, slot.scriptId);
+    }
+  }
+  return chapters.map((chapter) => {
+    const seed = seeds.get(chapter.index);
+    const script = seed === undefined ? undefined : scripts.get(seed);
     return {
       mapIndex: chapter.index,
       chapterNumber: chapter.chapterNumber,
       title: chapter.title,
-      endEventAddress: 0,
-      instructionsDecoded: 0,
-      stopReason: "no END_EVENT",
-      transitions: [],
+      endEventAddress: chapter.endEventAddr,
+      instructionsDecoded: script?.instructionCount ?? 0,
+      stopReason: script?.stopReason ?? (chapter.endEventAddr === 0 ? "no END_EVENT" : "unavailable"),
+      transitions: seed === undefined ? [] : walkTransitions(seed, stepsOf),
     };
-  }
-
-  // The walk enters each script at most once, so one probe per start address
-  // suffices; the seed's is the one `ChapterEdges` reports.
-  const probes = new Map<number, RomWalkProbe>();
-  const transitions = walkTransitions(chapter.endEventAddr, (start) => {
-    const probe: RomWalkProbe = { decoded: 0, stop: "step limit" };
-    probes.set(start, probe);
-    return romTransitionSteps(rom, table, start, probe);
   });
-  const probe = probes.get(chapter.endEventAddr) as RomWalkProbe;
-
-  return {
-    mapIndex: chapter.index,
-    chapterNumber: chapter.chapterNumber,
-    title: chapter.title,
-    endEventAddress: chapter.endEventAddr,
-    instructionsDecoded: probe.decoded,
-    stopReason: probe.stop,
-    transitions,
-  };
-}
-
-/** Transitions for every chapter, in map-setting order. */
-export function readAllTransitions(
-  rom: RomBuffer,
-  table: EventScriptTable,
-  chapters: readonly Chapter[],
-): ChapterEdges[] {
-  return chapters.map((c) => readChapterTransitions(rom, table, c));
 }
 
 /**
- * `TransitionStep`s over the persisted event layer, for {@link walkTransitions}
- * run from an extract db (key space: `event_scripts.id`). Two adaptations keep
- * it identical to the ROM reader ({@link romTransitionSteps}):
- *
- *   - the trace decode tolerates a run of UNKNOWN opcodes where the ROM walk
- *     stops at the first, so this adapter stops there too;
- *   - the ROM walk follows a `CALL` mnemonic only, so a `call_script_id`
- *     carried by any other opcode is not followed here either.
- *
- * The db stores no script addresses, so `scriptAddress` is 0 - a dead field
- * for every current consumer (the `transitions` command does not emit it).
+ * Transition steps over decoded instructions. Decode termination belongs to
+ * eventTrace, not to this adapter; composite sub-event references are followed
+ * just like ordinary CALL operands.
  */
 export function traceTransitionSteps(
   instructionsByScript: ReadonlyMap<number, readonly TracedInstruction[]>,
 ): (scriptId: number) => Iterable<TransitionStep> {
   return function* steps(scriptId: number): Generator<TransitionStep> {
     for (const i of instructionsByScript.get(scriptId) ?? []) {
-      if (i.opcode === "UNKNOWN") return;
       yield {
         transition:
           i.targetMap === null
             ? null
-            : { opcode: i.opcode, targetMap: i.targetMap, scriptAddress: 0 },
-        call: i.opcode === "CALL" ? i.callScriptId : null,
+            : { opcode: i.opcode, targetMap: i.targetMap, scriptAddress: i.address },
+        call: null,
       };
+      for (const call of i.calls) yield { transition: null, call: call.scriptId };
     }
   };
 }

@@ -152,21 +152,24 @@ export function decodeFlagKey(key: string): { offset: number; mask: number } | n
 }
 
 /**
- * Load the ability-flag table for a game (`TitleToFilename` fragment); `[]` when
- * `config/data` is unavailable, in which case callers fall back to deriving roles
- * from movement costs alone.
+ * Load display labels for a game (`TitleToFilename` fragment). Stable flag ids
+ * remain decodable even when the label table or individual labels are absent.
  */
-export function loadClassFlags(configDir: string, game: string, language?: string): ClassFlagDef[] {
-  const path = resolveDataFile(configDir, "unitclass_checkbox_", game, language);
-  if (path === null) return [];
-
+export function loadClassFlags(configDir: string | null, game: string, language?: string): ClassFlagDef[] {
+  const path = configDir === null ? null : resolveDataFile(configDir, "unitclass_checkbox_", game, language);
   const ids = classFlagKeysFor(game);
+  const labels = new Map(
+    (path === null ? [] : parseKeyedTable(readTextFile(path))).map((entry) => [
+      entry.key.toUpperCase(),
+      entry.name,
+    ]),
+  );
   const out: ClassFlagDef[] = [];
-  for (const entry of parseKeyedTable(readTextFile(path))) {
-    const decoded = decodeFlagKey(entry.key);
+  for (const key of new Set([...Object.keys(ids), ...labels.keys()])) {
+    const decoded = decodeFlagKey(key);
     if (decoded === null) continue;
-    const id = ids[entry.key] ?? `flag${entry.key}`;
-    out.push({ key: entry.key, id, label: entry.name, ...decoded });
+    const id = ids[key] ?? `flag${key}`;
+    out.push({ key, id, label: labels.get(key) || id, ...decoded });
   }
   return out;
 }

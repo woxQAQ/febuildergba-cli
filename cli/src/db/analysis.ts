@@ -18,9 +18,21 @@ import { computeAvailability } from "../analysis/availability.ts";
 import type { UnitAvailability } from "../analysis/availability.ts";
 import { computeExpCurve } from "../analysis/expcurve.ts";
 import type { ExpCurveOptions, ExpCurveResult } from "../analysis/expcurve.ts";
+import { computeJoins } from "../analysis/joins.ts";
+import type { UnitJoin } from "../analysis/joins.ts";
 import { projectUnits } from "../analysis/projection.ts";
 import type { ProjectionOptions, UnitProjection } from "../analysis/projection.ts";
 import type { ExtractHandle } from "./queries.ts";
+
+/** `joins`: witnessed appearances and the play-order positions that rank them. */
+export async function joinsOf(x: ExtractHandle): Promise<UnitJoin[]> {
+  return computeJoins({
+    units: await x.units(),
+    chapters: await x.chapters(),
+    trace: await x.trace(),
+    position: (await x.playOrder()).position,
+  });
+}
 
 /** `availability`: units, chapters, the play order, force-sortie and the trace. */
 export async function availabilityOf(x: ExtractHandle): Promise<UnitAvailability[]> {

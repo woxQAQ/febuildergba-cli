@@ -9,12 +9,12 @@ import { sql } from "drizzle-orm";
 import { getTableConfig } from "drizzle-orm/sqlite-core";
 
 import type { ParsedRom } from "../load.ts";
-import { extractEventTrace } from "../tables/eventTrace.ts";
 import type { EventTrace } from "../tables/eventTrace.ts";
 import { buildUnitStats } from "../tables/unitStats.ts";
 import { createTablesSql } from "./ddl.ts";
 import type { ExtractDb, OpenDb } from "./index.ts";
 import * as t from "./schema.ts";
+import { EXTRACT_REVISION } from "./revision.ts";
 
 export interface PopulateResult {
   /** Row count per table, measured after the commit. */
@@ -35,18 +35,8 @@ export async function populate(handle: OpenDb, rom: ParsedRom): Promise<Populate
     await insertChapters(db, rom);
     await insertStory(db, rom);
     await insertSkills(db, rom);
-    // The trace is walked once and consumed twice: it is the raw event layer,
-    // and it is also the only route to "which units appear in which chapter",
-    // which `derived_unit_stats` needs.
-    const trace = extractEventTrace(
-      rom.rom,
-      rom.layout,
-      rom.chapters,
-      rom.condSlots,
-      rom.eventScripts,
-    );
-    await insertEventTrace(db, rom, trace);
-    await insertUnitStats(db, rom, trace);
+    await insertEventTrace(db, rom.eventTrace);
+    await insertUnitStats(db, rom, rom.eventTrace);
     await insertWorldData(db, rom);
     sqlite.exec("COMMIT");
 
@@ -69,6 +59,7 @@ export async function populate(handle: OpenDb, rom: ParsedRom): Promise<Populate
 
 async function insertMeta(db: ExtractDb, rom: ParsedRom): Promise<void> {
   await db.insert(t.meta).values([
+    { key: "extract.revision", value: EXTRACT_REVISION },
     { key: "rom.path", value: rom.path },
     { key: "rom.sizeBytes", value: String(rom.rom.length) },
     { key: "rom.gameCode", value: rom.identity.gameCode },
@@ -83,6 +74,11 @@ async function insertMeta(db: ExtractDb, rom: ParsedRom): Promise<void> {
     { key: "rom.notes", value: JSON.stringify(rom.identity.notes) },
     { key: "config.dir", value: rom.configDir ?? "" },
     { key: "config.language", value: rom.configLanguage ?? "en" },
+    { key: "chapters.available", value: String(rom.chaptersAvailable) },
+    {
+      key: "events.available",
+      value: String(rom.chaptersAvailable && rom.eventScripts.scripts.length > 0),
+    },
     // `mainPath` is not stored: it is `derived_play_order` filtered to
     // role='main'. `branches` and `closedLoop` are not expressible from the
     // table, so they stay here as run-level facts.
@@ -465,33 +461,52 @@ async function insertSkills(db: ExtractDb, rom: ParsedRom): Promise<void> {
 }
 
 /**
- * The raw event layer: scripts, instructions, slot links and load blocks.
- * Walk-based derivations (transitions, recruits, gold, joins) are CLI
- * commands over the in-memory trace (`tables/eventTrace.ts`'s
- * `reachableInstructions`) - nothing derived is inserted here.
+ * Event evidence, decoded effects, slot links and load blocks. Semantic
+ * classifications are stored alongside source bytes; per-question derivations
+ * (transitions, recruits, gains, joins) remain consumers of this evidence.
  */
-async function insertEventTrace(db: ExtractDb, rom: ParsedRom, trace: EventTrace): Promise<void> {
+async function insertEventTrace(db: ExtractDb, trace: EventTrace): Promise<void> {
   for (const script of trace.scripts) {
     await db.insert(t.eventScripts).values({
       id: script.id,
+      address: script.address,
       stopReason: script.stopReason,
       instructionCount: script.instructionCount,
+      unknownInstructionCount: script.unknownInstructionCount,
     });
   }
   for (const i of trace.instructions) {
     await db.insert(t.eventInstructions).values({
       scriptId: i.scriptId,
       seq: i.seq,
+      address: i.address,
+      bytes: i.bytes,
+      pattern: i.pattern,
+      args: i.args,
       opcode: i.opcode,
       category: i.category,
-      loadKind: i.loadKind,
-      blockId: i.blockId,
-      callScriptId: i.callScriptId,
       targetMap: i.targetMap,
-      goldDelta: i.goldDelta,
-      itemId: i.itemId,
-      giveUnitId: i.giveUnitId,
     });
+  }
+  for (const block of trace.blocks) await db.insert(t.loadBlocks).values(block);
+  for (const i of trace.instructions) {
+    for (const load of i.loads) {
+      await db.insert(t.eventUnitLoads).values({ scriptId: i.scriptId, seq: i.seq, ...load });
+    }
+    for (const call of i.calls) {
+      await db.insert(t.eventCalls).values({
+        scriptId: i.scriptId,
+        seq: i.seq,
+        position: call.position,
+        targetScriptId: call.scriptId,
+      });
+    }
+    for (const gold of i.gold) {
+      await db.insert(t.eventGold).values({ scriptId: i.scriptId, seq: i.seq, ...gold });
+    }
+    for (const item of i.items) {
+      await db.insert(t.eventItemGrants).values({ scriptId: i.scriptId, seq: i.seq, ...item });
+    }
   }
   for (const slot of trace.chapterSlots) {
     await db.insert(t.chapterEventSlots).values({
@@ -505,9 +520,6 @@ async function insertEventTrace(db: ExtractDb, rom: ParsedRom, trace: EventTrace
       turnPhase: slot.turn?.phase ?? null,
       condFlag: slot.condFlag,
     });
-  }
-  for (let id = 0; id < trace.loadBlockCount; id++) {
-    await db.insert(t.loadBlocks).values({ id });
   }
   for (const u of trace.loadBlockUnits) {
     await db.insert(t.loadBlockUnits).values({

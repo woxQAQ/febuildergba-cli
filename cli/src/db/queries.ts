@@ -45,12 +45,15 @@ import type {
   EventGraph,
   TracedBlockUnit,
   TracedInstruction,
+  TracedScript,
 } from "../tables/eventTrace.ts";
+import { eventDecodeWarning } from "../tables/eventTrace.ts";
 import type { PlayOrderStep } from "../tables/storyPath.ts";
 import type { UnitStatRow } from "../tables/unitStats.ts";
 import { openDb } from "./index.ts";
 import type { OpenDb } from "./index.ts";
 import * as t from "./schema.ts";
+import { EXTRACT_REVISION } from "./revision.ts";
 
 /** Game ids the extractor can have written (`meta` `rom.version`). */
 const GAME_VERSIONS: readonly string[] = ["FE6J", "FE7J", "FE7U", "FE8J", "FE8U"];
@@ -69,7 +72,12 @@ const TABLES_READ: readonly SQLiteTable[] = [
   t.chapters,
   t.chapterPlacements,
   t.chapterEventSlots,
+  t.eventScripts,
   t.eventInstructions,
+  t.eventUnitLoads,
+  t.eventCalls,
+  t.eventGold,
+  t.eventItemGrants,
   t.loadBlockUnits,
   t.derivedPlayOrder,
   t.derivedUnitStats,
@@ -202,6 +210,15 @@ export function openExtract(path: string): ExtractHandle {
     // opens lazily), so the schema probe doubles as the format check.
     try {
       assertExtractSchema(handle.sqlite, path);
+      const revision = handle.sqlite
+        .prepare("SELECT value FROM meta WHERE key = 'extract.revision'")
+        .get() as { value: string } | undefined;
+      if (revision?.value !== EXTRACT_REVISION) {
+        throw new SchemaMismatchError(
+          `${path}: extract revision ${revision?.value ?? "missing"} does not match ` +
+            `${EXTRACT_REVISION} - re-run \`fe-rom extract\` to rebuild it`,
+        );
+      }
     } catch (error) {
       if (error instanceof SchemaMismatchError) throw error;
       throw notAnExtractDb(path, "not a database");
@@ -222,10 +239,30 @@ export function openExtract(path: string): ExtractHandle {
     return started;
   };
 
-  /** `meta` `rom.version`, validated once for every caller. */
-  const gameOf = once("game", async (): Promise<GameVersion> => {
+  const metaOf = () => once("meta", async () => {
     const rows = await db.select().from(t.meta).all();
-    const version = rows.find((r) => r.key === "rom.version")?.value;
+    return new Map(rows.map((r) => [r.key, r.value]));
+  });
+  const requireAvailable = async (key: string): Promise<void> => {
+    if ((await metaOf()).get(key) !== "true") {
+      throw new Error(
+        `${path}: ${key.replace(".available", "")} data is unavailable, not empty - ` +
+          "re-run extract with the canonical cli/data resources and a readable chapter table",
+      );
+    }
+  };
+  const scriptsOf = () => once("scripts", async (): Promise<TracedScript[]> =>
+    db.select().from(t.eventScripts).orderBy(t.eventScripts.id).all());
+  const requireEvents = () => once("eventQuality", async (): Promise<void> => {
+    await requireAvailable("events.available");
+    const scripts = await scriptsOf();
+    const warning = eventDecodeWarning(scripts);
+    if (warning !== null) console.error(`warning: ${warning}`);
+  });
+
+  /** `meta` `rom.version`, validated once for every caller. */
+  const gameOf = () => once("game", async (): Promise<GameVersion> => {
+    const version = (await metaOf()).get("rom.version");
     if (version === undefined || !GAME_VERSIONS.includes(version)) {
       throw notAnExtractDb(path, "no `rom.version` in `meta`; not an extract db");
     }
@@ -237,10 +274,10 @@ export function openExtract(path: string): ExtractHandle {
    * delta, and the name map enriches unit rows), so the rows are kept as well
    * as the mapped form.
    */
-  const classRowsOf = once("classRows", () => db.select().from(t.classes).orderBy(t.classes.id).all());
+  const classRowsOf = () => once("classRows", () => db.select().from(t.classes).orderBy(t.classes.id).all());
 
-  const classesOf = once("classes", async (): Promise<AnalysisClass[]> => {
-    const rows = await classRowsOf;
+  const classesOf = () => once("classes", async (): Promise<AnalysisClass[]> => {
+    const rows = await classRowsOf();
     return rows.map((c) => ({
       id: c.id,
       name: c.name,
@@ -273,15 +310,15 @@ export function openExtract(path: string): ExtractHandle {
   });
 
   return {
-    game: () => gameOf,
-    classes: () => classesOf,
+    game: gameOf,
+    classes: classesOf,
 
     units: () =>
       once("units", async (): Promise<AnalysisUnit[]> => {
         // Classes first: `startingStats` is rebuilt from the class bases plus
         // the unit's signed deltas, via the same `combineStartingStats` the
         // parser uses, and the name map comes from the same rows.
-        const classRows = await classRowsOf;
+        const classRows = await classRowsOf();
         const classBases = new Map(
           classRows.map((c) => [
             c.id,
@@ -338,6 +375,7 @@ export function openExtract(path: string): ExtractHandle {
 
     chapters: () =>
       once("chapters", async (): Promise<AnalysisChapter[]> => {
+        await requireAvailable("chapters.available");
         const placementRows = await db
           .select()
           .from(t.chapterPlacements)
@@ -372,6 +410,7 @@ export function openExtract(path: string): ExtractHandle {
 
     playOrder: () =>
       once("playOrder", async (): Promise<PlayOrderRows> => {
+        await requireEvents();
         const rows = await db
           .select()
           .from(t.derivedPlayOrder)
@@ -396,20 +435,47 @@ export function openExtract(path: string): ExtractHandle {
 
     trace: () =>
       once("trace", async (): Promise<EventGraph> => {
+        await requireEvents();
         const instructionRows = await db.select().from(t.eventInstructions).orderBy(ROW_ORDER).all();
         const instructions: TracedInstruction[] = instructionRows.map((i) => ({
           scriptId: i.scriptId,
           seq: i.seq,
+          address: i.address,
+          bytes: i.bytes,
+          pattern: i.pattern,
+          args: i.args,
           opcode: i.opcode,
           category: i.category,
-          loadKind: i.loadKind,
-          blockId: i.blockId,
-          callScriptId: i.callScriptId,
+          loads: [],
+          calls: [],
           targetMap: i.targetMap,
-          goldDelta: i.goldDelta,
-          itemId: i.itemId,
-          giveUnitId: i.giveUnitId,
+          gold: [],
+          items: [],
         }));
+        const byInstruction = new Map(instructions.map((i) => [`${i.scriptId}:${i.seq}`, i]));
+        const instructionOf = (scriptId: number, seq: number): TracedInstruction => {
+          const instruction = byInstruction.get(`${scriptId}:${seq}`);
+          if (instruction === undefined) throw new Error(`${path}: orphan event effect at ${scriptId}:${seq}`);
+          return instruction;
+        };
+        for (const row of await db.select().from(t.eventUnitLoads).orderBy(ROW_ORDER).all()) {
+          instructionOf(row.scriptId, row.seq).loads.push({
+            position: row.position, kind: row.kind, blockId: row.blockId,
+          });
+        }
+        for (const row of await db.select().from(t.eventCalls).orderBy(ROW_ORDER).all()) {
+          instructionOf(row.scriptId, row.seq).calls.push({
+            position: row.position, scriptId: row.targetScriptId,
+          });
+        }
+        for (const row of await db.select().from(t.eventGold).orderBy(ROW_ORDER).all()) {
+          instructionOf(row.scriptId, row.seq).gold.push({ offset: row.offset, delta: row.delta });
+        }
+        for (const row of await db.select().from(t.eventItemGrants).orderBy(ROW_ORDER).all()) {
+          instructionOf(row.scriptId, row.seq).items.push({
+            position: row.position, itemId: row.itemId, unitId: row.unitId,
+          });
+        }
 
         const slotRows = await db.select().from(t.chapterEventSlots).orderBy(ROW_ORDER).all();
         const chapterSlots: ChapterEventSlot[] = slotRows.map((s) => ({
@@ -440,11 +506,12 @@ export function openExtract(path: string): ExtractHandle {
           ext: u.ext,
         }));
 
-        return { instructions, chapterSlots, loadBlockUnits };
+        return { scripts: await scriptsOf(), instructions, chapterSlots, loadBlockUnits };
       }),
 
     unitStats: () =>
       once("unitStats", async (): Promise<UnitStatRow[]> => {
+        await requireEvents();
         const rows = await db.select().from(t.derivedUnitStats).orderBy(ROW_ORDER).all();
         return rows.map((r) => ({
           mapIndex: r.mapIndex,

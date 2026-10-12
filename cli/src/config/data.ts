@@ -112,6 +112,12 @@ export function resolveDataFile(
   return null;
 }
 
+/** Semantic tables use English exclusively; a translation is not a substitute. */
+export function resolveCanonicalDataFile(dir: string, prefix: string, game: string): string | null {
+  const path = join(dir, `${prefix}${game}.en.txt`);
+  return existsSync(path) ? path : null;
+}
+
 export function readTextFile(path: string): string {
   // Some of these files carry a UTF-8 BOM; strip it or the first key breaks.
   return readFileSync(path, "utf8").replace(/^\uFEFF/, "");

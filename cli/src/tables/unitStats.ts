@@ -40,12 +40,13 @@
  *   - `event` - every unit a reachable instruction loads (where enemies are; in
  *     `dream-of-five.gba` ch1 the start event loads 31). Attribution walks
  *     `chapter_event_slots` -> scripts -> CALL closure ->
- *     `event_instructions.block_id`, the reach `chapter_recruits` uses.
+ *     `event_unit_loads.block_id`, using the shared event reach walk.
  */
 
 import type { Chapter, PlacedUnit, UnitSide } from "./chapters.ts";
 import type { UnitClass } from "./classes.ts";
 import type { EventTrace, TracedInstruction, TracedBlockUnit } from "./eventTrace.ts";
+import { reachableScripts } from "./eventTrace.ts";
 import type { Unit } from "./units.ts";
 
 export type Difficulty = "easy" | "normal" | "hard";
@@ -176,43 +177,6 @@ function levelDelta(chapter: Chapter, difficulty: Difficulty, side: UnitSide): n
  */
 function placementBlock(chapter: Chapter, difficulty: Difficulty): readonly PlacedUnit[] {
   return difficulty === "hard" ? chapter.hardPlacements : chapter.placements;
-}
-
-/** `map_index` -> every script id a condition slot of that chapter can reach. */
-function reachableScripts(trace: EventTrace): Map<number, Set<number>> {
-  const calls = new Map<number, number[]>();
-  for (const i of trace.instructions) {
-    if (i.callScriptId === null) continue;
-    const list = calls.get(i.scriptId);
-    if (list === undefined) calls.set(i.scriptId, [i.callScriptId]);
-    else list.push(i.callScriptId);
-  }
-
-  const out = new Map<number, Set<number>>();
-  const queue: [number, number][] = [];
-  for (const slot of trace.chapterSlots) {
-    if (slot.scriptId === null) continue;
-    let set = out.get(slot.mapIndex);
-    if (set === undefined) {
-      set = new Set<number>();
-      out.set(slot.mapIndex, set);
-    }
-    if (!set.has(slot.scriptId)) {
-      set.add(slot.scriptId);
-      queue.push([slot.mapIndex, slot.scriptId]);
-    }
-  }
-
-  while (queue.length > 0) {
-    const [mapIndex, scriptId] = queue.shift() as [number, number];
-    const set = out.get(mapIndex) as Set<number>;
-    for (const called of calls.get(scriptId) ?? []) {
-      if (set.has(called)) continue;
-      set.add(called);
-      queue.push([mapIndex, called]);
-    }
-  }
-  return out;
 }
 
 /** Instructions grouped by the script they live in. */
@@ -347,23 +311,24 @@ export function buildUnitStats(ctx: UnitStatContext): UnitStatRow[] {
   for (const [mapIndex, scriptIds] of reach) {
     const chapter = chapterByMap.get(mapIndex);
     if (chapter === undefined) continue;
-    for (const scriptId of scriptIds) {
+    for (const scriptId of scriptIds.keys()) {
       for (const instruction of byScript.get(scriptId) ?? []) {
-        if (instruction.blockId === null) continue;
-        for (const u of byBlock.get(instruction.blockId) ?? []) {
-          for (const difficulty of DIFFICULTIES) {
-            emit(
-              chapter,
-              difficulty,
-              "event",
-              instruction.blockId,
-              u.position,
-              u.unitId,
-              u.classId,
-              u.level,
-              u.side,
-              u.autolevel,
-            );
+        for (const load of instruction.loads) {
+          for (const u of byBlock.get(load.blockId) ?? []) {
+            for (const difficulty of DIFFICULTIES) {
+              emit(
+                chapter,
+                difficulty,
+                "event",
+                load.blockId,
+                u.position,
+                u.unitId,
+                u.classId,
+                u.level,
+                u.side,
+                u.autolevel,
+              );
+            }
           }
         }
       }

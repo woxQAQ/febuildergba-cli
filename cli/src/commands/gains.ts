@@ -19,22 +19,20 @@ export const gains: Command<"db"> = {
     const reached = reachableInstructions(await extract.trace());
     return {
       gold: reached
-        .filter((r) => r.instruction.goldDelta !== null)
-        .map((r) => ({
+        .flatMap((r) => r.instruction.gold.map((gold) => ({
           mapIndex: r.mapIndex,
           scriptId: r.instruction.scriptId,
           seq: r.instruction.seq,
-          delta: r.instruction.goldDelta,
-        })),
+          delta: gold.delta,
+        }))),
       items: reached
-        .filter((r) => r.instruction.itemId !== null)
-        .map((r) => ({
+        .flatMap((r) => r.instruction.items.map((item) => ({
           mapIndex: r.mapIndex,
           scriptId: r.instruction.scriptId,
           seq: r.instruction.seq,
-          itemId: r.instruction.itemId,
-          unitId: r.instruction.giveUnitId,
-        })),
+          itemId: item.itemId,
+          unitId: item.unitId,
+        }))),
     };
   },
 };
