@@ -50,7 +50,12 @@ import type { ItemLayout, PromotionItemLayout } from "../data/layouts.ts";
 import { resolveTableSlot } from "../data/layouts.ts";
 import { parseKeyedTable, readTextFile, resolveDataFile } from "../config/data.ts";
 import type { TextContext } from "../text/huffman.ts";
-import type { TextPointerKind, ItemStatBonuses, Item, ItemReadResult } from "../model/snapshotRecords.ts";
+import type {
+  TextPointerKind,
+  ItemStatBonuses,
+  Item,
+  ItemReadResult,
+} from "../model/snapshotRecords.ts";
 import {
   classifyTextPointer,
   decodeTextId,

@@ -103,8 +103,8 @@ function growStats(
 }
 
 /** Upstream's promoted test: `u8(record + 41) & 0x01`, on either table. */
-function isPromoted(flags: readonly number[]): boolean {
-  return ((flags[1] ?? 0) & 0x01) === 0x01;
+function isPromoted(flags: readonly [number, number, number, number]): boolean {
+  return (flags[1] & 0x01) === 0x01;
 }
 
 /**

@@ -33,11 +33,12 @@ export function prepareAnalysis(repository: ExtractHandle, path: string): Analys
       );
     }
   };
-  const requireEvents = (): Promise<void> => eventQuality ??= (async () => {
-    await requireAvailable("events");
-    const warning = eventDecodeWarning(await repository.scripts());
-    if (warning !== null) diagnostics.push(warning);
-  })();
+  const requireEvents = (): Promise<void> =>
+    (eventQuality ??= (async () => {
+      await requireAvailable("events");
+      const warning = eventDecodeWarning(await repository.scripts());
+      if (warning !== null) diagnostics.push(warning);
+    })());
 
   return {
     availability: () => repository.availability(),
@@ -68,10 +69,15 @@ export function prepareAnalysis(repository: ExtractHandle, path: string): Analys
 }
 
 /** Starting stats are a game rule, assembled from stored deltas and class bases. */
-export async function unitsOf(x: Pick<AnalysisSource, "units" | "classes">): Promise<AnalysisUnit[]> {
+export async function unitsOf(
+  x: Pick<AnalysisSource, "units" | "classes">,
+): Promise<AnalysisUnit[]> {
   const units = await x.units();
   const bases = new Map((await x.classes()).map((c) => [c.id, c.bases]));
-  return units.map((u) => ({ ...u, startingStats: combineStartingStats(u.stats, bases.get(u.classId)) }));
+  return units.map((u) => ({
+    ...u,
+    startingStats: combineStartingStats(u.stats, bases.get(u.classId)),
+  }));
 }
 
 /** `joins`: witnessed appearances and the play-order positions that rank them. */
@@ -96,7 +102,10 @@ export async function availabilityOf(x: AnalysisSource): Promise<UnitAvailabilit
 }
 
 /** `expcurve`: the stat rows the budget counts, plus classes, game and order. */
-export async function expCurveOf(x: AnalysisSource, opts: ExpCurveOptions = {}): Promise<ExpCurveResult> {
+export async function expCurveOf(
+  x: AnalysisSource,
+  opts: ExpCurveOptions = {},
+): Promise<ExpCurveResult> {
   return computeExpCurve(
     {
       game: await x.game(),

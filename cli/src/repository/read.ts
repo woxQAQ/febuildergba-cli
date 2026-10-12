@@ -96,8 +96,8 @@ const REQUIRED_COLUMNS: Readonly<Record<string, readonly string[]>> = Object.fro
 const EXTRACT_HINT = "run `fe-rom extract <rom.gba>` first";
 
 /** One line, exit 1 via `index.ts` - the same treatment as an unreadable ROM. */
-function notAnExtractDb(path: string, why: string): Error {
-  return new Error(`${path}: ${why} - ${EXTRACT_HINT}`);
+function notAnExtractDb(path: string, why: string, cause?: unknown): Error {
+  return new Error(`${path}: ${why} - ${EXTRACT_HINT}`, { cause });
 }
 
 /**
@@ -201,8 +201,8 @@ export function openExtract(path: string): ExtractHandle {
   let handle: OpenDb;
   try {
     handle = openDb(path, { readOnly: true });
-  } catch {
-    throw notAnExtractDb(path, "not a database");
+  } catch (error) {
+    throw notAnExtractDb(path, "not a database", error);
   }
 
   try {
@@ -221,7 +221,7 @@ export function openExtract(path: string): ExtractHandle {
       }
     } catch (error) {
       if (error instanceof SchemaMismatchError) throw error;
-      throw notAnExtractDb(path, "not a database");
+      throw notAnExtractDb(path, "not a database", error);
     }
   } catch (error) {
     handle.close();
@@ -239,68 +239,76 @@ export function openExtract(path: string): ExtractHandle {
     return started;
   };
 
-  const metaOf = () => once("meta", async () => {
-    const rows = await db.select().from(t.meta).all();
-    return new Map(rows.map((r) => [r.key, r.value]));
-  });
-  const scriptsOf = () => once("scripts", async (): Promise<TracedScript[]> =>
-    db.select().from(t.eventScripts).orderBy(t.eventScripts.id).all());
+  const metaOf = () =>
+    once("meta", async () => {
+      const rows = await db.select().from(t.meta).all();
+      return new Map(rows.map((r) => [r.key, r.value]));
+    });
+  const scriptsOf = () =>
+    once(
+      "scripts",
+      async (): Promise<TracedScript[]> =>
+        db.select().from(t.eventScripts).orderBy(t.eventScripts.id).all(),
+    );
 
   /** `meta` `rom.version`, validated once for every caller. */
-  const gameOf = () => once("game", async (): Promise<GameVersion> => {
-    const version = (await metaOf()).get("rom.version");
-    if (version === undefined || !GAME_VERSIONS.includes(version)) {
-      throw notAnExtractDb(path, "no `rom.version` in `meta`; not an extract db");
-    }
-    return version as GameVersion;
-  });
+  const gameOf = () =>
+    once("game", async (): Promise<GameVersion> => {
+      const version = (await metaOf()).get("rom.version");
+      if (version === undefined || !GAME_VERSIONS.includes(version)) {
+        throw notAnExtractDb(path, "no `rom.version` in `meta`; not an extract db");
+      }
+      return version as GameVersion;
+    });
 
   /**
    * Class rows are shared by the class mapping and the unit-name join.
    */
-  const classRowsOf = () => once("classRows", () => db.select().from(t.classes).orderBy(t.classes.id).all());
+  const classRowsOf = () =>
+    once("classRows", () => db.select().from(t.classes).orderBy(t.classes.id).all());
 
-  const classesOf = () => once("classes", async (): Promise<ClassRecord[]> => {
-    const rows = await classRowsOf();
-    return rows.map((c) => ({
-      id: c.id,
-      name: c.name,
-      mount: c.mount,
-      flying: c.flying,
-      terrainBonusImmune: c.terrainBonusImmune,
-      isEmpty: c.isEmpty,
-      promotesToClassId: c.promotesToClassId,
-      sortOrder: c.sortOrder,
-      classPower: c.classPower,
-      abilityFlags: c.abilityFlags,
-      bases: {
-        hp: c.baseHp,
-        str: c.baseStr,
-        skl: c.baseSkl,
-        spd: c.baseSpd,
-        def: c.baseDef,
-        res: c.baseRes,
-        con: c.baseCon,
-      },
-      caps: {
-        hp: c.capHp,
-        str: c.capStr,
-        skl: c.capSkl,
-        spd: c.capSpd,
-        def: c.capDef,
-        res: c.capRes,
-        con: c.capCon,
-      },
-      promotionBonuses: {
-        hp: c.promoHp,
-        str: c.promoStr,
-        skl: c.promoSkl,
-        spd: c.promoSpd,
-        def: c.promoDef,
-        res: c.promoRes,
-      },
-    }));
-  });
+  const classesOf = () =>
+    once("classes", async (): Promise<ClassRecord[]> => {
+      const rows = await classRowsOf();
+      return rows.map((c) => ({
+        id: c.id,
+        name: c.name,
+        mount: c.mount,
+        flying: c.flying,
+        terrainBonusImmune: c.terrainBonusImmune,
+        isEmpty: c.isEmpty,
+        promotesToClassId: c.promotesToClassId,
+        sortOrder: c.sortOrder,
+        classPower: c.classPower,
+        abilityFlags: c.abilityFlags,
+        bases: {
+          hp: c.baseHp,
+          str: c.baseStr,
+          skl: c.baseSkl,
+          spd: c.baseSpd,
+          def: c.baseDef,
+          res: c.baseRes,
+          con: c.baseCon,
+        },
+        caps: {
+          hp: c.capHp,
+          str: c.capStr,
+          skl: c.capSkl,
+          spd: c.capSpd,
+          def: c.capDef,
+          res: c.capRes,
+          con: c.capCon,
+        },
+        promotionBonuses: {
+          hp: c.promoHp,
+          str: c.promoStr,
+          skl: c.promoSkl,
+          spd: c.promoSpd,
+          def: c.promoDef,
+          res: c.promoRes,
+        },
+      }));
+    });
 
   return {
     availability: async () => {
@@ -368,7 +376,11 @@ export function openExtract(path: string): ExtractHandle {
         const placementRows = await db
           .select()
           .from(t.chapterPlacements)
-          .orderBy(t.chapterPlacements.mapIndex, t.chapterPlacements.mode, t.chapterPlacements.position)
+          .orderBy(
+            t.chapterPlacements.mapIndex,
+            t.chapterPlacements.mode,
+            t.chapterPlacements.position,
+          )
           .all();
         const chapterRows = await db.select().from(t.chapters).orderBy(t.chapters.mapIndex).all();
         const placementsByChapter = new Map<
@@ -419,11 +431,16 @@ export function openExtract(path: string): ExtractHandle {
         return rows.map((r) => ({ unitId: r.unitId, mapIndex: r.mapIndex }));
       }),
 
-    supportPartners: () => once("supportPartners", () => db.select().from(t.supportPartners).orderBy(ROW_ORDER).all()),
+    supportPartners: () =>
+      once("supportPartners", () => db.select().from(t.supportPartners).orderBy(ROW_ORDER).all()),
 
     trace: () =>
       once("trace", async (): Promise<EventGraph> => {
-        const instructionRows = await db.select().from(t.eventInstructions).orderBy(ROW_ORDER).all();
+        const instructionRows = await db
+          .select()
+          .from(t.eventInstructions)
+          .orderBy(ROW_ORDER)
+          .all();
         const instructions: TracedInstruction[] = instructionRows.map((i) => ({
           scriptId: i.scriptId,
           seq: i.seq,
@@ -442,17 +459,21 @@ export function openExtract(path: string): ExtractHandle {
         const byInstruction = new Map(instructions.map((i) => [`${i.scriptId}:${i.seq}`, i]));
         const instructionOf = (scriptId: number, seq: number): TracedInstruction => {
           const instruction = byInstruction.get(`${scriptId}:${seq}`);
-          if (instruction === undefined) throw new Error(`${path}: orphan event effect at ${scriptId}:${seq}`);
+          if (instruction === undefined)
+            throw new Error(`${path}: orphan event effect at ${scriptId}:${seq}`);
           return instruction;
         };
         for (const row of await db.select().from(t.eventUnitLoads).orderBy(ROW_ORDER).all()) {
           instructionOf(row.scriptId, row.seq).loads.push({
-            position: row.position, kind: row.kind, blockId: row.blockId,
+            position: row.position,
+            kind: row.kind,
+            blockId: row.blockId,
           });
         }
         for (const row of await db.select().from(t.eventCalls).orderBy(ROW_ORDER).all()) {
           instructionOf(row.scriptId, row.seq).calls.push({
-            position: row.position, scriptId: row.targetScriptId,
+            position: row.position,
+            scriptId: row.targetScriptId,
           });
         }
         for (const row of await db.select().from(t.eventGold).orderBy(ROW_ORDER).all()) {
@@ -460,7 +481,9 @@ export function openExtract(path: string): ExtractHandle {
         }
         for (const row of await db.select().from(t.eventItemGrants).orderBy(ROW_ORDER).all()) {
           instructionOf(row.scriptId, row.seq).items.push({
-            position: row.position, itemId: row.itemId, unitId: row.unitId,
+            position: row.position,
+            itemId: row.itemId,
+            unitId: row.unitId,
           });
         }
 
@@ -471,10 +494,12 @@ export function openExtract(path: string): ExtractHandle {
           slotKind: s.slotKind,
           position: s.position,
           scriptId: s.scriptId,
+          // `turnStart`/`turnEnd` are written from the same `slot.turn`
+          // (write.ts), so they are null together; one test covers both.
           turn:
-            s.turnStart === null || s.turnEnd === null
+            s.turnStart === null
               ? null
-              : { start: s.turnStart, end: s.turnEnd, phase: s.turnPhase },
+              : { start: s.turnStart, end: s.turnEnd as number, phase: s.turnPhase },
           condFlag: s.condFlag,
         }));
 

@@ -27,8 +27,9 @@ export function computeJoins(data: JoinsInput): UnitJoin[] {
 
   for (const a of collectAppearances(data)) {
     const previous = byUnit.get(a.unitId);
-    const entry: { join?: UnitAppearance; appearance: UnitAppearance } =
-      previous ?? { appearance: a };
+    const entry: { join?: UnitAppearance; appearance: UnitAppearance } = previous ?? {
+      appearance: a,
+    };
     entry.appearance = earlier(a, entry.appearance);
     if (isPlayerArmyAppearance(a)) {
       entry.join = entry.join === undefined ? a : earlier(a, entry.join);

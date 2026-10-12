@@ -27,14 +27,25 @@ import { RomBuffer as RB } from "../rom/RomBuffer.ts";
 import type { GameLayout } from "../data/layouts.ts";
 import type { EventCode, EventScriptTable } from "./eventScript.ts";
 import {
-  classifyUnitArg, destinationOf, disassemble, findGoldLiteralsIn, isExitCode, TRANSITION_OPCODES,
+  classifyUnitArg,
+  destinationOf,
+  disassemble,
+  findGoldLiteralsIn,
+  isExitCode,
+  TRANSITION_OPCODES,
 } from "./eventScript.ts";
 import type { Chapter, CondSlotInfo } from "../model/snapshotRecords.ts";
 import { readPlacements } from "./chapters.ts";
 
 import type {
-  TracedScript, TracedArgument, TracedInstruction, ChapterEventSlot,
-  TracedBlockUnit, EventTrace, TurnPhase, TurnWindow,
+  TracedScript,
+  TracedArgument,
+  TracedInstruction,
+  ChapterEventSlot,
+  TracedBlockUnit,
+  EventTrace,
+  TurnPhase,
+  TurnWindow,
 } from "../model/events.ts";
 
 /** One decode policy for every event consumer. */
@@ -156,8 +167,11 @@ export function extractEventTrace(
           // Bind each item to its own following GIVEITEMTO operand. A fixed
           // 0xFFFF recipient denotes the active unit even without a UNIT arg.
           let unitId: number | null = null;
-          for (let offset = Math.ceil((arg.position + arg.size) / 4) * 4;
-            offset + 4 <= code.bytes.length; offset += 4) {
+          for (
+            let offset = Math.ceil((arg.position + arg.size) / 4) * 4;
+            offset + 4 <= code.bytes.length;
+            offset += 4
+          ) {
             if (code.script.pattern.slice(offset * 2, offset * 2 + 4) === "2037") {
               unitId = code.bytes.readUInt16LE(offset + 2);
               break;
@@ -165,7 +179,8 @@ export function extractEventTrace(
           }
           if (unitId === null) {
             const units = row.args.filter((a) => a.type === "UNIT");
-            const unitArg = units.find((a) => a.position > arg.position) ??
+            const unitArg =
+              units.find((a) => a.position > arg.position) ??
               (units.length === 1 ? units[0] : undefined);
             unitId = unitArg?.value ?? null;
           }
@@ -216,7 +231,13 @@ export function extractEventTrace(
       }
       addr += code.script.size;
     }
-    trace.scripts.push({ id, address: start, stopReason, instructionCount: seq, unknownInstructionCount });
+    trace.scripts.push({
+      id,
+      address: start,
+      stopReason,
+      instructionCount: seq,
+      unknownInstructionCount,
+    });
   };
 
   // Slot pass: link every chapter's condition slots to their scripts.

@@ -495,8 +495,7 @@ export function classifyUnitArg(pattern: string, position: number): LoadKind {
     return "other";
   }
   const isCompositeHead =
-    patternByte(pattern, position - 4) === 0x40 &&
-    patternByte(pattern, position - 3) === 0x05;
+    patternByte(pattern, position - 4) === 0x40 && patternByte(pattern, position - 3) === 0x05;
   const selector = patternByte(pattern, position - 2);
   return isCompositeHead && (selector === 0x02 || selector === 0x03) ? "load" : "other";
 }
@@ -509,7 +508,8 @@ export function findGoldLiteralsIn(code: EventCode): { offset: number; delta: nu
   const b = code.bytes;
   const out: { offset: number; delta: number }[] = [];
   for (let off = 0; off + 12 <= b.length; off += 4) {
-    if (b[off] !== 0x40 || b[off + 1] !== 0x05 || b[off + 2] !== 0x03 || b[off + 3] !== 0x00) continue;
+    if (b[off] !== 0x40 || b[off + 1] !== 0x05 || b[off + 2] !== 0x03 || b[off + 3] !== 0x00)
+      continue;
     if (b[off + 6] !== 0 || b[off + 7] !== 0) continue;
     if (b[off + 9] !== 0x37 || b[off + 10] !== 0 || b[off + 11] !== 0) continue;
     const op = b[off + 8];

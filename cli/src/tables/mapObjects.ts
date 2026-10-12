@@ -67,12 +67,16 @@ export function readChapterObjects(
   chapter: Chapter,
 ): MapObject[] {
   const shop = layout.shop;
-  const slot = shop?.objectCondSlot ?? 2;
-  const recordSize = shop?.objectRecordSize ?? 12;
+  // The OBJECT slot index and record size live on the shop layout, which
+  // only FE8U has transcribed; other versions have no readable object list -
+  // parsing one with FE8U's constants would silently produce wrong records
+  // (FE7, for one, shifts the object types down by two).
+  if (shop === null) return [];
+  const slot = shop.objectCondSlot;
+  const recordSize = shop.objectRecordSize;
   const listAddr = chapter.condPointers[slot] ?? 0;
   if (!rom.isSafeOffset(listAddr)) return [];
 
-  const isFe8 = layout.version === "FE8U" || layout.version === "FE8J";
   const out: MapObject[] = [];
 
   for (let n = 0; n < 0x400; n++) {
@@ -91,8 +95,9 @@ export function readChapterObjects(
     const shopAddr = isShop ? rom.p32(addr + 4) : 0;
 
     // A chest overloads `+4`: the item id lives in its low byte and the gold
-    // amount in `+6`. FE7 shifted every object type down by two.
-    const chestType = isFe8 ? 0x14 : 0x12;
+    // amount in `+6`. The type value is FE8U's; FE7 shifts every object type
+    // down by two, which matters when its layout gets transcribed.
+    const chestType = 0x14;
     const itemId = isChest ? rom.u8(addr + 4) : null;
     const gold = isChest ? rom.u16(addr + 6) : 0;
 

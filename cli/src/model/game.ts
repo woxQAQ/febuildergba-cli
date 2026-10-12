@@ -10,9 +10,19 @@ export const UNIT_SIDES: readonly UnitSide[] = ["player", "ally", "enemy", "remo
 export type LoadKind = "recruit" | "load" | "cutscene" | "other";
 /** Kinds of entry in the event-condition table, matching `CONDTYPE`. */
 export const COND_KINDS = [
-  "TURN", "TALK", "OBJECT", "ALWAYS", "TUTORIAL", "TRAP", "PLAYER_UNIT",
-  "ENEMY_UNIT", "FREEMAP_PLAYER_UNIT", "FREEMAP_ENEMY_UNIT", "START_EVENT",
-  "END_EVENT", "UNKNOWN",
+  "TURN",
+  "TALK",
+  "OBJECT",
+  "ALWAYS",
+  "TUTORIAL",
+  "TRAP",
+  "PLAYER_UNIT",
+  "ENEMY_UNIT",
+  "FREEMAP_PLAYER_UNIT",
+  "FREEMAP_ENEMY_UNIT",
+  "START_EVENT",
+  "END_EVENT",
+  "UNKNOWN",
 ] as const;
 export type CondKind = (typeof COND_KINDS)[number];
 export type MountKind = "wyvern" | "pegasus" | "horse" | "armour" | null;

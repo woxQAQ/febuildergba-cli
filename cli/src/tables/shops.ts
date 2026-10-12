@@ -31,7 +31,14 @@
 
 import type { RomBuffer } from "../rom/RomBuffer.ts";
 import type { ShopLayout } from "../data/layouts.ts";
-import type { ChapterObjects, Item, ShopKind, ShopEntry, Shop, ShopReadResult } from "../model/snapshotRecords.ts";
+import type {
+  ChapterObjects,
+  Item,
+  ShopKind,
+  ShopEntry,
+  Shop,
+  ShopReadResult,
+} from "../model/snapshotRecords.ts";
 
 function readEntryList(
   rom: RomBuffer,
@@ -46,7 +53,8 @@ function readEntryList(
     const itemId = rom.u8(a);
     if (itemId === 0) break;
 
-    const uses = entrySize >= 2 ? rom.u8(a + 1) : 0;
+    // Every entry is 2 bytes (`module doc`): itemId, then uses.
+    const uses = rom.u8(a + 1);
     const item = items.get(itemId);
     const effectiveUses = uses !== 0 ? uses : (item?.uses ?? 0);
     out.push({

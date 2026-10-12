@@ -127,9 +127,7 @@ function appearancesByUnit(data: AvailabilityInput): Map<number, Appearance[]> {
 // --- force sortie ---------------------------------------------------------
 
 /** Unit id -> the map indices its force-sortie records name; `null` set = any map. */
-function forceSortieIndex(
-  records: readonly ForceSortieRow[],
-): Map<number, Set<number> | null> {
+function forceSortieIndex(records: readonly ForceSortieRow[]): Map<number, Set<number> | null> {
   const out = new Map<number, Set<number> | null>();
   for (const r of records) {
     let maps = out.get(r.unitId);

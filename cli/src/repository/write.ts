@@ -21,7 +21,10 @@ export interface WriteReceipt {
   readonly tables: Readonly<Record<string, number>>;
 }
 
-export async function writeSnapshot(handle: OpenDb, rom: ExtractionSnapshot): Promise<WriteReceipt> {
+export async function writeSnapshot(
+  handle: OpenDb,
+  rom: ExtractionSnapshot,
+): Promise<WriteReceipt> {
   const { db, sqlite } = handle;
   for (const statement of createTablesSql(t.TABLES)) sqlite.exec(statement);
 
@@ -48,7 +51,8 @@ export async function writeSnapshot(handle: OpenDb, rom: ExtractionSnapshot): Pr
         .select({ n: sql<number>`count(*)` })
         .from(table)
         .get();
-      tables[getTableConfig(table).name] = row?.n ?? 0;
+      tables[getTableConfig(table).name] = // `count(*)` always yields exactly one row.
+      (row as { n: number }).n;
     }
     return { tables };
   } catch (error) {

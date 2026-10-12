@@ -5,8 +5,17 @@
  */
 import type { GameVersion } from "./game.ts";
 import type {
-  Unit, UnitClass, Chapter, CondSlotInfo, SupportReadResult, SupportBonus,
-  TerrainReadResult, ForceSortieTable, Item, ShopReadResult, ChapterObjects,
+  Unit,
+  UnitClass,
+  Chapter,
+  CondSlotInfo,
+  SupportReadResult,
+  SupportBonus,
+  TerrainReadResult,
+  ForceSortieTable,
+  Item,
+  ShopReadResult,
+  ChapterObjects,
   SkillReadResult,
 } from "./snapshotRecords.ts";
 import type { EventTrace } from "./events.ts";

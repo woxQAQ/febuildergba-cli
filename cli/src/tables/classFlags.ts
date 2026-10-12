@@ -155,8 +155,13 @@ export function decodeFlagKey(key: string): { offset: number; mask: number } | n
  * Load display labels for a game (`TitleToFilename` fragment). Stable flag ids
  * remain decodable even when the label table or individual labels are absent.
  */
-export function loadClassFlags(configDir: string | null, game: string, language?: string): ClassFlagDef[] {
-  const path = configDir === null ? null : resolveDataFile(configDir, "unitclass_checkbox_", game, language);
+export function loadClassFlags(
+  configDir: string | null,
+  game: string,
+  language?: string,
+): ClassFlagDef[] {
+  const path =
+    configDir === null ? null : resolveDataFile(configDir, "unitclass_checkbox_", game, language);
   const ids = classFlagKeysFor(game);
   const labels = new Map(
     (path === null ? [] : parseKeyedTable(readTextFile(path))).map((entry) => [
@@ -191,11 +196,6 @@ export function decodeAbilityFlags(
   bytes: readonly number[],
   defs: readonly ClassFlagDef[],
 ): string[] {
-  const set = new Set<number>();
-  for (let i = 0; i < bytes.length; i++) {
-    set.add((bytes[i] as number) << 0);
-  }
-
   const out: string[] = [];
   for (const def of defs) {
     const byteIndex = def.offset - CLASS_ABILITY_BASE_OFFSET;

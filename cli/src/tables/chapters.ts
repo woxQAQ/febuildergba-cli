@@ -46,7 +46,13 @@ import { resolveTableSlot } from "../data/layouts.ts";
 import { RomBuffer } from "../rom/RomBuffer.ts";
 import type { TextContext } from "../text/huffman.ts";
 import { decodeTextId } from "../text/huffman.ts";
-import type { CondSlot, CondSlotInfo, PostPlacement, PlacedUnit, Chapter } from "../model/snapshotRecords.ts";
+import type {
+  CondSlot,
+  CondSlotInfo,
+  PostPlacement,
+  PlacedUnit,
+  Chapter,
+} from "../model/snapshotRecords.ts";
 import type { CondKind, UnitSide } from "../model/game.ts";
 import { COND_KINDS, UNIT_SIDES } from "../model/game.ts";
 
@@ -381,7 +387,9 @@ export function readChapters(
 
           const at = (kind: CondKind): number => {
             const i = slotIndexOf(kind);
-            return i < 0 ? 0 : (chapter.condPointers[i] ?? 0);
+            // `condPointers` was filled with exactly `condSlots.length` entries
+            // above, so a resolved slot index always lands inside it.
+            return i < 0 ? 0 : (chapter.condPointers[i] as number);
           };
 
           chapter.playerPlacementAddr = at("PLAYER_UNIT");
@@ -390,7 +398,7 @@ export function readChapters(
             .map((s, i) => (s.kind === "PLAYER_UNIT" ? i : -1))
             .filter((i) => i >= 0);
           if (playerSlots.length > 1) {
-            chapter.hardPlacementAddr = chapter.condPointers[playerSlots[1] as number] ?? 0;
+            chapter.hardPlacementAddr = chapter.condPointers[playerSlots[1] as number] as number;
           }
           chapter.startEventAddr = at("START_EVENT");
           chapter.endEventAddr = at("END_EVENT");

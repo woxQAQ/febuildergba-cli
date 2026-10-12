@@ -120,7 +120,10 @@ function identify(path: string): { rom: LoadedRom; bare: Omit<LoadedRom, "text">
 
   // The checks above narrowed `version`, which is why the returned identity's
   // `version` is not nullable.
-  const narrowed: RomIdentity & { version: GameVersion } = { ...identity, version: identity.version };
+  const narrowed: RomIdentity & { version: GameVersion } = {
+    ...identity,
+    version: identity.version,
+  };
   const bare = { path, rom, identity: narrowed, layout };
   return { rom: { ...bare, text: makeTextContext(rom, layout.text) }, bare };
 }
@@ -200,7 +203,9 @@ function parse(
 ): ExtractionSnapshot {
   const { path, rom: buffer, identity, layout } = base;
   const game = titleFragment(identity.version);
-  const warn = (message: string): void => { diagnostics.push(message); };
+  const warn = (message: string): void => {
+    diagnostics.push(message);
+  };
   const language = options.language;
 
   // Labels are optional; canonical event definitions are required to interpret
@@ -260,7 +265,9 @@ function parse(
 
   const chaptersAvailable = mapSettings !== null && condSlots.length > 0;
   if (!chaptersAvailable) {
-    warn("chapter data unavailable: map-setting table or canonical English condition slots are missing");
+    warn(
+      "chapter data unavailable: map-setting table or canonical English condition slots are missing",
+    );
   }
   if (eventScripts.scripts.length === 0) {
     warn("event data unavailable: canonical English opcode definitions are missing");

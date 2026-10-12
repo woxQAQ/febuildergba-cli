@@ -766,7 +766,10 @@ export const eventUnitLoads = sqliteTable(
   },
   (t) => [
     primaryKey({ columns: [t.scriptId, t.seq, t.position] }),
-    foreignKey({ columns: [t.scriptId, t.seq], foreignColumns: [eventInstructions.scriptId, eventInstructions.seq] }),
+    foreignKey({
+      columns: [t.scriptId, t.seq],
+      foreignColumns: [eventInstructions.scriptId, eventInstructions.seq],
+    }),
     foreignKey({ columns: [t.blockId], foreignColumns: [loadBlocks.id] }),
   ],
 );
@@ -781,7 +784,10 @@ export const eventCalls = sqliteTable(
   },
   (t) => [
     primaryKey({ columns: [t.scriptId, t.seq, t.position] }),
-    foreignKey({ columns: [t.scriptId, t.seq], foreignColumns: [eventInstructions.scriptId, eventInstructions.seq] }),
+    foreignKey({
+      columns: [t.scriptId, t.seq],
+      foreignColumns: [eventInstructions.scriptId, eventInstructions.seq],
+    }),
     foreignKey({ columns: [t.targetScriptId], foreignColumns: [eventScripts.id] }),
   ],
 );
@@ -796,7 +802,10 @@ export const eventGold = sqliteTable(
   },
   (t) => [
     primaryKey({ columns: [t.scriptId, t.seq, t.offset] }),
-    foreignKey({ columns: [t.scriptId, t.seq], foreignColumns: [eventInstructions.scriptId, eventInstructions.seq] }),
+    foreignKey({
+      columns: [t.scriptId, t.seq],
+      foreignColumns: [eventInstructions.scriptId, eventInstructions.seq],
+    }),
   ],
 );
 
@@ -811,7 +820,10 @@ export const eventItemGrants = sqliteTable(
   },
   (t) => [
     primaryKey({ columns: [t.scriptId, t.seq, t.position] }),
-    foreignKey({ columns: [t.scriptId, t.seq], foreignColumns: [eventInstructions.scriptId, eventInstructions.seq] }),
+    foreignKey({
+      columns: [t.scriptId, t.seq],
+      foreignColumns: [eventInstructions.scriptId, eventInstructions.seq],
+    }),
   ],
 );
 

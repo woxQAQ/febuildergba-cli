@@ -16,19 +16,17 @@ export interface PromotionGraph<T extends PromotionClass> {
  * class's *own* base, so a promoted class whose reverse link points at another
  * promoted class still yields a correct base -> promoted edge.
  */
-export function buildPromotionGraph<T extends PromotionClass>(classes: readonly T[]): PromotionGraph<T> {
+export function buildPromotionGraph<T extends PromotionClass>(
+  classes: readonly T[],
+): PromotionGraph<T> {
   const byId = new Map(classes.map((c) => [c.id, c]));
   const promoted = new Set<number>();
-  for (const c of classes) {
-    const target = byId.get(c.promotesToClassId);
-    if (target && target.sortOrder < c.sortOrder) promoted.add(c.id);
-  }
-
   const targets = new Map<number, T>();
   for (const c of classes) {
-    if (!promoted.has(c.id)) continue;
     const base = byId.get(c.promotesToClassId);
-    if (base !== undefined && base.id !== c.id) targets.set(base.id, c);
+    if (base === undefined || base.sortOrder >= c.sortOrder) continue;
+    promoted.add(c.id);
+    targets.set(base.id, c);
   }
 
   return { promoted, targets };

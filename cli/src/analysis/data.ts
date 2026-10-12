@@ -1,7 +1,12 @@
 /** Analysis inputs name the persisted facts each calculation consumes. */
 import type { GameVersion } from "../model/game.ts";
 import type {
-  UnitRecord, ClassRecord, PlacementRecord, ChapterRecord, ForceSortieRow, PlayOrderRows,
+  UnitRecord,
+  ClassRecord,
+  PlacementRecord,
+  ChapterRecord,
+  ForceSortieRow,
+  PlayOrderRows,
 } from "../model/records.ts";
 import type { EventGraph } from "../model/events.ts";
 import type { UnitStatRow, UnitStartingStats } from "../model/stats.ts";

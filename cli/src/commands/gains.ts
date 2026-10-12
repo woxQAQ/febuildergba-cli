@@ -18,21 +18,23 @@ export const gains = defineDbCommand({
   run: async ({ extract }) => {
     const reached = reachableInstructions(await extract.trace());
     return {
-      gold: reached
-        .flatMap((r) => r.instruction.gold.map((gold) => ({
+      gold: reached.flatMap((r) =>
+        r.instruction.gold.map((gold) => ({
           mapIndex: r.mapIndex,
           scriptId: r.instruction.scriptId,
           seq: r.instruction.seq,
           delta: gold.delta,
-        }))),
-      items: reached
-        .flatMap((r) => r.instruction.items.map((item) => ({
+        })),
+      ),
+      items: reached.flatMap((r) =>
+        r.instruction.items.map((item) => ({
           mapIndex: r.mapIndex,
           scriptId: r.instruction.scriptId,
           seq: r.instruction.seq,
           itemId: item.itemId,
           unitId: item.unitId,
-        }))),
+        })),
+      ),
     };
   },
 });

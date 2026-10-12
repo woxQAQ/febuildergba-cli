@@ -392,8 +392,9 @@ export function computeExpCurve(data: ExpCurveInput, opts: ExpCurveOptions = {})
   const game = data.game;
   const difficulties = opts.difficulty === undefined ? DIFFICULTIES : [opts.difficulty];
 
-  // (mapIndex, difficulty) -> counted enemy rows
-  const byChapter = new Map<string, UnitStatRow[]>();
+  // (mapIndex, difficulty) -> counted enemy rows, with the class resolved once
+  // here rather than looked up again at consumption.
+  const byChapter = new Map<string, { row: UnitStatRow; cls: AnalysisClass }[]>();
   for (const row of rows) {
     if (row.side !== "enemy") continue;
     const cls = classById.get(row.classId);
@@ -403,8 +404,8 @@ export function computeExpCurve(data: ExpCurveInput, opts: ExpCurveOptions = {})
     if ((cls.abilityFlags[3] & NO_EXP_FLAG_MASK) !== 0 || cls.classPower < 1) continue;
     const key = `${row.mapIndex}|${row.difficulty}`;
     const list = byChapter.get(key);
-    if (list === undefined) byChapter.set(key, [row]);
-    else list.push(row);
+    if (list === undefined) byChapter.set(key, [{ row, cls }]);
+    else list.push({ row, cls });
   }
 
   const budgets: ChapterExpBudget[] = [];
@@ -415,8 +416,7 @@ export function computeExpCurve(data: ExpCurveInput, opts: ExpCurveOptions = {})
       let totalExpAtParity = 0;
       let initialEnemyCount = 0;
       const powers: number[] = [];
-      for (const row of enemies) {
-        const cls = classById.get(row.classId) as AnalysisClass;
+      for (const { row, cls } of enemies) {
         // A level that underflowed below 0 wraps to a maxed enemy in the
         // game (see extract/unitStats.ts); no formula input survives that.
         // Clamp to 0 so the parity computation stays symmetric - the level

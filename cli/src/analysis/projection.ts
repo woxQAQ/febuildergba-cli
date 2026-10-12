@@ -227,7 +227,9 @@ function expEfficiencyOf(
     promotedAtJoin: unit.isPromotedClass,
     expPerParityKill: ours,
     baselineExpPerParityKill: baseline,
-    ratio: baseline > 0 ? Math.round((ours / baseline) * 100) / 100 : 0,
+    // `baseline` is `battleExp` clamped to [EXP_MIN, EXP_MAX] = [1, 100], so
+    // the division always has a non-zero divisor.
+    ratio: Math.round((ours / baseline) * 100) / 100,
   };
 }
 
@@ -397,7 +399,10 @@ function maxedStats(unit: AnalysisUnit, ctx: SimContext): StatLine {
  * Units are returned by join position (earliest first, never-joining last,
  * unit id as tie-break) - the order a "who do I train" reader scans in.
  */
-export function projectUnits(data: ProjectionInput, opts: ProjectionOptions = {}): UnitProjection[] {
+export function projectUnits(
+  data: ProjectionInput,
+  opts: ProjectionOptions = {},
+): UnitProjection[] {
   const promoteAt = opts.promoteAt ?? MAX_LEVEL;
   const difficulty = opts.difficulty ?? "normal";
   const curve = computeExpCurve(data);
@@ -419,7 +424,9 @@ export function projectUnits(data: ProjectionInput, opts: ProjectionOptions = {}
     for (const b of curve.budgets) {
       if (b.difficulty === difficulty) byPosition.set(b.position, b.expectedLevelsAtParity);
     }
-    return (position, mapIndex) => (byPosition.get(position) ?? 0) * shareOf(mapIndex);
+    // `computeExpCurve` budgets every playable step at every difficulty, so a
+    // position drawn from the playable steps (the only caller below) always hits.
+    return (position, mapIndex) => (byPosition.get(position) as number) * shareOf(mapIndex);
   })();
   const powerRefOf = ((): ((position: number) => number) => {
     const byPosition = new Map<number, number>();
@@ -455,7 +462,7 @@ export function projectUnits(data: ProjectionInput, opts: ProjectionOptions = {}
         classLine.push({ classId: base.id, name: base.name });
       }
     }
-    classLine.push({ classId: unit.classId, name: cls?.name ?? unit.className });
+    classLine.push({ classId: unit.classId, name: unit.className });
     const target = unit.isPromotedClass ? undefined : targets.get(unit.classId);
     if (target !== undefined) classLine.push({ classId: target.id, name: target.name });
 

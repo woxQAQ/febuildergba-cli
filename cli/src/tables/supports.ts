@@ -28,7 +28,12 @@
  */
 
 import { RomBuffer } from "../rom/RomBuffer.ts";
-import type { Unit, SupportPartner, SupportEntry, SupportReadResult } from "../model/snapshotRecords.ts";
+import type {
+  Unit,
+  SupportPartner,
+  SupportEntry,
+  SupportReadResult,
+} from "../model/snapshotRecords.ts";
 import { unitNameOrId } from "../format.ts";
 
 export const SUPPORT_RECORD_SIZE = 24;

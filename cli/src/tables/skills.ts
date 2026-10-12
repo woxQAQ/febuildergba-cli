@@ -38,7 +38,13 @@
  */
 
 import type { RomBuffer } from "../rom/RomBuffer.ts";
-import type { SkillPointers, Skill, SkillAssignment, SkillLearn, SkillReadResult } from "../model/snapshotRecords.ts";
+import type {
+  SkillPointers,
+  Skill,
+  SkillAssignment,
+  SkillLearn,
+  SkillReadResult,
+} from "../model/snapshotRecords.ts";
 import { hasClassSkillExtends, resolveSkillPointers } from "../rom/skillSystem.ts";
 import type { TextContext } from "../text/huffman.ts";
 import { decodeTextId, sanitizeText, stripAllCodes } from "../text/huffman.ts";

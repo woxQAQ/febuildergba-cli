@@ -146,11 +146,15 @@ export interface EventGraph {
 
 /** Shared diagnostic for extract, census and database-backed analyses. */
 export function eventDecodeWarning(scripts: readonly TracedScript[]): string | null {
-  const incomplete = scripts.filter((s) => s.stopReason !== "exit" || s.unknownInstructionCount > 0);
+  const incomplete = scripts.filter(
+    (s) => s.stopReason !== "exit" || s.unknownInstructionCount > 0,
+  );
   if (incomplete.length === 0) return null;
-  return `${incomplete.length}/${scripts.length} event scripts contain unknown instructions ` +
+  return (
+    `${incomplete.length}/${scripts.length} event scripts contain unknown instructions ` +
     "or stopped without an exit; event-derived results are partial. " +
-    "Inspect event_scripts.stop_reason and unknown_instruction_count.";
+    "Inspect event_scripts.stop_reason and unknown_instruction_count."
+  );
 }
 
 export interface ScriptReachOptions {

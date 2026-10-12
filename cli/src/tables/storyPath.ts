@@ -58,7 +58,8 @@ export function readAllTransitions(
       title: chapter.title,
       endEventAddress: chapter.endEventAddr,
       instructionsDecoded: script?.instructionCount ?? 0,
-      stopReason: script?.stopReason ?? (chapter.endEventAddr === 0 ? "no END_EVENT" : "unavailable"),
+      stopReason:
+        script?.stopReason ?? (chapter.endEventAddr === 0 ? "no END_EVENT" : "unavailable"),
       transitions: seed === undefined ? [] : walkTransitions(seed, stepsOf),
     };
   });
