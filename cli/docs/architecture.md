@@ -27,7 +27,7 @@ DB 命令用 `commands/types.ts` 中的 `defineDbCommand` 共享连接生命周�
 | CLI / commands | 参数、资源生命周期、输出、错误展示、产物发布         | ROM 解码、游戏规则、SQL 映射         |
 | extract        | 解码和提取编排、快照物化、来源信息、提取诊断         | 数据库、终端输出、下游分析           |
 | analysis       | 证据选择、可用性策略、输入装配、按问题计算、分析诊断 | ROM 解码、SQL、终端输出              |
-| repository     | schema/revision 检查、SQL 映射、事务、连接           | 解析器、游戏算法、分析选择、警告打印 |
+| repository     | schema 检查、外键强制、SQL 映射、事务、连接          | 解析器、游戏算法、分析选择、警告打印 |
 | model          | 普通事实契约、共享纯规则                             | I/O、service 或 repository 实现      |
 
 `model/snapshot.ts` 的 `ExtractionSnapshot` 是完整提取结果。
@@ -43,8 +43,18 @@ DB 命令用 `commands/types.ts` 中的 `defineDbCommand` 共享连接生命周�
 
 Repository 区分两件事：
 
-- schema/revision 不匹配：无法按当前存储契约读取，打开时拒绝并要求重建；
+- schema 不匹配：库早于当前构建（缺表或缺列），打开时拒绝并要求重建；
 - 章节或事件输入不可用：返回提取时保存的 availability，不将空表解释为合法空集合。
+
+产物没有 revision 计数器：库是可全量重建的，schema 守卫（缺表/缺列即拒）
+已经覆盖「旧库」这一种过期形态，解码规则变化直接体现为列或表的变化。
+外键在写入连接上以 `PRAGMA foreign_keys = ON` 显式开启并断言生效（SQLite
+自身默认按连接关闭；node:sqlite 恰好开启，但不依赖这个驱动选择），插入顺序
+即依赖顺序，悬空引用会让提取失败而不是静默存 null。少数列是哨兵而非引用
+（如 `units.affinity_id` 的 0、`force_sortie.map_index` 的 0xFF），没有父行，
+按设计不带外键，见 schema.ts 模块注释。读取顺序一律走显式键，不依赖
+rowid——无 INTEGER PRIMARY KEY 别名表的 rowid 稳定性 SQLite 不保证，而
+schema 守卫看不见这种变化。
 
 `prepareAnalysis` 建立一次分析会话，按实际请求的证据检查 availability。
 事件不完整时保留结果，并在 `diagnostics()` 中报告限制；不可用时拒绝相关分析。
@@ -57,5 +67,6 @@ CLI 决定 stderr 格式，service 和 repository 不直接打印。
 ## 验证
 
 使用 `npm run typecheck`、`npm run check` 与真实 ROM 工作流验证，
-不添加单元测试。架构调整不改变存储 schema/revision：
-旧的当前 revision 快照应仍可读取，同一 ROM 的表内容与分析 JSON 应保持一致。
+不添加单元测试。架构调整若改变存储 schema（列、表、外键、顺序契约），
+旧快照按设计不再可读：重新 extract 即可，同一 ROM 的新表内容与分析 JSON
+应保持一致。

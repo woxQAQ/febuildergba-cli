@@ -119,11 +119,24 @@ FE8 把坐标打包进一个 u16：`x = bits 0-5`、`y = bits 6-11`、`ext = bit
 命令打印的东西。外传之外的分支（`playOrder.branches`）和闭环检测
 （`closedLoop`）只有运行时的形状，没有表能表达，所以留在 `meta` 里。
 
-## 6. 产物版本与完整性
+## 6. 产物完整性与顺序契约
 
-`meta.extract.revision` 同时约束解码及物化推导规则。规则变化即使不改 SQL 列，
-也必须提升 `repository/revision.ts` 中的 revision。读取旧库要求重新 extract，不迁移
-旧结论。
+产物没有 revision 计数器。库是可全量重建的：schema 守卫在打开时检查本构建
+读取的每张表的全部列，缺表或缺列（包括顺序契约的变化）即拒绝并要求重新
+extract，不迁移旧结论。
+
+事件层的行序一律由显式键决定，不依赖 rowid。无 INTEGER PRIMARY KEY 别名表的
+rowid 稳定性 SQLite 并不保证（其文档明确 VACUUM 可以改变这类表的 rowid），
+schema 守卫也看不见重排，所以每处读都显式排序：
+
+- `event_instructions` 按 `(script_id, seq)`：脚本 id 按发现顺序 FIFO 分配
+  （`scriptIdOf` 入队、`decodeScript` 顺序解码），CALL 共享助手排在 slot
+  脚本之后，所以键序就是解码序；
+- `event_unit_loads` / `event_calls` / `event_gold` / `event_item_grants`
+  按 `(script_id, seq, position/offset)`：写入时按指令的操作数序落行；
+- `chapter_event_slots` 按 `(map_index, slot_index, position)`：提取按
+  map-setting 行序、再按条件槽序走，可达性遍历以这个序为种子序；
+- `load_block_units` 按 `(block_id, position)`：块按 id 序发现、块内按行序。
 
 `chapters.available` / `events.available` 区分缺失输入与合法空集合。依赖缺失
 数据的查询失败，职业等独立查询仍可运行。`event_scripts` 保存

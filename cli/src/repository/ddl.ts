@@ -2,7 +2,14 @@
  * DDL generation from the drizzle schema (`schema.ts` is the source of truth;
  * no second, hand-written SQL copy). Covers only what the extract schema uses -
  * integer/text/real columns, NOT NULL, inline/composite primary keys,
- * single-column foreign keys; anything else fails here, loudly, at extract time.
+ * single-column and composite foreign keys; anything else fails here, loudly,
+ * at extract time.
+ *
+ * The emitted FOREIGN KEY clauses are only enforced when the connection has
+ * `PRAGMA foreign_keys = ON` - a per-connection setting whose SQLite default
+ * is off (`node:sqlite` enables it, but that is the driver's choice).
+ * `write.ts` sets it explicitly and asserts it, so the declarations below are
+ * enforced rather than documented.
  *
  * Tables only, because tables are all the extract creates: the derivations that
  * used to ship as db views (roster, class_roles, support_edges,

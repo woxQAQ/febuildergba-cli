@@ -37,6 +37,31 @@
  *     needing a surrogate.
  *   - Support bonuses are the ROM's half-points (`*_half`); applied bonus at
  *     rank C/B/A is `half * 1/2/3` (`tables/supportBonus.ts`).
+ *   - **Order never comes from `rowid`.** VACUUM and some GUI tools reorder
+ *     rowid on tables without an INTEGER PRIMARY KEY alias, and the schema
+ *     guard cannot see it, so every read orders by an explicit key. Wherever
+ *     order matters the key already encodes it: `units`/`classes` by `id` -
+ *     the join key every other table references them by - and the event layer
+ *     by `(script_id, seq[, position/offset])` and friends, because the
+ *     extractor assigns script ids FIFO and walks operands in order, making
+ *     key order equal insertion order. Where order carries no meaning
+ *     (support partners, forced sortie, unit stats) consumers dedup into maps
+ *     and sort their own output. A `seq`/position column would only earn its
+ *     place if a consumer needed true ROM array order for a hack whose stored
+ *     ids are not monotonic; nothing does today.
+ *   - **Foreign keys are enforced.** The writer opens its connection with
+ *     `PRAGMA foreign_keys = ON` and asserts it took (SQLite's own default is
+ *     off per connection; `node:sqlite` enables it, but that is the driver's
+ *     choice, not a guarantee), and inserts in dependency order, so a dangling
+ *     reference fails the extract instead of silently storing null.
+ *     Four columns are sentinels rather than references and deliberately carry
+ *     no FK, because a sentinel has no parent row: `units.affinity_id` 0 =
+ *     none, `force_sortie.map_index` 0xFF = any map,
+ *     `chapter_placement_steps.unit_id` 0 = the placed unit itself, and
+ *     `event_item_grants.unit_id` 0xFFFF = the currently acting unit. A fifth,
+ *     `classes.promotes_to_class_id`, is a raw record byte whose target can
+ *     appear later in the same table's insert sequence; enforcing it would
+ *     need a deferred FK, which the drizzle DDL path does not carry.
  *
  * Empty unit slots (no name, class or level, non-unique id 0) are not
  * extracted; their count is `meta` `units.emptySlots`.
@@ -52,62 +77,68 @@ export const meta = sqliteTable("meta", {
   value: text("value").notNull(),
 });
 
-export const units = sqliteTable("units", {
-  /** Game unit id, 1-based. Unique per ROM; support/placement data keys on it. */
-  id: integer("id").primaryKey(),
-  /** Display name: decoded, control bytes and `@XXXX` escapes stripped. */
-  name: text("name").notNull(),
-  /** Text id the name was decoded from; feed it to `fe-rom text` to see raw. */
-  nameTextId: integer("name_text_id").notNull(),
-  description: text("description").notNull(),
-  descTextId: integer("desc_text_id").notNull(),
-  classId: integer("class_id").notNull(),
-  /** True when this unit's class is the promoted half of a base/promoted pair. */
-  isPromotedClass: integer("is_promoted_class", { mode: "boolean" }).notNull(),
-  mapFaceId: integer("map_face_id").notNull(),
-  portraitId: integer("portrait_id").notNull(),
-  /** Support affinity id; 0 = none. Names join through `affinities`. */
-  affinityId: integer("affinity_id").notNull(),
-  sortOrder: integer("sort_order").notNull(),
-  level: integer("level").notNull(),
+export const units = sqliteTable(
+  "units",
+  {
+    /** Game unit id, 1-based. Unique per ROM; support/placement data keys on it. */
+    id: integer("id").primaryKey(),
+    /** Display name: decoded, control bytes and `@XXXX` escapes stripped. */
+    name: text("name").notNull(),
+    /** Text id the name was decoded from; feed it to `fe-rom text` to see raw. */
+    nameTextId: integer("name_text_id").notNull(),
+    description: text("description").notNull(),
+    descTextId: integer("desc_text_id").notNull(),
+    classId: integer("class_id").notNull(),
+    /** True when this unit's class is the promoted half of a base/promoted pair. */
+    isPromotedClass: integer("is_promoted_class", { mode: "boolean" }).notNull(),
+    mapFaceId: integer("map_face_id").notNull(),
+    portraitId: integer("portrait_id").notNull(),
+    /** Support affinity id; 0 = none. Names join through `affinities`. */
+    affinityId: integer("affinity_id").notNull(),
+    sortOrder: integer("sort_order").notNull(),
+    level: integer("level").notNull(),
 
-  // Per-unit SIGNED deltas on the class base, not final stats.
-  // starting stat = classes.base_* + units.delta_*; luck has no class base.
-  deltaHp: integer("delta_hp").notNull(),
-  deltaStr: integer("delta_str").notNull(),
-  deltaSkl: integer("delta_skl").notNull(),
-  deltaSpd: integer("delta_spd").notNull(),
-  deltaDef: integer("delta_def").notNull(),
-  deltaRes: integer("delta_res").notNull(),
-  deltaLck: integer("delta_lck").notNull(),
-  deltaCon: integer("delta_con").notNull(),
+    // Per-unit SIGNED deltas on the class base, not final stats.
+    // starting stat = classes.base_* + units.delta_*; luck has no class base.
+    deltaHp: integer("delta_hp").notNull(),
+    deltaStr: integer("delta_str").notNull(),
+    deltaSkl: integer("delta_skl").notNull(),
+    deltaSpd: integer("delta_spd").notNull(),
+    deltaDef: integer("delta_def").notNull(),
+    deltaRes: integer("delta_res").notNull(),
+    deltaLck: integer("delta_lck").notNull(),
+    deltaCon: integer("delta_con").notNull(),
 
-  growthHp: integer("growth_hp").notNull(),
-  growthStr: integer("growth_str").notNull(),
-  growthSkl: integer("growth_skl").notNull(),
-  growthSpd: integer("growth_spd").notNull(),
-  growthDef: integer("growth_def").notNull(),
-  growthRes: integer("growth_res").notNull(),
-  growthLck: integer("growth_lck").notNull(),
-  growthTotal: integer("growth_total").notNull(),
+    growthHp: integer("growth_hp").notNull(),
+    growthStr: integer("growth_str").notNull(),
+    growthSkl: integer("growth_skl").notNull(),
+    growthSpd: integer("growth_spd").notNull(),
+    growthDef: integer("growth_def").notNull(),
+    growthRes: integer("growth_res").notNull(),
+    growthLck: integer("growth_lck").notNull(),
+    growthTotal: integer("growth_total").notNull(),
 
-  // Weapon experience per weapon type, ROM order.
-  wlSword: integer("wl_sword").notNull(),
-  wlLance: integer("wl_lance").notNull(),
-  wlAxe: integer("wl_axe").notNull(),
-  wlBow: integer("wl_bow").notNull(),
-  wlStaff: integer("wl_staff").notNull(),
-  wlAnima: integer("wl_anima").notNull(),
-  wlLight: integer("wl_light").notNull(),
-  wlDark: integer("wl_dark").notNull(),
+    // Weapon experience per weapon type, ROM order.
+    wlSword: integer("wl_sword").notNull(),
+    wlLance: integer("wl_lance").notNull(),
+    wlAxe: integer("wl_axe").notNull(),
+    wlBow: integer("wl_bow").notNull(),
+    wlStaff: integer("wl_staff").notNull(),
+    wlAnima: integer("wl_anima").notNull(),
+    wlLight: integer("wl_light").notNull(),
+    wlDark: integer("wl_dark").notNull(),
 
-  /** Raw ability bytes at +40..+43. */
-  abilityFlags: text("ability_flags", { mode: "json" })
-    .$type<[number, number, number, number]>()
-    .notNull(),
-  /** True when the unit's support pointer (+44) resolves to a record. */
-  hasSupportData: integer("has_support_data", { mode: "boolean" }).notNull(),
-});
+    /** Raw ability bytes at +40..+43. */
+    abilityFlags: text("ability_flags", { mode: "json" })
+      .$type<[number, number, number, number]>()
+      .notNull(),
+    /** True when the unit's support pointer (+44) resolves to a record. */
+    hasSupportData: integer("has_support_data", { mode: "boolean" }).notNull(),
+  },
+  // `affinity_id` deliberately carries no FK: 0 is the "none" sentinel and has
+  // no `affinities` row by design (module doc).
+  (t) => [foreignKey({ columns: [t.classId], foreignColumns: [classes.id] })],
+);
 
 export const classes = sqliteTable("classes", {
   /** Class id, 0-based. Id 0 is the reserved empty entry (kept, is_empty = 1). */
@@ -182,6 +213,12 @@ export const classes = sqliteTable("classes", {
   /** True when the class gets no terrain bonus on any terrain. */
   terrainBonusImmune: integer("terrain_bonus_immune", { mode: "boolean" }).notNull(),
   isEmpty: integer("is_empty", { mode: "boolean" }).notNull(),
+  // `promotes_to_class_id` deliberately carries no self-FK: it is a raw record
+  // byte whose target can appear later in the same table's insert sequence
+  // (class 5 promotes to class 32), and enforcing it would need a
+  // `DEFERRABLE INITIALLY DEFERRED` FK, which the drizzle DDL path does not
+  // carry. On both fixtures every value does land inside the table; the column
+  // stays a stored fact to resolve at query time via `sort_order`.
 });
 
 /** Ability-bit names from config/data; empty when that directory was missing. */
@@ -191,7 +228,10 @@ export const classAbilityFlags = sqliteTable(
     classId: integer("class_id").notNull(),
     flag: text("flag").notNull(),
   },
-  (t) => [primaryKey({ columns: [t.classId, t.flag] })],
+  (t) => [
+    primaryKey({ columns: [t.classId, t.flag] }),
+    foreignKey({ columns: [t.classId], foreignColumns: [classes.id] }),
+  ],
 );
 
 /**
@@ -206,7 +246,10 @@ export const classMovementCosts = sqliteTable(
     terrainId: integer("terrain_id").notNull(),
     cost: integer("cost").notNull(),
   },
-  (t) => [primaryKey({ columns: [t.classId, t.variant, t.terrainId] })],
+  (t) => [
+    primaryKey({ columns: [t.classId, t.variant, t.terrainId] }),
+    foreignKey({ columns: [t.classId], foreignColumns: [classes.id] }),
+  ],
 );
 
 export const classTerrainBonuses = sqliteTable(
@@ -218,7 +261,10 @@ export const classTerrainBonuses = sqliteTable(
     def: integer("def").notNull(),
     res: integer("res").notNull(),
   },
-  (t) => [primaryKey({ columns: [t.classId, t.terrainId] })],
+  (t) => [
+    primaryKey({ columns: [t.classId, t.terrainId] }),
+    foreignKey({ columns: [t.classId], foreignColumns: [classes.id] }),
+  ],
 );
 
 /**
@@ -259,7 +305,11 @@ export const unitSkills = sqliteTable(
     unitId: integer("unit_id").notNull(),
     skillId: integer("skill_id").notNull(),
   },
-  (t) => [primaryKey({ columns: [t.unitId] })],
+  (t) => [
+    primaryKey({ columns: [t.unitId] }),
+    foreignKey({ columns: [t.unitId], foreignColumns: [units.id] }),
+    foreignKey({ columns: [t.skillId], foreignColumns: [skills.id] }),
+  ],
 );
 
 /** Innate skill per class. Same one-byte table shape as {@link unitSkills}. */
@@ -269,7 +319,11 @@ export const classSkills = sqliteTable(
     classId: integer("class_id").notNull(),
     skillId: integer("skill_id").notNull(),
   },
-  (t) => [primaryKey({ columns: [t.classId] })],
+  (t) => [
+    primaryKey({ columns: [t.classId] }),
+    foreignKey({ columns: [t.classId], foreignColumns: [classes.id] }),
+    foreignKey({ columns: [t.skillId], foreignColumns: [skills.id] }),
+  ],
 );
 
 /**
@@ -291,7 +345,11 @@ export const unitSkillLearn = sqliteTable(
     bothSides: integer("both_sides", { mode: "boolean" }).notNull(),
     hardOnly: integer("hard_only", { mode: "boolean" }).notNull(),
   },
-  (t) => [primaryKey({ columns: [t.unitId, t.position] })],
+  (t) => [
+    primaryKey({ columns: [t.unitId, t.position] }),
+    foreignKey({ columns: [t.unitId], foreignColumns: [units.id] }),
+    foreignKey({ columns: [t.skillId], foreignColumns: [skills.id] }),
+  ],
 );
 
 /** Skills a class learns by levelling. Same shape as {@link unitSkillLearn}. */
@@ -308,7 +366,11 @@ export const classSkillLearn = sqliteTable(
     bothSides: integer("both_sides", { mode: "boolean" }).notNull(),
     hardOnly: integer("hard_only", { mode: "boolean" }).notNull(),
   },
-  (t) => [primaryKey({ columns: [t.classId, t.position] })],
+  (t) => [
+    primaryKey({ columns: [t.classId, t.position] }),
+    foreignKey({ columns: [t.classId], foreignColumns: [classes.id] }),
+    foreignKey({ columns: [t.skillId], foreignColumns: [skills.id] }),
+  ],
 );
 
 export const terrains = sqliteTable("terrains", {
@@ -332,22 +394,30 @@ export const affinities = sqliteTable("affinities", {
   name: text("name"),
 });
 
-export const supportBonuses = sqliteTable("support_bonuses", {
-  affinityId: integer("affinity_id").primaryKey(),
-  atkHalf: integer("atk_half").notNull(),
-  defHalf: integer("def_half").notNull(),
-  hitHalf: integer("hit_half").notNull(),
-  avoidHalf: integer("avoid_half").notNull(),
-  critHalf: integer("crit_half").notNull(),
-  critAvoidHalf: integer("crit_avoid_half").notNull(),
-});
+export const supportBonuses = sqliteTable(
+  "support_bonuses",
+  {
+    affinityId: integer("affinity_id").primaryKey(),
+    atkHalf: integer("atk_half").notNull(),
+    defHalf: integer("def_half").notNull(),
+    hitHalf: integer("hit_half").notNull(),
+    avoidHalf: integer("avoid_half").notNull(),
+    critHalf: integer("crit_half").notNull(),
+    critAvoidHalf: integer("crit_avoid_half").notNull(),
+  },
+  (t) => [foreignKey({ columns: [t.affinityId], foreignColumns: [affinities.id] })],
+);
 
 /** Per-unit support record: partner count as declared vs as actually filled. */
-export const supportEntries = sqliteTable("support_entries", {
-  unitId: integer("unit_id").primaryKey(),
-  declaredCount: integer("declared_count").notNull(),
-  actualCount: integer("actual_count").notNull(),
-});
+export const supportEntries = sqliteTable(
+  "support_entries",
+  {
+    unitId: integer("unit_id").primaryKey(),
+    declaredCount: integer("declared_count").notNull(),
+    actualCount: integer("actual_count").notNull(),
+  },
+  (t) => [foreignKey({ columns: [t.unitId], foreignColumns: [units.id] })],
+);
 
 /** Raw, asymmetric: one row per direction as the ROM records it. */
 export const supportPartners = sqliteTable(
@@ -360,7 +430,11 @@ export const supportPartners = sqliteTable(
     /** Support points gained per adjacent turn. */
     growth: integer("growth").notNull(),
   },
-  (t) => [primaryKey({ columns: [t.unitId, t.partnerId] })],
+  (t) => [
+    primaryKey({ columns: [t.unitId, t.partnerId] }),
+    foreignKey({ columns: [t.unitId], foreignColumns: [units.id] }),
+    foreignKey({ columns: [t.partnerId], foreignColumns: [units.id] }),
+  ],
 );
 
 /**
@@ -424,6 +498,7 @@ export const itemEffectiveness = sqliteTable(
   (t) => [
     primaryKey({ columns: [t.itemId, t.classId] }),
     foreignKey({ columns: [t.itemId], foreignColumns: [items.id] }),
+    foreignKey({ columns: [t.classId], foreignColumns: [classes.id] }),
   ],
 );
 
@@ -444,6 +519,7 @@ export const itemPromotions = sqliteTable(
   (t) => [
     primaryKey({ columns: [t.itemId, t.classId] }),
     foreignKey({ columns: [t.itemId], foreignColumns: [items.id] }),
+    foreignKey({ columns: [t.classId], foreignColumns: [classes.id] }),
   ],
 );
 
@@ -469,6 +545,7 @@ export const shopItems = sqliteTable(
   (t) => [
     primaryKey({ columns: [t.shopId, t.position] }),
     foreignKey({ columns: [t.shopId], foreignColumns: [shops.id] }),
+    foreignKey({ columns: [t.itemId], foreignColumns: [items.id] }),
   ],
 );
 
@@ -524,6 +601,10 @@ export const chapterPlacements = sqliteTable(
   (t) => [
     primaryKey({ columns: [t.mapIndex, t.mode, t.position] }),
     foreignKey({ columns: [t.mapIndex], foreignColumns: [chapters.mapIndex] }),
+    foreignKey({ columns: [t.unitId], foreignColumns: [units.id] }),
+    // class_id 0 = the unit's own class, and `classes` keeps the reserved
+    // empty entry at id 0, so the sentinel still has a parent row.
+    foreignKey({ columns: [t.classId], foreignColumns: [classes.id] }),
   ],
 );
 
@@ -547,21 +628,37 @@ export const chapterPlacementSteps = sqliteTable(
     /** Frames to wait before this step. */
     wait: integer("wait").notNull(),
   },
-  (t) => [primaryKey({ columns: [t.mapIndex, t.mode, t.position, t.step] })],
+  (t) => [
+    primaryKey({ columns: [t.mapIndex, t.mode, t.position, t.step] }),
+    foreignKey({
+      columns: [t.mapIndex, t.mode, t.position],
+      foreignColumns: [
+        chapterPlacements.mapIndex,
+        chapterPlacements.mode,
+        chapterPlacements.position,
+      ],
+    }),
+    // `unit_id` deliberately carries no FK: 0 = the placed unit itself, which
+    // is a role, not a reference (module doc).
+  ],
 );
 
 /**
  * The order chapters are actually played in. THIS, not chapter_number,
  * orders the game; see tables/storyPath.ts.
  */
-export const derivedPlayOrder = sqliteTable("derived_play_order", {
-  mapIndex: integer("map_index").primaryKey(),
-  /** 1-based position, no gaps. */
-  position: integer("position").notNull(),
-  /** main = no-detour path; side = spliced in at a branch. */
-  role: text("role", { enum: ["main", "side"] }).notNull(),
-  playable: integer("playable", { mode: "boolean" }).notNull(),
-});
+export const derivedPlayOrder = sqliteTable(
+  "derived_play_order",
+  {
+    mapIndex: integer("map_index").primaryKey(),
+    /** 1-based position, no gaps. */
+    position: integer("position").notNull(),
+    /** main = no-detour path; side = spliced in at a branch. */
+    role: text("role", { enum: ["main", "side"] }).notNull(),
+    playable: integer("playable", { mode: "boolean" }).notNull(),
+  },
+  (t) => [foreignKey({ columns: [t.mapIndex], foreignColumns: [chapters.mapIndex] })],
+);
 
 /**
  * The stats each unit enters each chapter with, per difficulty.
@@ -626,27 +723,41 @@ export const derivedUnitStats = sqliteTable(
   (t) => [
     primaryKey({ columns: [t.mapIndex, t.difficulty, t.source, t.sourceId, t.position] }),
     foreignKey({ columns: [t.mapIndex], foreignColumns: [chapters.mapIndex] }),
+    foreignKey({ columns: [t.unitId], foreignColumns: [units.id] }),
+    foreignKey({ columns: [t.classId], foreignColumns: [classes.id] }),
   ],
 );
 
-export const mapObjects = sqliteTable("map_objects", {
-  mapIndex: integer("map_index").notNull(),
-  type: integer("type").notNull(),
-  kind: text("kind").notNull(),
-  /** Achievement flag; 0 = repeatable. */
-  flag: integer("flag").notNull(),
-  objectType: integer("object_type").notNull(),
-  objectTypeName: text("object_type_name").notNull(),
-  x: integer("x").notNull(),
-  y: integer("y").notNull(),
-  /** Chest only: the item inside. */
-  itemId: integer("item_id"),
-  /** Chest only: pays gold instead of an item. */
-  gold: integer("gold").notNull(),
-  isGoldChest: integer("is_gold_chest", { mode: "boolean" }).notNull(),
-  /** The shop this object opens, when it is one. */
-  shopId: integer("shop_id"),
-});
+export const mapObjects = sqliteTable(
+  "map_objects",
+  {
+    mapIndex: integer("map_index").notNull(),
+    type: integer("type").notNull(),
+    kind: text("kind").notNull(),
+    /** Achievement flag; 0 = repeatable. */
+    flag: integer("flag").notNull(),
+    objectType: integer("object_type").notNull(),
+    objectTypeName: text("object_type_name").notNull(),
+    x: integer("x").notNull(),
+    y: integer("y").notNull(),
+    /** Chest only: the item inside. */
+    itemId: integer("item_id"),
+    /** Chest only: pays gold instead of an item. */
+    gold: integer("gold").notNull(),
+    isGoldChest: integer("is_gold_chest", { mode: "boolean" }).notNull(),
+    /** The shop this object opens, when it is one. */
+    shopId: integer("shop_id"),
+  },
+  // No primary key: map objects are positional rows with no identity of their
+  // own in the ROM. `item_id`/`shop_id` are NULL exactly when the object is
+  // not a chest/shop, so those FKs never see the "unknown vs absent" mix the
+  // old `?? null` link produced.
+  (t) => [
+    foreignKey({ columns: [t.mapIndex], foreignColumns: [chapters.mapIndex] }),
+    foreignKey({ columns: [t.itemId], foreignColumns: [items.id] }),
+    foreignKey({ columns: [t.shopId], foreignColumns: [shops.id] }),
+  ],
+);
 
 /** 必ず出撃: units the chapter forces into the deployment. */
 export const forceSortie = sqliteTable(
@@ -658,7 +769,12 @@ export const forceSortie = sqliteTable(
     /** 0xFF = any map. */
     mapIndex: integer("map_index").notNull(),
   },
-  (t) => [primaryKey({ columns: [t.unitId, t.route, t.mapIndex] })],
+  (t) => [
+    primaryKey({ columns: [t.unitId, t.route, t.mapIndex] }),
+    foreignKey({ columns: [t.unitId], foreignColumns: [units.id] }),
+    // `map_index` deliberately carries no FK: 0xFF is the "any map" sentinel
+    // and has no `chapters` row (module doc).
+  ],
 );
 
 /** Condition-slot names from config/data; empty when that directory was missing. */
@@ -741,6 +857,7 @@ export const chapterEventSlots = sqliteTable(
   (t) => [
     primaryKey({ columns: [t.mapIndex, t.slotIndex, t.position] }),
     foreignKey({ columns: [t.mapIndex], foreignColumns: [chapters.mapIndex] }),
+    foreignKey({ columns: [t.scriptId], foreignColumns: [eventScripts.id] }),
   ],
 );
 
@@ -824,6 +941,9 @@ export const eventItemGrants = sqliteTable(
       columns: [t.scriptId, t.seq],
       foreignColumns: [eventInstructions.scriptId, eventInstructions.seq],
     }),
+    foreignKey({ columns: [t.itemId], foreignColumns: [items.id] }),
+    // `unit_id` deliberately carries no FK: 0xFFFF denotes the unit currently
+    // acting and has no `units` row (module doc).
   ],
 );
 
@@ -858,6 +978,8 @@ export const loadBlockUnits = sqliteTable(
   (t) => [
     primaryKey({ columns: [t.blockId, t.position] }),
     foreignKey({ columns: [t.blockId], foreignColumns: [loadBlocks.id] }),
+    foreignKey({ columns: [t.unitId], foreignColumns: [units.id] }),
+    foreignKey({ columns: [t.classId], foreignColumns: [classes.id] }),
   ],
 );
 

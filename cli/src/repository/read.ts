@@ -9,14 +9,24 @@
  * for the 12k-20k `derived_unit_stats` rows and the whole event layer whether or
  * not it read them. Each method here reads its own tables, `openExtract`
  * memoises them, so two commands asking for `units` share one SELECT and a
- * command that never asks never pays.
+ * command that never asks never pays. A failed query is evicted rather than
+ * cached: a rejection must not outlive the call that caused it, or one
+ * transient failure would poison every later read of that table group.
  *
  * Two jobs beyond the SELECTs:
  *
- *   - **Order is data.** The reach walk and several commands consume rows in
- *     extract order, so tables without a meaningful key are read `ORDER BY
- *     rowid` (insertion order); keyed tables read by their natural key, which
- *     is the table order on both fixtures.
+ *   - **Order comes from keys, never `rowid`.** For a table without an
+ *     INTEGER PRIMARY KEY alias, SQLite does not guarantee rowid stability
+ *     (VACUUM is documented as permitted to renumber such rows), and the
+ *     schema guard below cannot see a reordering - so every SELECT orders
+ *     explicitly. `units`/`classes` order by `id` - the join key every other
+ *     table references them by, and therefore the canonical roster order. The
+ *     event layer orders by its composite keys (`(script_id, seq[, position])`
+ *     and friends): the extractor assigns script ids FIFO and walks operands
+ *     in order, so key order equals insertion order. Tables whose row order
+ *     carries no meaning (support partners, forced sortie, unit stats) order
+ *     by their primary keys; their consumers dedup into maps and sort their
+ *     own output, so the read order is only a deterministic tiebreak.
  *   - **Schema guard.** An old extract missing a table or column this loader
  *     reads is reported as "re-run extract", not a `no such column` from
  *     deep inside a query.
@@ -24,7 +34,6 @@
 
 import { existsSync } from "node:fs";
 
-import { sql } from "drizzle-orm";
 import { getTableConfig } from "drizzle-orm/sqlite-core";
 import type { SQLiteTable } from "drizzle-orm/sqlite-core";
 
@@ -49,7 +58,6 @@ import type { UnitStatRow } from "../model/stats.ts";
 import { openDb } from "./open.ts";
 import type { OpenDb } from "./open.ts";
 import * as t from "./schema.ts";
-import { EXTRACT_REVISION } from "./revision.ts";
 
 /** Game ids the extractor can have written (`meta` `rom.version`). */
 const GAME_VERSIONS: readonly string[] = ["FE6J", "FE7J", "FE7U", "FE8J", "FE8U"];
@@ -148,9 +156,6 @@ function assertExtractSchema(sqlite: OpenDb["sqlite"], path: string): void {
   }
 }
 
-/** `rowid` = insertion order, which the reach walk and several commands consume. */
-const ROW_ORDER = sql`rowid`;
-
 /**
  * An open extract db, with one memoised query per table group.
  *
@@ -190,8 +195,8 @@ export interface ExtractHandle {
 
 /**
  * Open an extract db read-only. Throws a one-line `Error` (exit 1 in
- * `index.ts`) when the file is missing, is not a database, or is not a current
- * extract.
+ * `index.ts`) when the file is missing, is not a database, or does not carry
+ * the tables and columns this build reads.
  */
 export function openExtract(path: string): ExtractHandle {
   if (!existsSync(path)) {
@@ -207,18 +212,11 @@ export function openExtract(path: string): ExtractHandle {
 
   try {
     // The first real read is where "this is not SQLite" surfaces (the driver
-    // opens lazily), so the schema probe doubles as the format check.
+    // opens lazily), so the schema probe doubles as the format check. There is
+    // no revision counter: an extract is a rebuildable artifact, and the guard
+    // below already rejects anything predating this build's storage contract.
     try {
       assertExtractSchema(handle.sqlite, path);
-      const revision = handle.sqlite
-        .prepare("SELECT value FROM meta WHERE key = 'extract.revision'")
-        .get() as { value: string } | undefined;
-      if (revision?.value !== EXTRACT_REVISION) {
-        throw new SchemaMismatchError(
-          `${path}: extract revision ${revision?.value ?? "missing"} does not match ` +
-            `${EXTRACT_REVISION} - re-run \`fe-rom extract\` to rebuild it`,
-        );
-      }
     } catch (error) {
       if (error instanceof SchemaMismatchError) throw error;
       throw notAnExtractDb(path, "not a database", error);
@@ -236,6 +234,16 @@ export function openExtract(path: string): ExtractHandle {
     if (hit !== undefined) return hit as Promise<T>;
     const started = run();
     cache.set(key, started);
+    // A failure is not a result. Evict it, so the next caller re-runs the query
+    // instead of replaying this one stale rejection forever: the handle is
+    // long-lived (one command session) and the rejection may be transient
+    // (SQLITE_BUSY) or the caller may recover. The identity check keeps a
+    // retry that already replaced the entry from being evicted by the older
+    // promise's late rejection. `started` is returned untouched, so every
+    // current caller still sees the error.
+    started.then(undefined, () => {
+      if (cache.get(key) === started) cache.delete(key);
+    });
     return started;
   };
 
@@ -245,10 +253,8 @@ export function openExtract(path: string): ExtractHandle {
       return new Map(rows.map((r) => [r.key, r.value]));
     });
   const scriptsOf = () =>
-    once(
-      "scripts",
-      async (): Promise<TracedScript[]> =>
-        db.select().from(t.eventScripts).orderBy(t.eventScripts.id).all(),
+    once("scripts", async (): Promise<TracedScript[]> =>
+      db.select().from(t.eventScripts).orderBy(t.eventScripts.id).all(),
     );
 
   /** `meta` `rom.version`, validated once for every caller. */
@@ -334,10 +340,11 @@ export function openExtract(path: string): ExtractHandle {
 
         // Empty unit slots are not persisted (see schema.ts), so every row here
         // is a real unit; `isEmpty: false` keeps the shared predicates reading
-        // the same. Ordered by id - the INTEGER PRIMARY KEY, i.e. the rowid
-        // alias, which is the unit-table order on both fixtures (ids are
-        // monotonic; a hack that permutes ids inside its unit table would need
-        // the index column the schema does not carry).
+        // the same. Ordered by id: it is the INTEGER PRIMARY KEY (so the sort
+        // is a key sort, not rowid, and VACUUM cannot disturb it) and the key
+        // every other table references units by - support partners,
+        // placements, item grants and unit stats all join on it, which makes
+        // id order the canonical roster order rather than an arbitrary one.
         const unitRows = await db.select().from(t.units).orderBy(t.units.id).all();
         return unitRows.map((u) => ({
           id: u.id,
@@ -427,19 +434,37 @@ export function openExtract(path: string): ExtractHandle {
 
     forceSortie: () =>
       once("forceSortie", async () => {
-        const rows = await db.select().from(t.forceSortie).orderBy(ROW_ORDER).all();
+        // Primary-key order: consumers index these rows by unit and sort
+        // their own output, so this read order is only a deterministic tiebreak.
+        const rows = await db
+          .select()
+          .from(t.forceSortie)
+          .orderBy(t.forceSortie.unitId, t.forceSortie.route, t.forceSortie.mapIndex)
+          .all();
         return rows.map((r) => ({ unitId: r.unitId, mapIndex: r.mapIndex }));
       }),
 
     supportPartners: () =>
-      once("supportPartners", () => db.select().from(t.supportPartners).orderBy(ROW_ORDER).all()),
+      // Primary-key order; the `supports` command dedups into a map and sorts
+      // its output itself.
+      once("supportPartners", () =>
+        db
+          .select()
+          .from(t.supportPartners)
+          .orderBy(t.supportPartners.unitId, t.supportPartners.partnerId)
+          .all(),
+      ),
 
     trace: () =>
       once("trace", async (): Promise<EventGraph> => {
+        // Key order, not rowid: the extractor assigns script ids FIFO (a
+        // CALL-discovered helper gets the next id after the ones already
+        // queued) and decodes in queue order, so `(script_id, seq)` is exactly
+        // the decode order - and it survives a VACUUM, which rowid does not.
         const instructionRows = await db
           .select()
           .from(t.eventInstructions)
-          .orderBy(ROW_ORDER)
+          .orderBy(t.eventInstructions.scriptId, t.eventInstructions.seq)
           .all();
         const instructions: TracedInstruction[] = instructionRows.map((i) => ({
           scriptId: i.scriptId,
@@ -463,23 +488,42 @@ export function openExtract(path: string): ExtractHandle {
             throw new Error(`${path}: orphan event effect at ${scriptId}:${seq}`);
           return instruction;
         };
-        for (const row of await db.select().from(t.eventUnitLoads).orderBy(ROW_ORDER).all()) {
+        // Effect children order by (script, instruction, operand): the writer
+        // emits them while walking one instruction's operands in order, so the
+        // key order is the insertion order the walks below rebuild.
+        for (const row of await db
+          .select()
+          .from(t.eventUnitLoads)
+          .orderBy(t.eventUnitLoads.scriptId, t.eventUnitLoads.seq, t.eventUnitLoads.position)
+          .all()) {
           instructionOf(row.scriptId, row.seq).loads.push({
             position: row.position,
             kind: row.kind,
             blockId: row.blockId,
           });
         }
-        for (const row of await db.select().from(t.eventCalls).orderBy(ROW_ORDER).all()) {
+        for (const row of await db
+          .select()
+          .from(t.eventCalls)
+          .orderBy(t.eventCalls.scriptId, t.eventCalls.seq, t.eventCalls.position)
+          .all()) {
           instructionOf(row.scriptId, row.seq).calls.push({
             position: row.position,
             scriptId: row.targetScriptId,
           });
         }
-        for (const row of await db.select().from(t.eventGold).orderBy(ROW_ORDER).all()) {
+        for (const row of await db
+          .select()
+          .from(t.eventGold)
+          .orderBy(t.eventGold.scriptId, t.eventGold.seq, t.eventGold.offset)
+          .all()) {
           instructionOf(row.scriptId, row.seq).gold.push({ offset: row.offset, delta: row.delta });
         }
-        for (const row of await db.select().from(t.eventItemGrants).orderBy(ROW_ORDER).all()) {
+        for (const row of await db
+          .select()
+          .from(t.eventItemGrants)
+          .orderBy(t.eventItemGrants.scriptId, t.eventItemGrants.seq, t.eventItemGrants.position)
+          .all()) {
           instructionOf(row.scriptId, row.seq).items.push({
             position: row.position,
             itemId: row.itemId,
@@ -487,7 +531,19 @@ export function openExtract(path: string): ExtractHandle {
           });
         }
 
-        const slotRows = await db.select().from(t.chapterEventSlots).orderBy(ROW_ORDER).all();
+        // Chapter slots seed the reach walk in this order (chapters in table
+        // order, then slot index, then row), which is the key order: the
+        // extractor walks the map-setting rows in index order and each
+        // chapter's condition pointers in slot order.
+        const slotRows = await db
+          .select()
+          .from(t.chapterEventSlots)
+          .orderBy(
+            t.chapterEventSlots.mapIndex,
+            t.chapterEventSlots.slotIndex,
+            t.chapterEventSlots.position,
+          )
+          .all();
         const chapterSlots: ChapterEventSlot[] = slotRows.map((s) => ({
           mapIndex: s.mapIndex,
           slotIndex: s.slotIndex,
@@ -503,7 +559,13 @@ export function openExtract(path: string): ExtractHandle {
           condFlag: s.condFlag,
         }));
 
-        const blockUnitRows = await db.select().from(t.loadBlockUnits).orderBy(ROW_ORDER).all();
+        // Load blocks are discovered in id order and their units read in
+        // position order, so (block_id, position) is the insertion order.
+        const blockUnitRows = await db
+          .select()
+          .from(t.loadBlockUnits)
+          .orderBy(t.loadBlockUnits.blockId, t.loadBlockUnits.position)
+          .all();
         const loadBlockUnits: TracedBlockUnit[] = blockUnitRows.map((u) => ({
           blockId: u.blockId,
           position: u.position,
@@ -523,7 +585,20 @@ export function openExtract(path: string): ExtractHandle {
 
     unitStats: () =>
       once("unitStats", async (): Promise<UnitStatRow[]> => {
-        const rows = await db.select().from(t.derivedUnitStats).orderBy(ROW_ORDER).all();
+        // Primary-key order. The row order of this table carries no meaning -
+        // `expcurve` only sums and counts these rows - so the key is just a
+        // deterministic tiebreak that a VACUUM cannot disturb.
+        const rows = await db
+          .select()
+          .from(t.derivedUnitStats)
+          .orderBy(
+            t.derivedUnitStats.mapIndex,
+            t.derivedUnitStats.difficulty,
+            t.derivedUnitStats.source,
+            t.derivedUnitStats.sourceId,
+            t.derivedUnitStats.position,
+          )
+          .all();
         return rows.map((r) => ({
           mapIndex: r.mapIndex,
           difficulty: r.difficulty,

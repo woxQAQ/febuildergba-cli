@@ -3,6 +3,13 @@
  * (`schema.ts`), so a column
  * typo or wrong value type is a compile error, not a SQLite error mid-extract.
  * Writes run in one transaction; a failure rolls the whole db back.
+ *
+ * Inserts are chunked, not one statement per row - see `insertInChunks`.
+ *
+ * Foreign keys are enforced: the connection runs `PRAGMA foreign_keys = ON`
+ * and asserts it took, and the insert order below is the schema's dependency
+ * order, so a dangling reference fails the extract instead of silently
+ * storing null.
  */
 
 import { sql } from "drizzle-orm";
@@ -14,7 +21,6 @@ import type { UnitStatRow } from "../model/stats.ts";
 import { createTablesSql } from "./ddl.ts";
 import type { ExtractDb, OpenDb } from "./open.ts";
 import * as t from "./schema.ts";
-import { EXTRACT_REVISION } from "./revision.ts";
 
 export interface WriteReceipt {
   /** Row count per table, measured after the commit. */
@@ -28,16 +34,31 @@ export async function writeSnapshot(
   const { db, sqlite } = handle;
   for (const statement of createTablesSql(t.TABLES)) sqlite.exec(statement);
 
+  // Foreign-key enforcement is a per-connection setting. SQLite's own default
+  // is OFF; `node:sqlite` happens to enable it, but that is the driver's
+  // choice, not a guarantee - so it is set explicitly and the result is
+  // asserted rather than assumed. It is a no-op inside a transaction, so it
+  // runs before BEGIN.
+  sqlite.exec("PRAGMA foreign_keys = ON");
+  const fkState = sqlite.prepare("PRAGMA foreign_keys").get() as { foreign_keys: number };
+  if (fkState.foreign_keys !== 1) {
+    throw new Error("could not enable SQLite foreign-key enforcement on the write connection");
+  }
+
   sqlite.exec("BEGIN");
   try {
+    // Dependency order: every parent table is written before the tables that
+    // reference it, because enforcement is immediate (not deferred).
     await insertMeta(db, rom);
-    await insertUnits(db, rom);
     await insertClasses(db, rom);
-    await insertSupports(db, rom);
+    await insertSkillSystem(db, rom);
+    await insertUnits(db, rom);
+    await insertSkillAssignments(db, rom);
+    await insertAffinities(db, rom);
+    await insertSupportLinks(db, rom);
     await insertItemsAndTerrain(db, rom);
     await insertChapters(db, rom);
     await insertStory(db, rom);
-    await insertSkills(db, rom);
     await insertEventTrace(db, rom.eventTrace);
     await insertUnitStats(db, rom.unitStats);
     await insertWorldData(db, rom);
@@ -51,8 +72,10 @@ export async function writeSnapshot(
         .select({ n: sql<number>`count(*)` })
         .from(table)
         .get();
-      tables[getTableConfig(table).name] = // `count(*)` always yields exactly one row.
-      (row as { n: number }).n;
+      tables[
+        getTableConfig(table).name
+      ] = // `count(*)` always yields exactly one row.
+        (row as { n: number }).n;
     }
     return { tables };
   } catch (error) {
@@ -61,10 +84,43 @@ export async function writeSnapshot(
   }
 }
 
+/**
+ * Bound-parameter budget for one INSERT statement.
+ *
+ * Two ceilings, both respected: SQLite caps variables per statement (999
+ * before 3.32, 32766 since - `node:sqlite` ships a current build), and the
+ * proxy driver in `open.ts` spreads a statement's parameters onto `stmt.run`,
+ * a second reason to keep the count modest. 900 is safe on every SQLite build
+ * while still amortising statement preparation across a few dozen rows.
+ */
+const INSERT_PARAM_BUDGET = 900;
+
+/**
+ * Insert `rows` as multi-row statements of at most `INSERT_PARAM_BUDGET`
+ * parameters each.
+ *
+ * Row-by-row inserts made the driver build and execute one statement per
+ * row - ~64k per extract, dominated by `class_movement_costs` (23k),
+ * `derived_unit_stats` (12k) and `event_instructions` (10k). Chunking keeps
+ * the written order identical: a multi-row insert writes its values in array
+ * order and the statements run in sequence, so the row order on disk still
+ * matches extract order (`read.ts` orders by explicit keys, never `rowid`).
+ */
+async function insertInChunks<T extends object>(
+  rows: readonly T[],
+  insertChunk: (chunk: T[]) => unknown,
+): Promise<void> {
+  if (rows.length === 0) return;
+  const width = Object.keys(rows[0]!).length;
+  const size = Math.max(1, Math.floor(INSERT_PARAM_BUDGET / width));
+  for (let i = 0; i < rows.length; i += size) {
+    await insertChunk(rows.slice(i, i + size));
+  }
+}
+
 async function insertMeta(db: ExtractDb, rom: ExtractionSnapshot): Promise<void> {
   const metadata = rom.metadata;
   await db.insert(t.meta).values([
-    { key: "extract.revision", value: EXTRACT_REVISION },
     { key: "rom.path", value: metadata.path },
     { key: "rom.sizeBytes", value: String(metadata.sizeBytes) },
     { key: "rom.gameCode", value: metadata.gameCode },
@@ -95,12 +151,13 @@ async function insertMeta(db: ExtractDb, rom: ExtractionSnapshot): Promise<void>
 /** Empty slots (no name, class or level) are skipped; the count lands in meta. */
 async function insertUnits(db: ExtractDb, rom: ExtractionSnapshot): Promise<void> {
   let skipped = 0;
+  const rows: (typeof t.units.$inferInsert)[] = [];
   for (const u of rom.units) {
     if (u.isEmpty) {
       skipped++;
       continue;
     }
-    await db.insert(t.units).values({
+    rows.push({
       id: u.id,
       name: u.name,
       nameTextId: u.nameTextId,
@@ -141,12 +198,17 @@ async function insertUnits(db: ExtractDb, rom: ExtractionSnapshot): Promise<void
       hasSupportData: u.hasSupportData,
     });
   }
+  await insertInChunks(rows, (chunk) => db.insert(t.units).values(chunk));
   await db.insert(t.meta).values({ key: "units.emptySlots", value: String(skipped) });
 }
 
 async function insertClasses(db: ExtractDb, rom: ExtractionSnapshot): Promise<void> {
+  const classRows: (typeof t.classes.$inferInsert)[] = [];
+  const flagRows: (typeof t.classAbilityFlags.$inferInsert)[] = [];
+  const costRows: (typeof t.classMovementCosts.$inferInsert)[] = [];
+  const bonusRows: (typeof t.classTerrainBonuses.$inferInsert)[] = [];
   for (const c of rom.classes) {
-    await db.insert(t.classes).values({
+    classRows.push({
       id: c.id,
       name: c.name,
       nameTextId: c.nameTextId,
@@ -199,7 +261,7 @@ async function insertClasses(db: ExtractDb, rom: ExtractionSnapshot): Promise<vo
       isEmpty: c.isEmpty,
     });
     for (const flag of c.abilityFlagIds) {
-      await db.insert(t.classAbilityFlags).values({ classId: c.id, flag });
+      flagRows.push({ classId: c.id, flag });
     }
     for (const [variant, costs] of [
       ["normal", c.movementCosts],
@@ -207,12 +269,12 @@ async function insertClasses(db: ExtractDb, rom: ExtractionSnapshot): Promise<vo
       ["snow", c.movementCostsSnow],
     ] as const) {
       for (const [terrainId, cost] of costs.entries()) {
-        await db.insert(t.classMovementCosts).values({ classId: c.id, variant, terrainId, cost });
+        costRows.push({ classId: c.id, variant, terrainId, cost });
       }
     }
     if (c.terrainBonuses !== null) {
       for (const [terrainId, avoid] of c.terrainBonuses.avoid.entries()) {
-        await db.insert(t.classTerrainBonuses).values({
+        bonusRows.push({
           classId: c.id,
           terrainId,
           avoid,
@@ -222,9 +284,19 @@ async function insertClasses(db: ExtractDb, rom: ExtractionSnapshot): Promise<vo
       }
     }
   }
+  await insertInChunks(classRows, (chunk) => db.insert(t.classes).values(chunk));
+  await insertInChunks(flagRows, (chunk) => db.insert(t.classAbilityFlags).values(chunk));
+  await insertInChunks(costRows, (chunk) => db.insert(t.classMovementCosts).values(chunk));
+  await insertInChunks(bonusRows, (chunk) => db.insert(t.classTerrainBonuses).values(chunk));
 }
 
-async function insertSupports(db: ExtractDb, rom: ExtractionSnapshot): Promise<void> {
+/**
+ * Affinities and their bonus table. Every referenced affinity id gets a row,
+ * named or not: a unit carrying an unnamed hack affinity is data, not an
+ * absence of data. Runs before `units` because support bonuses reference
+ * affinities.
+ */
+async function insertAffinities(db: ExtractDb, rom: ExtractionSnapshot): Promise<void> {
   // Every referenced affinity id gets a row, named or not: a unit carrying
   // an unnamed hack affinity is data, not an absence of data.
   const affinityIds = new Set<number>(rom.affinityNames.keys());
@@ -232,29 +304,38 @@ async function insertSupports(db: ExtractDb, rom: ExtractionSnapshot): Promise<v
   for (const u of rom.units) {
     if (u.attribute !== 0) affinityIds.add(u.attribute);
   }
-  for (const id of [...affinityIds].sort((a, b) => a - b)) {
-    await db.insert(t.affinities).values({ id, name: rom.affinityNames.get(id) ?? null });
-  }
+  const affinityRows: (typeof t.affinities.$inferInsert)[] = [...affinityIds]
+    .sort((a, b) => a - b)
+    .map((id) => ({ id, name: rom.affinityNames.get(id) ?? null }));
+  await insertInChunks(affinityRows, (chunk) => db.insert(t.affinities).values(chunk));
 
-  for (const b of rom.supportBonuses) {
-    await db.insert(t.supportBonuses).values({
-      affinityId: b.affinity,
-      atkHalf: b.bonuses.atk,
-      defHalf: b.bonuses.def,
-      hitHalf: b.bonuses.hit,
-      avoidHalf: b.bonuses.avoid,
-      critHalf: b.bonuses.crit,
-      critAvoidHalf: b.bonuses.critAvoid,
-    });
-  }
+  const bonusRows: (typeof t.supportBonuses.$inferInsert)[] = rom.supportBonuses.map((b) => ({
+    affinityId: b.affinity,
+    atkHalf: b.bonuses.atk,
+    defHalf: b.bonuses.def,
+    hitHalf: b.bonuses.hit,
+    avoidHalf: b.bonuses.avoid,
+    critHalf: b.bonuses.crit,
+    critAvoidHalf: b.bonuses.critAvoid,
+  }));
+  await insertInChunks(bonusRows, (chunk) => db.insert(t.supportBonuses).values(chunk));
+}
+
+/**
+ * Per-unit support records and their directed partner rows. Runs after
+ * `units`, which both reference.
+ */
+async function insertSupportLinks(db: ExtractDb, rom: ExtractionSnapshot): Promise<void> {
+  const entryRows: (typeof t.supportEntries.$inferInsert)[] = [];
+  const partnerRows: (typeof t.supportPartners.$inferInsert)[] = [];
   for (const e of rom.supports.entries) {
-    await db.insert(t.supportEntries).values({
+    entryRows.push({
       unitId: e.unitId,
       declaredCount: e.declaredCount,
       actualCount: e.actualCount,
     });
     for (const p of e.partners) {
-      await db.insert(t.supportPartners).values({
+      partnerRows.push({
         unitId: e.unitId,
         partnerId: p.unitId,
         initial: p.initial,
@@ -262,12 +343,17 @@ async function insertSupports(db: ExtractDb, rom: ExtractionSnapshot): Promise<v
       });
     }
   }
+  await insertInChunks(entryRows, (chunk) => db.insert(t.supportEntries).values(chunk));
+  await insertInChunks(partnerRows, (chunk) => db.insert(t.supportPartners).values(chunk));
   // The deduplicated pair view is the `supports` command now - nothing to insert.
 }
 
 async function insertItemsAndTerrain(db: ExtractDb, rom: ExtractionSnapshot): Promise<void> {
+  const itemRows: (typeof t.items.$inferInsert)[] = [];
+  const effectivenessRows: (typeof t.itemEffectiveness.$inferInsert)[] = [];
+  const promotionRows: (typeof t.itemPromotions.$inferInsert)[] = [];
   for (const i of rom.items) {
-    await db.insert(t.items).values({
+    itemRows.push({
       id: i.id,
       name: i.name,
       nameTextId: i.nameTextId,
@@ -309,7 +395,7 @@ async function insertItemsAndTerrain(db: ExtractDb, rom: ExtractionSnapshot): Pr
      * duplicates are redundant, not data.
      */
     for (const classId of new Set(i.effectiveness ?? [])) {
-      await db.insert(t.itemEffectiveness).values({ itemId: i.id, classId });
+      effectivenessRows.push({ itemId: i.id, classId });
     }
     /**
      * The class list is the same for every item sharing an effect code; rows
@@ -317,25 +403,28 @@ async function insertItemsAndTerrain(db: ExtractDb, rom: ExtractionSnapshot): Pr
      * without first mapping item -> code.
      */
     for (const classId of new Set(i.promotionClasses ?? [])) {
-      await db
-        .insert(t.itemPromotions)
-        .values({ itemId: i.id, classId, effectCode: i.staffEffect });
+      promotionRows.push({ itemId: i.id, classId, effectCode: i.staffEffect });
     }
   }
+  await insertInChunks(itemRows, (chunk) => db.insert(t.items).values(chunk));
+  await insertInChunks(effectivenessRows, (chunk) => db.insert(t.itemEffectiveness).values(chunk));
+  await insertInChunks(promotionRows, (chunk) => db.insert(t.itemPromotions).values(chunk));
 
-  for (const terrain of rom.terrainNames.names) {
-    await db.insert(t.terrains).values({
-      id: terrain.id,
-      name: terrain.name,
-      textId: terrain.textId,
-      decoded: terrain.decoded,
-    });
-  }
+  const terrainRows: (typeof t.terrains.$inferInsert)[] = rom.terrainNames.names.map((terrain) => ({
+    id: terrain.id,
+    name: terrain.name,
+    textId: terrain.textId,
+    decoded: terrain.decoded,
+  }));
+  await insertInChunks(terrainRows, (chunk) => db.insert(t.terrains).values(chunk));
 }
 
 async function insertChapters(db: ExtractDb, rom: ExtractionSnapshot): Promise<void> {
+  const chapterRows: (typeof t.chapters.$inferInsert)[] = [];
+  const placementRows: (typeof t.chapterPlacements.$inferInsert)[] = [];
+  const stepRows: (typeof t.chapterPlacementSteps.$inferInsert)[] = [];
   for (const c of rom.chapters) {
-    await db.insert(t.chapters).values({
+    chapterRows.push({
       mapIndex: c.index,
       chapterNumber: c.chapterNumber,
       titleTextId: c.titleTextId,
@@ -353,7 +442,7 @@ async function insertChapters(db: ExtractDb, rom: ExtractionSnapshot): Promise<v
       ["hard", c.hardPlacements],
     ] as const) {
       for (const [position, p] of list.entries()) {
-        await db.insert(t.chapterPlacements).values({
+        placementRows.push({
           mapIndex: c.index,
           mode,
           position,
@@ -369,7 +458,7 @@ async function insertChapters(db: ExtractDb, rom: ExtractionSnapshot): Promise<v
           items: p.items,
         });
         for (const [step, s] of p.postPlacements.entries()) {
-          await db.insert(t.chapterPlacementSteps).values({
+          stepRows.push({
             mapIndex: c.index,
             mode,
             position,
@@ -385,6 +474,9 @@ async function insertChapters(db: ExtractDb, rom: ExtractionSnapshot): Promise<v
       }
     }
   }
+  await insertInChunks(chapterRows, (chunk) => db.insert(t.chapters).values(chunk));
+  await insertInChunks(placementRows, (chunk) => db.insert(t.chapterPlacements).values(chunk));
+  await insertInChunks(stepRows, (chunk) => db.insert(t.chapterPlacementSteps).values(chunk));
 }
 
 /**
@@ -395,23 +487,22 @@ async function insertChapters(db: ExtractDb, rom: ExtractionSnapshot): Promise<v
  * event layer.
  */
 async function insertStory(db: ExtractDb, rom: ExtractionSnapshot): Promise<void> {
-  for (const step of rom.playOrder.steps) {
-    await db.insert(t.derivedPlayOrder).values({
-      mapIndex: step.mapIndex,
-      position: step.order,
-      role: step.role,
-      playable: step.playable,
-    });
-  }
+  const rows: (typeof t.derivedPlayOrder.$inferInsert)[] = rom.playOrder.steps.map((step) => ({
+    mapIndex: step.mapIndex,
+    position: step.order,
+    role: step.role,
+    playable: step.playable,
+  }));
+  await insertInChunks(rows, (chunk) => db.insert(t.derivedPlayOrder).values(chunk));
 }
 
 /**
- * Skill tables. Empty for a ROM without the patch, which is why the
- * `skills.classSkillExtends` meta flag is written either way - it is the only
- * thing that distinguishes "no skill system" from "a skill system whose learn
- * lists carry no difficulty bits".
+ * Skill-system definitions. Empty for a ROM without the patch, which is why
+ * the `skills.classSkillExtends` meta flag is written either way - it is the
+ * only thing that distinguishes "no skill system" from "a skill system whose
+ * learn lists carry no difficulty bits".
  */
-async function insertSkills(db: ExtractDb, rom: ExtractionSnapshot): Promise<void> {
+async function insertSkillSystem(db: ExtractDb, rom: ExtractionSnapshot): Promise<void> {
   const skills = rom.skills;
   if (skills === null) {
     await db.insert(t.meta).values({ key: "skills.classSkillExtends", value: "false" });
@@ -422,47 +513,62 @@ async function insertSkills(db: ExtractDb, rom: ExtractionSnapshot): Promise<voi
     value: String(skills.classSkillExtends),
   });
 
-  for (const s of skills.skills) {
-    await db.insert(t.skills).values({
-      id: s.id,
-      nameTextId: s.nameTextId,
-      name: s.name,
-      description: s.description,
-      text: s.text,
-    });
-  }
-  for (const a of skills.unitSkills) {
-    await db.insert(t.unitSkills).values({ unitId: a.ownerId, skillId: a.skillId });
-  }
-  for (const a of skills.classSkills) {
-    await db.insert(t.classSkills).values({ classId: a.ownerId, skillId: a.skillId });
-  }
-  for (const l of skills.unitLearns) {
-    await db.insert(t.unitSkillLearn).values({
-      unitId: l.ownerId,
-      position: l.position,
-      level: l.level,
-      skillId: l.skillId,
-      rawLevel: l.rawLevel,
-      playerOnly: l.playerOnly,
-      enemyOnly: l.enemyOnly,
-      bothSides: l.bothSides,
-      hardOnly: l.hardOnly,
-    });
-  }
-  for (const l of skills.classLearns) {
-    await db.insert(t.classSkillLearn).values({
-      classId: l.ownerId,
-      position: l.position,
-      level: l.level,
-      skillId: l.skillId,
-      rawLevel: l.rawLevel,
-      playerOnly: l.playerOnly,
-      enemyOnly: l.enemyOnly,
-      bothSides: l.bothSides,
-      hardOnly: l.hardOnly,
-    });
-  }
+  const skillRows: (typeof t.skills.$inferInsert)[] = skills.skills.map((s) => ({
+    id: s.id,
+    nameTextId: s.nameTextId,
+    name: s.name,
+    description: s.description,
+    text: s.text,
+  }));
+  await insertInChunks(skillRows, (chunk) => db.insert(t.skills).values(chunk));
+}
+
+/**
+ * Skill links per unit and class. Runs after `units` (unit_skills,
+ * unit_skill_learn) and `skills` (all four tables) because enforcement is
+ * immediate.
+ */
+async function insertSkillAssignments(db: ExtractDb, rom: ExtractionSnapshot): Promise<void> {
+  const skills = rom.skills;
+  if (skills === null) return;
+
+  const unitSkillRows: (typeof t.unitSkills.$inferInsert)[] = skills.unitSkills.map((a) => ({
+    unitId: a.ownerId,
+    skillId: a.skillId,
+  }));
+  await insertInChunks(unitSkillRows, (chunk) => db.insert(t.unitSkills).values(chunk));
+
+  const classSkillRows: (typeof t.classSkills.$inferInsert)[] = skills.classSkills.map((a) => ({
+    classId: a.ownerId,
+    skillId: a.skillId,
+  }));
+  await insertInChunks(classSkillRows, (chunk) => db.insert(t.classSkills).values(chunk));
+
+  const unitLearnRows: (typeof t.unitSkillLearn.$inferInsert)[] = skills.unitLearns.map((l) => ({
+    unitId: l.ownerId,
+    position: l.position,
+    level: l.level,
+    skillId: l.skillId,
+    rawLevel: l.rawLevel,
+    playerOnly: l.playerOnly,
+    enemyOnly: l.enemyOnly,
+    bothSides: l.bothSides,
+    hardOnly: l.hardOnly,
+  }));
+  await insertInChunks(unitLearnRows, (chunk) => db.insert(t.unitSkillLearn).values(chunk));
+
+  const classLearnRows: (typeof t.classSkillLearn.$inferInsert)[] = skills.classLearns.map((l) => ({
+    classId: l.ownerId,
+    position: l.position,
+    level: l.level,
+    skillId: l.skillId,
+    rawLevel: l.rawLevel,
+    playerOnly: l.playerOnly,
+    enemyOnly: l.enemyOnly,
+    bothSides: l.bothSides,
+    hardOnly: l.hardOnly,
+  }));
+  await insertInChunks(classLearnRows, (chunk) => db.insert(t.classSkillLearn).values(chunk));
 }
 
 /**
@@ -471,17 +577,17 @@ async function insertSkills(db: ExtractDb, rom: ExtractionSnapshot): Promise<voi
  * (transitions, recruits, gains, joins) remain consumers of this evidence.
  */
 async function insertEventTrace(db: ExtractDb, trace: EventTrace): Promise<void> {
-  for (const script of trace.scripts) {
-    await db.insert(t.eventScripts).values({
-      id: script.id,
-      address: script.address,
-      stopReason: script.stopReason,
-      instructionCount: script.instructionCount,
-      unknownInstructionCount: script.unknownInstructionCount,
-    });
-  }
-  for (const i of trace.instructions) {
-    await db.insert(t.eventInstructions).values({
+  const scriptRows: (typeof t.eventScripts.$inferInsert)[] = trace.scripts.map((script) => ({
+    id: script.id,
+    address: script.address,
+    stopReason: script.stopReason,
+    instructionCount: script.instructionCount,
+    unknownInstructionCount: script.unknownInstructionCount,
+  }));
+  await insertInChunks(scriptRows, (chunk) => db.insert(t.eventScripts).values(chunk));
+
+  const instructionRows: (typeof t.eventInstructions.$inferInsert)[] = trace.instructions.map(
+    (i) => ({
       scriptId: i.scriptId,
       seq: i.seq,
       address: i.address,
@@ -491,15 +597,32 @@ async function insertEventTrace(db: ExtractDb, trace: EventTrace): Promise<void>
       opcode: i.opcode,
       category: i.category,
       targetMap: i.targetMap,
-    });
-  }
-  for (const block of trace.blocks) await db.insert(t.loadBlocks).values(block);
+    }),
+  );
+  await insertInChunks(instructionRows, (chunk) => db.insert(t.eventInstructions).values(chunk));
+
+  const blockRows: (typeof t.loadBlocks.$inferInsert)[] = trace.blocks.map((block) => ({
+    id: block.id,
+    address: block.address,
+  }));
+  await insertInChunks(blockRows, (chunk) => db.insert(t.loadBlocks).values(chunk));
+
+  const loadRows: (typeof t.eventUnitLoads.$inferInsert)[] = [];
+  const callRows: (typeof t.eventCalls.$inferInsert)[] = [];
+  const goldRows: (typeof t.eventGold.$inferInsert)[] = [];
+  const itemGrantRows: (typeof t.eventItemGrants.$inferInsert)[] = [];
   for (const i of trace.instructions) {
     for (const load of i.loads) {
-      await db.insert(t.eventUnitLoads).values({ scriptId: i.scriptId, seq: i.seq, ...load });
+      loadRows.push({
+        scriptId: i.scriptId,
+        seq: i.seq,
+        position: load.position,
+        kind: load.kind,
+        blockId: load.blockId,
+      });
     }
     for (const call of i.calls) {
-      await db.insert(t.eventCalls).values({
+      callRows.push({
         scriptId: i.scriptId,
         seq: i.seq,
         position: call.position,
@@ -507,90 +630,103 @@ async function insertEventTrace(db: ExtractDb, trace: EventTrace): Promise<void>
       });
     }
     for (const gold of i.gold) {
-      await db.insert(t.eventGold).values({ scriptId: i.scriptId, seq: i.seq, ...gold });
+      goldRows.push({ scriptId: i.scriptId, seq: i.seq, offset: gold.offset, delta: gold.delta });
     }
     for (const item of i.items) {
-      await db.insert(t.eventItemGrants).values({ scriptId: i.scriptId, seq: i.seq, ...item });
+      itemGrantRows.push({
+        scriptId: i.scriptId,
+        seq: i.seq,
+        position: item.position,
+        itemId: item.itemId,
+        unitId: item.unitId,
+      });
     }
   }
-  for (const slot of trace.chapterSlots) {
-    await db.insert(t.chapterEventSlots).values({
-      mapIndex: slot.mapIndex,
-      slotIndex: slot.slotIndex,
-      slotKind: slot.slotKind,
-      position: slot.position,
-      scriptId: slot.scriptId,
-      turnStart: slot.turn?.start ?? null,
-      turnEnd: slot.turn?.end ?? null,
-      turnPhase: slot.turn?.phase ?? null,
-      condFlag: slot.condFlag,
-    });
-  }
-  for (const u of trace.loadBlockUnits) {
-    await db.insert(t.loadBlockUnits).values({
-      blockId: u.blockId,
-      position: u.position,
-      unitId: u.unitId,
-      classId: u.classId,
-      level: u.level,
-      side: u.side,
-      autolevel: u.autolevel === 1,
-      x: u.x,
-      y: u.y,
-      items: u.items,
-      ext: u.ext,
-    });
-  }
+  await insertInChunks(loadRows, (chunk) => db.insert(t.eventUnitLoads).values(chunk));
+  await insertInChunks(callRows, (chunk) => db.insert(t.eventCalls).values(chunk));
+  await insertInChunks(goldRows, (chunk) => db.insert(t.eventGold).values(chunk));
+  await insertInChunks(itemGrantRows, (chunk) => db.insert(t.eventItemGrants).values(chunk));
+
+  const slotRows: (typeof t.chapterEventSlots.$inferInsert)[] = trace.chapterSlots.map((slot) => ({
+    mapIndex: slot.mapIndex,
+    slotIndex: slot.slotIndex,
+    slotKind: slot.slotKind,
+    position: slot.position,
+    scriptId: slot.scriptId,
+    turnStart: slot.turn?.start ?? null,
+    turnEnd: slot.turn?.end ?? null,
+    turnPhase: slot.turn?.phase ?? null,
+    condFlag: slot.condFlag,
+  }));
+  await insertInChunks(slotRows, (chunk) => db.insert(t.chapterEventSlots).values(chunk));
+
+  const blockUnitRows: (typeof t.loadBlockUnits.$inferInsert)[] = trace.loadBlockUnits.map((u) => ({
+    blockId: u.blockId,
+    position: u.position,
+    unitId: u.unitId,
+    classId: u.classId,
+    level: u.level,
+    side: u.side,
+    autolevel: u.autolevel === 1,
+    x: u.x,
+    y: u.y,
+    items: u.items,
+    ext: u.ext,
+  }));
+  await insertInChunks(blockUnitRows, (chunk) => db.insert(t.loadBlockUnits).values(chunk));
 }
 
 /** Persist simulator output without running game rules inside the transaction. */
 async function insertUnitStats(db: ExtractDb, rows: readonly UnitStatRow[]): Promise<void> {
-  for (const r of rows) {
-    await db.insert(t.derivedUnitStats).values({
-      mapIndex: r.mapIndex,
-      difficulty: r.difficulty,
-      source: r.source,
-      sourceId: r.sourceId,
-      position: r.position,
-      unitId: r.unitId,
-      classId: r.classId,
-      side: r.side,
-      shownLevel: r.shownLevel,
-      levelDelta: r.levelDelta,
-      level: r.level,
-      levelUnderflow: r.levelUnderflow,
-      autolevel: r.autolevel,
-      growLevel: r.growLevel,
-      promoted: r.promoted,
-      statHp: r.stats.hp,
-      statStr: r.stats.str,
-      statSkl: r.stats.skl,
-      statSpd: r.stats.spd,
-      statDef: r.stats.def,
-      statRes: r.stats.res,
-      statLck: r.stats.lck,
-      statCon: r.stats.con,
-    });
-  }
+  const statRows: (typeof t.derivedUnitStats.$inferInsert)[] = rows.map((r) => ({
+    mapIndex: r.mapIndex,
+    difficulty: r.difficulty,
+    source: r.source,
+    sourceId: r.sourceId,
+    position: r.position,
+    unitId: r.unitId,
+    classId: r.classId,
+    side: r.side,
+    shownLevel: r.shownLevel,
+    levelDelta: r.levelDelta,
+    level: r.level,
+    levelUnderflow: r.levelUnderflow,
+    autolevel: r.autolevel,
+    growLevel: r.growLevel,
+    promoted: r.promoted,
+    statHp: r.stats.hp,
+    statStr: r.stats.str,
+    statSkl: r.stats.skl,
+    statSpd: r.stats.spd,
+    statDef: r.stats.def,
+    statRes: r.stats.res,
+    statLck: r.stats.lck,
+    statCon: r.stats.con,
+  }));
+  await insertInChunks(statRows, (chunk) => db.insert(t.derivedUnitStats).values(chunk));
 }
 
 /** Condition slots, shops, map objects and the forced-sortie table. */
 async function insertWorldData(db: ExtractDb, rom: ExtractionSnapshot): Promise<void> {
-  for (const slot of rom.condSlots) {
-    await db
-      .insert(t.condSlots)
-      .values({ idx: slot.index, flag: slot.flag, name: slot.name, kind: slot.kind });
-  }
+  const condRows: (typeof t.condSlots.$inferInsert)[] = rom.condSlots.map((slot) => ({
+    idx: slot.index,
+    flag: slot.flag,
+    name: slot.name,
+    kind: slot.kind,
+  }));
+  await insertInChunks(condRows, (chunk) => db.insert(t.condSlots).values(chunk));
 
   // Shops before objects: a map object links to its shop by id, and the link
   // key during parsing is the shop's list address.
   const shopIdByAddress = new Map<number, number>();
+  const shopRows: (typeof t.shops.$inferInsert)[] = [];
+  const shopItemRows: (typeof t.shopItems.$inferInsert)[] = [];
   if (rom.shopData !== null) {
     for (const [shopId, shop] of rom.shopData.shops.entries()) {
       shopIdByAddress.set(shop.addr, shopId);
-      await db.insert(t.shops).values({ id: shopId, kind: shop.kind, mapIndex: shop.mapIndex });
+      shopRows.push({ id: shopId, kind: shop.kind, mapIndex: shop.mapIndex });
       for (const [position, e] of shop.entries.entries()) {
-        await db.insert(t.shopItems).values({
+        shopItemRows.push({
           shopId,
           position,
           itemId: e.itemId,
@@ -600,10 +736,28 @@ async function insertWorldData(db: ExtractDb, rom: ExtractionSnapshot): Promise<
       }
     }
   }
+  await insertInChunks(shopRows, (chunk) => db.insert(t.shops).values(chunk));
+  await insertInChunks(shopItemRows, (chunk) => db.insert(t.shopItems).values(chunk));
 
+  const objectRows: (typeof t.mapObjects.$inferInsert)[] = [];
   for (const co of rom.chapterObjects) {
     for (const o of co.objects) {
-      await db.insert(t.mapObjects).values({
+      // A shop object whose address the shop scan never collected is a
+      // reference inconsistency, not an absence. With foreign keys enforced
+      // it fails the extract here instead of degrading to "not a shop" -
+      // the same treatment every other dangling reference gets.
+      let shopId: number | null = null;
+      if (o.shopAddr !== 0) {
+        const resolved = shopIdByAddress.get(o.shopAddr);
+        if (resolved === undefined) {
+          throw new Error(
+            `map object (${o.x},${o.y}) of map ${co.chapterIndex} opens the shop at ` +
+              `0x${o.shopAddr.toString(16)}, which the shop scan did not collect`,
+          );
+        }
+        shopId = resolved;
+      }
+      objectRows.push({
         mapIndex: co.chapterIndex,
         type: o.type,
         kind: o.kind,
@@ -615,18 +769,21 @@ async function insertWorldData(db: ExtractDb, rom: ExtractionSnapshot): Promise<
         itemId: o.itemId,
         gold: o.gold,
         isGoldChest: o.isGoldChest,
-        shopId: o.shopAddr === 0 ? null : (shopIdByAddress.get(o.shopAddr) ?? null),
+        shopId,
       });
     }
   }
+  await insertInChunks(objectRows, (chunk) => db.insert(t.mapObjects).values(chunk));
 
   if (rom.forceSortie !== null) {
-    for (const r of rom.forceSortie.records) {
-      await db
-        .insert(t.forceSortie)
-        .values({ unitId: r.unitId, route: r.route, mapIndex: r.mapIndex })
-        // Identical records are redundant, not an error.
-        .onConflictDoNothing();
-    }
+    const sortieRows: (typeof t.forceSortie.$inferInsert)[] = rom.forceSortie.records.map((r) => ({
+      unitId: r.unitId,
+      route: r.route,
+      mapIndex: r.mapIndex,
+    }));
+    // Identical records are redundant, not an error.
+    await insertInChunks(sortieRows, (chunk) =>
+      db.insert(t.forceSortie).values(chunk).onConflictDoNothing(),
+    );
   }
 }
