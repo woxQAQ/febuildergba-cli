@@ -1,4 +1,5 @@
 import { decodeTextIdDetailed } from "../text/huffman.ts";
+import { readRom } from "../extract/service.ts";
 import { hex } from "../format.ts";
 import { UsageError, type Command } from "./types.ts";
 
@@ -29,10 +30,9 @@ function parseTextIds(specs: readonly string[], range: string | undefined): numb
   return ids;
 }
 
-export const text: Command<"rom", "text"> = {
+export const text: Command<"rom"> = {
   name: "text",
   input: "rom",
-  romInput: "text",
   summary: "Decode one or more text ids (diagnostic)",
   description:
     "Diagnostic: decode raw text ids to see what the ROM actually holds. Ids " +
@@ -41,12 +41,13 @@ export const text: Command<"rom", "text"> = {
     "'huffman' for ordinary compressed strings and 'unhuffman' for the " +
     "`0x08000000`-marked patch strings, some of which carry only glyph codes.",
   extraArgs: " [id...]",
-  run: ({ rom, flags, args }) => {
+  run: ({ path, flags, args }) => {
     const ids = parseTextIds(args, flags.range);
     if (ids.length === 0) {
       throw new UsageError("give at least one text id, or --range a-b");
     }
 
+    const rom = readRom(path);
     return ids.map((id) => {
       const decoded = decodeTextIdDetailed(rom.rom, id, rom.text);
       return {

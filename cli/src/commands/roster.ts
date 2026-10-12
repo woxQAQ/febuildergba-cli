@@ -1,6 +1,7 @@
-import type { Command } from "./types.ts";
+import { unitsOf } from "../analysis/service.ts";
+import { defineDbCommand } from "./types.ts";
 
-export const roster: Command<"db"> = {
+export const roster = defineDbCommand({
   name: "roster",
   input: "db",
   summary: "List the units that carry support data",
@@ -10,7 +11,7 @@ export const roster: Command<"db"> = {
     "like that view, empty unit slots are excluded - the extract never persists " +
     "them either.",
   run: async ({ extract }) => {
-    return (await extract.units())
+    return (await unitsOf(extract))
       .filter((u) => !u.isEmpty && u.hasSupportData)
       .map((u) => ({
         id: u.id,
@@ -21,4 +22,4 @@ export const roster: Command<"db"> = {
         level: u.level,
       }));
   },
-};
+});

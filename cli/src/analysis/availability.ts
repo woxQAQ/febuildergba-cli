@@ -65,13 +65,13 @@
  *
  * The trace is read back from the db (`data.trace`), not re-walked:
  * `extract` persists the raw event layer and the loader rebuilds the same
- * shape (`db/queries.ts`), so this module never touches the ROM.
+ * shape (`repository/read.ts`), so this module never touches the ROM.
  */
 
 import type { AnalysisUnit, AvailabilityInput } from "./data.ts";
 import { collectAppearances, isPlayerArmyAppearance } from "./appearances.ts";
 import type { UnitAppearance } from "./appearances.ts";
-import type { ForceSortieRecord } from "../tables/forceSortie.ts";
+import type { ForceSortieRow } from "../model/records.ts";
 
 export type ChapterStatus =
   /** Not yet in the army. */
@@ -128,7 +128,7 @@ function appearancesByUnit(data: AvailabilityInput): Map<number, Appearance[]> {
 
 /** Unit id -> the map indices its force-sortie records name; `null` set = any map. */
 function forceSortieIndex(
-  records: readonly Pick<ForceSortieRecord, "unitId" | "mapIndex">[],
+  records: readonly ForceSortieRow[],
 ): Map<number, Set<number> | null> {
   const out = new Map<number, Set<number> | null>();
   for (const r of records) {

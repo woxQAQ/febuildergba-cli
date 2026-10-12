@@ -1,8 +1,8 @@
-import { joinsOf } from "../db/analysis.ts";
-import { buildUnitNameMap, unitNameOrId } from "../tables/units.ts";
-import type { Command } from "./types.ts";
+import { joinsOf, unitsOf } from "../analysis/service.ts";
+import { buildUnitNameMap, unitNameOrId } from "../format.ts";
+import { defineDbCommand } from "./types.ts";
 
-export const joins: Command<"db"> = {
+export const joins = defineDbCommand({
   name: "joins",
   input: "db",
   summary: "List each unit's earliest join and first appearance, by chapter",
@@ -16,7 +16,7 @@ export const joins: Command<"db"> = {
     "breaks ties. `storyOrder` is null for a chapter on no known path.",
   run: async ({ extract }) => {
     const results = await joinsOf(extract);
-    const names = buildUnitNameMap(await extract.units());
+    const names = buildUnitNameMap(await unitsOf(extract));
     return results.map(({ kind, appearance: a, storyOrder }) => ({
       kind,
       unitId: a.unitId,
@@ -27,4 +27,4 @@ export const joins: Command<"db"> = {
       placedClassId: a.placedClassId,
     }));
   },
-};
+});

@@ -28,8 +28,8 @@
  */
 
 import { RomBuffer } from "../rom/RomBuffer.ts";
-import type { Unit } from "./units.ts";
-import { unitNameOrId } from "./units.ts";
+import type { Unit, SupportPartner, SupportEntry, SupportReadResult } from "../model/snapshotRecords.ts";
+import { unitNameOrId } from "../format.ts";
 
 export const SUPPORT_RECORD_SIZE = 24;
 
@@ -42,35 +42,6 @@ export const SUPPORT_OFFSET = {
   growthValues: 14,
   declaredCount: 21,
 } as const;
-
-export interface SupportPartner {
-  /** Partner unit id, 1-based. */
-  unitId: number;
-  unitName: string;
-  /** Support points the pair starts with. */
-  initial: number;
-  /** Support points gained per turn spent adjacent. */
-  growth: number;
-}
-
-export interface SupportEntry {
-  unitId: number;
-  unitName: string;
-  /** File offset of this unit's support record. */
-  address: number;
-  /** Partner count recorded at +21. */
-  declaredCount: number;
-  /** Number of slots holding a non-zero partner id. Should equal `declaredCount`. */
-  actualCount: number;
-  countMatches: boolean;
-  partners: SupportPartner[];
-}
-
-export interface SupportReadResult {
-  entries: SupportEntry[];
-  /** Units whose +44 slot did not hold a usable pointer. */
-  missing: { unitId: number; unitName: string; rawPointer: number }[];
-}
 
 function readRecord(
   rom: RomBuffer,

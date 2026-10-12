@@ -8,7 +8,7 @@ import { RomBuffer } from "./RomBuffer.ts";
 import { hex } from "../format.ts";
 import type { SkillSystem } from "./skillSystem.ts";
 import { detectSkillSystem } from "./skillSystem.ts";
-export type GameVersion = "FE6J" | "FE7J" | "FE7U" | "FE8J" | "FE8U";
+import type { GameVersion } from "../model/game.ts";
 
 /** FEBuilderGBA reads 6 bytes here: 4-byte game code + 2-byte maker code. */
 export const GAME_CODE_OFFSET = 0xac;

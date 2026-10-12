@@ -1,7 +1,8 @@
-import { buildUnitNameMap, unitNameOrId } from "../tables/units.ts";
-import type { Command } from "./types.ts";
+import { buildUnitNameMap, unitNameOrId } from "../format.ts";
+import { unitsOf } from "../analysis/service.ts";
+import { defineDbCommand } from "./types.ts";
 
-export const supports: Command<"db"> = {
+export const supports = defineDbCommand({
   name: "supports",
   input: "db",
   summary: "List support pairs, deduplicated from the asymmetric partner lists",
@@ -12,7 +13,7 @@ export const supports: Command<"db"> = {
     "both directions declare the pair, and the reverse numbers are exposed so " +
     "a mismatch is visible rather than a parse error.",
   run: async ({ extract }) => {
-    const names = buildUnitNameMap(await extract.units());
+    const names = buildUnitNameMap(await unitsOf(extract));
     const supportPartners = await extract.supportPartners();
 
     // Directed records keyed "unit>partner"; pairs keyed "a:b" with a < b.
@@ -42,4 +43,4 @@ export const supports: Command<"db"> = {
       })
       .sort((x, y) => x.a - y.a || x.b - y.b);
   },
-};
+});

@@ -1,5 +1,5 @@
 import type { AnalysisClass } from "../analysis/data.ts";
-import type { Command } from "./types.ts";
+import { defineDbCommand } from "./types.ts";
 
 export type Mobility = "flying" | "mounted" | "armour" | "normal";
 
@@ -18,7 +18,7 @@ function mobilityOf(c: AnalysisClass): Mobility {
   return "normal";
 }
 
-export const roles: Command<"db"> = {
+export const roles = defineDbCommand({
   name: "roles",
   input: "db",
   summary: "Classify every class's mobility (flying/mounted/armour/normal)",
@@ -33,4 +33,4 @@ export const roles: Command<"db"> = {
       .filter((c) => !c.isEmpty)
       .map((c) => ({ classId: c.id, name: c.name, mount: c.mount, mobility: mobilityOf(c) }));
   },
-};
+});

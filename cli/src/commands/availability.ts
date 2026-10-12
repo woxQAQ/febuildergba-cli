@@ -6,10 +6,10 @@
  * Map inside, which JSON.stringify would render as `{}`).
  */
 
-import { availabilityOf } from "../db/analysis.ts";
-import type { Command } from "./types.ts";
+import { availabilityOf } from "../analysis/service.ts";
+import { defineDbCommand } from "./types.ts";
 
-export const availability: Command<"db"> = {
+export const availability = defineDbCommand({
   name: "availability",
   input: "db",
   summary: "Show which chapters each unit can be fielded in",
@@ -36,4 +36,4 @@ export const availability: Command<"db"> = {
       })),
     }));
   },
-};
+});

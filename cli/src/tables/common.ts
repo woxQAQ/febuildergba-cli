@@ -10,6 +10,8 @@ import { RomBuffer } from "../rom/RomBuffer.ts";
 import { hex } from "../format.ts";
 import type { TableLayout } from "../data/layouts.ts";
 import { resolveTableSlot } from "../data/layouts.ts";
+import type { WeaponLevels } from "../model/snapshotRecords.ts";
+import { WEAPON_TYPES } from "../model/snapshotRecords.ts";
 
 export interface ResolvedTable {
   /** File offset of the 4-byte slot holding the table pointer. */
@@ -38,22 +40,6 @@ export function resolveTable(rom: RomBuffer, layout: TableLayout): ResolvedTable
     maxCount: layout.maxCount,
   };
 }
-
-/** The eight weapon types, in the order the ROM stores them. */
-export const WEAPON_TYPES = [
-  "sword",
-  "lance",
-  "axe",
-  "bow",
-  "staff",
-  "anima",
-  "light",
-  "dark",
-] as const;
-
-export type WeaponType = (typeof WEAPON_TYPES)[number];
-
-export type WeaponLevels = Record<WeaponType, number>;
 
 export function readWeaponLevels(rom: RomBuffer, addr: number): WeaponLevels {
   const levels = {} as WeaponLevels;

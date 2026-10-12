@@ -1,10 +1,8 @@
 /**
- * Opening an extract db and reading the rows the analysis commands need.
+ * Opening an extract db and reading snapshot records.
  *
- * The db is the single source of truth: analysis reads it, `extract` is the only
- * writer. This file changes no parse rule - it maps rows onto the field
- * semantics the in-memory parser produced, so an analysis module sees the same
- * data either way.
+ * This module validates the storage contract and maps columns to records.
+ * Analysis chooses its inputs and interprets data availability and quality.
  *
  * **One query per table group, not one load-everything call.** An earlier
  * version returned every table in one object, which forced every command to pay
@@ -31,27 +29,25 @@ import { getTableConfig } from "drizzle-orm/sqlite-core";
 import type { SQLiteTable } from "drizzle-orm/sqlite-core";
 
 import type {
-  AnalysisChapter,
-  AnalysisClass,
-  AnalysisUnit,
+  ChapterRecord,
+  ClassRecord,
+  UnitRecord,
   ForceSortieRow,
   PlayOrderRows,
   SupportPartnerRow,
-} from "../analysis/data.ts";
-import type { GameVersion } from "../rom/detect.ts";
-import { combineStartingStats } from "../tables/units.ts";
+} from "../model/records.ts";
+import type { GameVersion } from "../model/game.ts";
 import type {
   ChapterEventSlot,
   EventGraph,
   TracedBlockUnit,
   TracedInstruction,
   TracedScript,
-} from "../tables/eventTrace.ts";
-import { eventDecodeWarning } from "../tables/eventTrace.ts";
-import type { PlayOrderStep } from "../tables/storyPath.ts";
-import type { UnitStatRow } from "../tables/unitStats.ts";
-import { openDb } from "./index.ts";
-import type { OpenDb } from "./index.ts";
+} from "../model/events.ts";
+import type { PlayOrderStep } from "../model/storyPath.ts";
+import type { UnitStatRow } from "../model/stats.ts";
+import { openDb } from "./open.ts";
+import type { OpenDb } from "./open.ts";
 import * as t from "./schema.ts";
 import { EXTRACT_REVISION } from "./revision.ts";
 
@@ -162,28 +158,32 @@ const ROW_ORDER = sql`rowid`;
  * table per handle. Callers must {@link ExtractHandle.close} it.
  */
 export interface ExtractHandle {
+  /** Availability flags written by extraction, without interpreting empty rows. */
+  availability(): Promise<{ chapters: boolean; events: boolean }>;
   /** The ROM's game id (`meta` `rom.version`), for the per-version formula branches. */
   game(): Promise<GameVersion>;
-  /** Unit-table order. Empty slots are not persisted; see {@link AnalysisUnit}. */
-  units(): Promise<AnalysisUnit[]>;
+  /** Unit-table order. Empty slots are not persisted; stats remain signed deltas. */
+  units(): Promise<UnitRecord[]>;
   /** Class-table order, empty entries included. */
-  classes(): Promise<AnalysisClass[]>;
+  classes(): Promise<ClassRecord[]>;
   /** Map-setting order, each with its normal and hard placement blocks. */
-  chapters(): Promise<AnalysisChapter[]>;
+  chapters(): Promise<ChapterRecord[]>;
   /** `derived_play_order`: the steps, and map index -> 1-based position. */
   playOrder(): Promise<PlayOrderRows>;
   /** `force_sortie` records; empty when the game has no such table. */
   forceSortie(): Promise<ForceSortieRow[]>;
   /** `support_partners` rows, in extract (directed-record) order. */
   supportPartners(): Promise<SupportPartnerRow[]>;
+  /** Decoding outcomes, without deciding whether an analysis can proceed. */
+  scripts(): Promise<TracedScript[]>;
   /**
    * The raw event layer, rebuilt from `chapter_event_slots`,
    * `event_instructions` and `load_block_units` in insertion order - the same
    * shape `extractEventTrace` produces in memory, so the reach walk in
-   * `tables/eventTrace.ts` runs over either unchanged.
+   * `model/events.ts` runs over either unchanged.
    */
   trace(): Promise<EventGraph>;
-  /** `derived_unit_stats` - the same simulator output `populate` computes. */
+  /** `derived_unit_stats` - materialized simulator output, never recalculated. */
   unitStats(): Promise<UnitStatRow[]>;
   close(): void;
 }
@@ -243,22 +243,8 @@ export function openExtract(path: string): ExtractHandle {
     const rows = await db.select().from(t.meta).all();
     return new Map(rows.map((r) => [r.key, r.value]));
   });
-  const requireAvailable = async (key: string): Promise<void> => {
-    if ((await metaOf()).get(key) !== "true") {
-      throw new Error(
-        `${path}: ${key.replace(".available", "")} data is unavailable, not empty - ` +
-          "re-run extract with the canonical cli/data resources and a readable chapter table",
-      );
-    }
-  };
   const scriptsOf = () => once("scripts", async (): Promise<TracedScript[]> =>
     db.select().from(t.eventScripts).orderBy(t.eventScripts.id).all());
-  const requireEvents = () => once("eventQuality", async (): Promise<void> => {
-    await requireAvailable("events.available");
-    const scripts = await scriptsOf();
-    const warning = eventDecodeWarning(scripts);
-    if (warning !== null) console.error(`warning: ${warning}`);
-  });
 
   /** `meta` `rom.version`, validated once for every caller. */
   const gameOf = () => once("game", async (): Promise<GameVersion> => {
@@ -270,13 +256,11 @@ export function openExtract(path: string): ExtractHandle {
   });
 
   /**
-   * Class rows. Units need these twice (`startingStats` is class base + unit
-   * delta, and the name map enriches unit rows), so the rows are kept as well
-   * as the mapped form.
+   * Class rows are shared by the class mapping and the unit-name join.
    */
   const classRowsOf = () => once("classRows", () => db.select().from(t.classes).orderBy(t.classes.id).all());
 
-  const classesOf = () => once("classes", async (): Promise<AnalysisClass[]> => {
+  const classesOf = () => once("classes", async (): Promise<ClassRecord[]> => {
     const rows = await classRowsOf();
     return rows.map((c) => ({
       id: c.id,
@@ -289,6 +273,15 @@ export function openExtract(path: string): ExtractHandle {
       sortOrder: c.sortOrder,
       classPower: c.classPower,
       abilityFlags: c.abilityFlags,
+      bases: {
+        hp: c.baseHp,
+        str: c.baseStr,
+        skl: c.baseSkl,
+        spd: c.baseSpd,
+        def: c.baseDef,
+        res: c.baseRes,
+        con: c.baseCon,
+      },
       caps: {
         hp: c.capHp,
         str: c.capStr,
@@ -310,21 +303,21 @@ export function openExtract(path: string): ExtractHandle {
   });
 
   return {
+    availability: async () => {
+      const meta = await metaOf();
+      return {
+        chapters: meta.get("chapters.available") === "true",
+        events: meta.get("events.available") === "true",
+      };
+    },
     game: gameOf,
     classes: classesOf,
+    scripts: scriptsOf,
 
     units: () =>
-      once("units", async (): Promise<AnalysisUnit[]> => {
-        // Classes first: `startingStats` is rebuilt from the class bases plus
-        // the unit's signed deltas, via the same `combineStartingStats` the
-        // parser uses, and the name map comes from the same rows.
+      once("units", async (): Promise<UnitRecord[]> => {
+        // Join names from stored class rows; signed deltas remain unmodified.
         const classRows = await classRowsOf();
-        const classBases = new Map(
-          classRows.map((c) => [
-            c.id,
-            { hp: c.baseHp, str: c.baseStr, skl: c.baseSkl, spd: c.baseSpd, def: c.baseDef, res: c.baseRes, con: c.baseCon },
-          ]),
-        );
         // Same rule as the parser's `buildClassNameMap`: unnamed classes
         // contribute no name.
         const classNames = new Map(
@@ -357,25 +350,21 @@ export function openExtract(path: string): ExtractHandle {
             res: u.growthRes,
             lck: u.growthLck,
           },
-          startingStats: combineStartingStats(
-            {
-              hp: u.deltaHp,
-              str: u.deltaStr,
-              skl: u.deltaSkl,
-              spd: u.deltaSpd,
-              def: u.deltaDef,
-              res: u.deltaRes,
-              lck: u.deltaLck,
-              con: u.deltaCon,
-            },
-            classBases.get(u.classId),
-          ),
+          stats: {
+            hp: u.deltaHp,
+            str: u.deltaStr,
+            skl: u.deltaSkl,
+            spd: u.deltaSpd,
+            def: u.deltaDef,
+            res: u.deltaRes,
+            lck: u.deltaLck,
+            con: u.deltaCon,
+          },
         }));
       }),
 
     chapters: () =>
-      once("chapters", async (): Promise<AnalysisChapter[]> => {
-        await requireAvailable("chapters.available");
+      once("chapters", async (): Promise<ChapterRecord[]> => {
         const placementRows = await db
           .select()
           .from(t.chapterPlacements)
@@ -384,7 +373,7 @@ export function openExtract(path: string): ExtractHandle {
         const chapterRows = await db.select().from(t.chapters).orderBy(t.chapters.mapIndex).all();
         const placementsByChapter = new Map<
           number,
-          { normal: AnalysisChapter["placements"]; hard: AnalysisChapter["placements"] }
+          { normal: ChapterRecord["placements"]; hard: ChapterRecord["placements"] }
         >();
         for (const p of placementRows) {
           // "hard" sorts before "normal" alphabetically; the arrays are
@@ -410,7 +399,6 @@ export function openExtract(path: string): ExtractHandle {
 
     playOrder: () =>
       once("playOrder", async (): Promise<PlayOrderRows> => {
-        await requireEvents();
         const rows = await db
           .select()
           .from(t.derivedPlayOrder)
@@ -435,7 +423,6 @@ export function openExtract(path: string): ExtractHandle {
 
     trace: () =>
       once("trace", async (): Promise<EventGraph> => {
-        await requireEvents();
         const instructionRows = await db.select().from(t.eventInstructions).orderBy(ROW_ORDER).all();
         const instructions: TracedInstruction[] = instructionRows.map((i) => ({
           scriptId: i.scriptId,
@@ -511,7 +498,6 @@ export function openExtract(path: string): ExtractHandle {
 
     unitStats: () =>
       once("unitStats", async (): Promise<UnitStatRow[]> => {
-        await requireEvents();
         const rows = await db.select().from(t.derivedUnitStats).orderBy(ROW_ORDER).all();
         return rows.map((r) => ({
           mapIndex: r.mapIndex,

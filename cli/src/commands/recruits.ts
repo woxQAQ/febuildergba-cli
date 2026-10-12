@@ -1,7 +1,7 @@
-import { reachedLoadSites } from "../tables/eventTrace.ts";
-import type { Command } from "./types.ts";
+import { reachedLoadSites } from "../model/events.ts";
+import { defineDbCommand } from "./types.ts";
 
-export const recruits: Command<"db"> = {
+export const recruits = defineDbCommand({
   name: "recruits",
   input: "db",
   summary: "List each chapter's load sites and the units they bring in",
@@ -33,4 +33,4 @@ export const recruits: Command<"db"> = {
       })),
     }));
   },
-};
+});

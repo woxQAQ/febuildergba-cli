@@ -34,7 +34,7 @@
 import type { RomBuffer } from "../rom/RomBuffer.ts";
 import { hex } from "../format.ts";
 import type { GameLayout } from "../data/layouts.ts";
-import type { Chapter } from "./chapters.ts";
+import type { Chapter, MapObject, ChapterObjects } from "../model/snapshotRecords.ts";
 
 /** `発生タイプ` (`u16` at `+0`). */
 export const OBJECT_TRIGGER_TYPES: Readonly<Record<number, string>> = {
@@ -56,37 +56,6 @@ export const OBJECT_TYPE_NAMES: Readonly<Record<number, string>> = {
   0x18: "secret",
   0x20: "townCentre",
 };
-
-export interface MapObject {
-  addr: number;
-  /** `u16(+0)` trigger type. */
-  type: number;
-  kind: string;
-  /** `u16(+2)` achievement flag; 0 means the object can be used repeatedly. */
-  flag: number;
-  /** `u8(+10)` object type. */
-  objectType: number;
-  objectTypeName: string;
-  x: number;
-  y: number;
-  /** Chest only: item id, `u8(+4)`. */
-  itemId: number | null;
-  /** Chest only: gold, `u16(+6)`. */
-  gold: number;
-  /** Chest only: the chest pays gold instead of an item. */
-  isGoldChest: boolean;
-  /** Non-chest: file offset of the object's event script, or 0. */
-  eventAddr: number;
-  /** Shop only: file offset of the 2-byte shop entry list, or 0. */
-  shopAddr: number;
-}
-
-export interface ChapterObjects {
-  chapterIndex: number;
-  chapterNumber: number;
-  title: string;
-  objects: MapObject[];
-}
 
 /**
  * Read every object record of one chapter. Returns an empty list when the

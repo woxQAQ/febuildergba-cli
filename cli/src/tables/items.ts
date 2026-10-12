@@ -49,7 +49,8 @@ import { RomBuffer } from "../rom/RomBuffer.ts";
 import type { ItemLayout, PromotionItemLayout } from "../data/layouts.ts";
 import { resolveTableSlot } from "../data/layouts.ts";
 import { parseKeyedTable, readTextFile, resolveDataFile } from "../config/data.ts";
-import type { TextContext, TextPointerKind } from "../text/huffman.ts";
+import type { TextContext } from "../text/huffman.ts";
+import type { TextPointerKind, ItemStatBonuses, Item, ItemReadResult } from "../model/snapshotRecords.ts";
 import {
   classifyTextPointer,
   decodeTextId,
@@ -95,117 +96,6 @@ export function weaponRankLetter(rank: number): string {
   if (rank <= 180) return "B";
   if (rank <= 250) return "A";
   return "S";
-}
-
-/**
- * Equipped-stat bonuses, read from the table `+12` points at.
- *
- * Record layout per `ItemStatBonusesForm.cs` (HP / 攻撃 / 技 / 速さ / 守備 /
- * 魔防 / 幸運 / 移動 / 体格 at bytes 0..8). Read as `u8`, matching the
- * reference; vanilla never goes negative, and a hack that wants a penalty
- * uses the ability bytes instead.
- */
-export interface ItemStatBonuses {
-  hp: number;
-  str: number;
-  skl: number;
-  spd: number;
-  def: number;
-  res: number;
-  lck: number;
-  mov: number;
-  con: number;
-}
-
-export interface Item {
-  id: number;
-  addr: number;
-  /** Decoded name. See the module doc: this is the item-font path. */
-  name: string;
-  /** Name as the normal text decoder would render it (diagnostic). */
-  nameRaw: string;
-  nameTextId: number;
-  descTextId: number;
-  useDescTextId: number;
-  /** Storage format of the name string. */
-  nameKind: TextPointerKind;
-  /** Codes the item-font table has no mapping for (should stay empty). */
-  nameUnknownCodes: number[];
-  desc: string;
-  type: number;
-  typeName: string;
-  /** `+8..+11`, four bytes of ability flags. */
-  attributes: number[];
-  /**
-   * Stat bonuses while equipped, from the table `+12` points at, or `null`
-   * when the pointer is unusable. See {@link ItemStatBonuses}.
-   */
-  statBonuses: ItemStatBonuses | null;
-  /**
-   * Class ids this weapon is effective against, from the `+16` table
-   * (u8 list, 0-terminated, per `ItemEffectivenessForm.cs`), or `null` when
-   * the pointer is unusable. Empty list = the table exists but names nothing.
-   */
-  effectiveness: number[] | null;
-  uses: number;
-  might: number;
-  hit: number;
-  weight: number;
-  crit: number;
-  rangeMin: number;
-  rangeMax: number;
-  weaponRank: number;
-  weaponRankLetter: string;
-  iconId: number;
-  /**
-   * `+30`: the item's **use-effect code**, or 0 for "no use effect".
-   *
-   * `ItemForm.B30_ValueChanged` treats this byte as the thing that decides
-   * what using the item does, and its combo box is fed by the
-   * `item_staff_use_effect_*` resource. See {@link staffEffectName}.
-   */
-  staffEffect: number;
-  /** Name of {@link staffEffect} from the resource table, or `""` when unknown. */
-  staffEffectName: string;
-  /**
-   * Whether `staffEffect` is one of the codes the game treats as a promotion.
-   *
-   * `ItemForm.IsPromotionItemFE8` (ItemForm.cs:954) accepts exactly
-   * `{0x19..0x1D} U {0x2D} U {0x2F..0x32}`. That is the whole "which items
-   * promote?" answer - it is a code test, not a scan of a table.
-   */
-  isPromotionItem: boolean;
-  /**
-   * Class ids this item promotes, from the class list belonging to its effect
-   * code, or `null` when the ROM has no promotion tables / the effect is not a
-   * promotion code. See {@link readPromotionTables}.
-   *
-   * Read-only because it is handed out straight from {@link PromotionTables};
-   * callers only ever iterate it.
-   */
-  promotionClasses: readonly number[] | null;
-  damageBonus: number;
-  wexp: number;
-  /** `+26`: price **per use**. */
-  unitPrice: number;
-  /** `uses x unitPrice` — what a shop charges. */
-  buyPrice: number;
-  /** `buyPrice / 2` — `ItemForm.cs:311`. */
-  sellPrice: number;
-  /** True when the item is a weapon or staff (type 0..7). */
-  isWeapon: boolean;
-}
-
-export interface ItemTable {
-  slotOffset: number;
-  tableOffset: number;
-  recordSize: number;
-  count: number;
-}
-
-export interface ItemReadResult {
-  table: ItemTable | null;
-  items: Item[];
 }
 
 /**

@@ -28,7 +28,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { LAYOUTS } from "../src/data/layouts.ts";
-import type { GameVersion } from "../src/rom/detect.ts";
+import type { GameVersion } from "../src/model/game.ts";
 import type { SlotRef } from "../src/data/layouts.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));

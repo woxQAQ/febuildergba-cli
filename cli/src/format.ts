@@ -19,3 +19,21 @@ export function hex(value: number, pad = 0): string {
 export function hexId(value: number): string {
   return hex(value, 2);
 }
+
+/** Index display names by game id; id zero denotes an empty slot. */
+export function buildUnitNameMap(
+  units: readonly { id: number; name: string }[],
+): Map<number, string> {
+  const map = new Map<number, string>();
+  for (const unit of units) {
+    if (unit.id !== 0) map.set(unit.id, unit.name);
+  }
+  return map;
+}
+
+/** Preserve an identifiable label even for unnamed or unresolved units. */
+export function unitNameOrId(nameMap: ReadonlyMap<number, string>, id: number): string {
+  const name = nameMap.get(id);
+  if (name && name.length > 0) return name;
+  return `Unit ${hex(id, 2)}`;
+}

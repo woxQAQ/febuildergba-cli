@@ -22,8 +22,8 @@
  */
 
 import type { AppearancesInput } from "./data.ts";
-import type { UnitSide } from "../tables/chapters.ts";
-import { reachedLoadSites } from "../tables/eventTrace.ts";
+import type { UnitSide } from "../model/game.ts";
+import { reachedLoadSites } from "../model/events.ts";
 
 export interface UnitAppearance {
   unitId: number;

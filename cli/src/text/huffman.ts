@@ -17,6 +17,7 @@
 import { RomBuffer } from "../rom/RomBuffer.ts";
 import { hex } from "../format.ts";
 import type { TextLayout } from "../data/layouts.ts";
+import type { TextPointerKind } from "../model/snapshotRecords.ts";
 
 export interface TextContext {
   treeBase: number;
@@ -477,9 +478,6 @@ function cString(rom: RomBuffer, addr: number): number[] {
   }
   return out;
 }
-
-/** Which storage format a text-table entry uses. */
-export type TextPointerKind = "huffman" | "unhuffman" | "direct" | "invalid";
 
 /** Classify a text-table entry value without decoding it. */
 export function classifyTextPointer(pointer: number): TextPointerKind {

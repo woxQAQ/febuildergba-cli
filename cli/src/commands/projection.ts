@@ -5,10 +5,10 @@
  * live in `analysis/projection.ts`; this is the shell.
  */
 
-import { projectionOf } from "../db/analysis.ts";
-import type { Command } from "./types.ts";
+import { projectionOf } from "../analysis/service.ts";
+import { defineDbCommand } from "./types.ts";
 
-export const projection: Command<"db"> = {
+export const projection = defineDbCommand({
   name: "projection",
   input: "db",
   summary: "Project each roster unit's expected stats across the play order",
@@ -22,4 +22,4 @@ export const projection: Command<"db"> = {
     "own simulation; see src/analysis/projection.ts for the difference from " +
     "derived_unit_stats.",
   run: ({ extract }) => projectionOf(extract),
-};
+});

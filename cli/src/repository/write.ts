@@ -1,27 +1,27 @@
 /**
- * Populate an extract database from a parsed ROM - the persistence half of the
- * extract. All inserts go through the drizzle schema (`schema.ts`), so a column
+ * Persist a complete snapshot. All inserts go through the drizzle schema
+ * (`schema.ts`), so a column
  * typo or wrong value type is a compile error, not a SQLite error mid-extract.
- * Reads run in one transaction; a failure rolls the whole db back.
+ * Writes run in one transaction; a failure rolls the whole db back.
  */
 
 import { sql } from "drizzle-orm";
 import { getTableConfig } from "drizzle-orm/sqlite-core";
 
-import type { ParsedRom } from "../load.ts";
-import type { EventTrace } from "../tables/eventTrace.ts";
-import { buildUnitStats } from "../tables/unitStats.ts";
+import type { ExtractionSnapshot } from "../model/snapshot.ts";
+import type { EventTrace } from "../model/events.ts";
+import type { UnitStatRow } from "../model/stats.ts";
 import { createTablesSql } from "./ddl.ts";
-import type { ExtractDb, OpenDb } from "./index.ts";
+import type { ExtractDb, OpenDb } from "./open.ts";
 import * as t from "./schema.ts";
 import { EXTRACT_REVISION } from "./revision.ts";
 
-export interface PopulateResult {
+export interface WriteReceipt {
   /** Row count per table, measured after the commit. */
   readonly tables: Readonly<Record<string, number>>;
 }
 
-export async function populate(handle: OpenDb, rom: ParsedRom): Promise<PopulateResult> {
+export async function writeSnapshot(handle: OpenDb, rom: ExtractionSnapshot): Promise<WriteReceipt> {
   const { db, sqlite } = handle;
   for (const statement of createTablesSql(t.TABLES)) sqlite.exec(statement);
 
@@ -36,7 +36,7 @@ export async function populate(handle: OpenDb, rom: ParsedRom): Promise<Populate
     await insertStory(db, rom);
     await insertSkills(db, rom);
     await insertEventTrace(db, rom.eventTrace);
-    await insertUnitStats(db, rom, rom.eventTrace);
+    await insertUnitStats(db, rom.unitStats);
     await insertWorldData(db, rom);
     sqlite.exec("COMMIT");
 
@@ -57,27 +57,28 @@ export async function populate(handle: OpenDb, rom: ParsedRom): Promise<Populate
   }
 }
 
-async function insertMeta(db: ExtractDb, rom: ParsedRom): Promise<void> {
+async function insertMeta(db: ExtractDb, rom: ExtractionSnapshot): Promise<void> {
+  const metadata = rom.metadata;
   await db.insert(t.meta).values([
     { key: "extract.revision", value: EXTRACT_REVISION },
-    { key: "rom.path", value: rom.path },
-    { key: "rom.sizeBytes", value: String(rom.rom.length) },
-    { key: "rom.gameCode", value: rom.identity.gameCode },
-    { key: "rom.title", value: rom.identity.title },
-    { key: "rom.version", value: rom.layout.version },
-    { key: "rom.displayName", value: rom.layout.displayName },
-    { key: "rom.isMultibyte", value: String(rom.layout.text.isMultibyte) },
+    { key: "rom.path", value: metadata.path },
+    { key: "rom.sizeBytes", value: String(metadata.sizeBytes) },
+    { key: "rom.gameCode", value: metadata.gameCode },
+    { key: "rom.title", value: metadata.title },
+    { key: "rom.version", value: metadata.version },
+    { key: "rom.displayName", value: metadata.displayName },
+    { key: "rom.isMultibyte", value: String(metadata.isMultibyte) },
     // Which skill-system patch family the ROM carries, or "none". Detection
     // only - it gates how the rest of the ROM should be interpreted (a
     // patched ROM relocates other tables), it is not skill data.
-    { key: "rom.skillSystem", value: rom.identity.skillSystem },
-    { key: "rom.notes", value: JSON.stringify(rom.identity.notes) },
-    { key: "config.dir", value: rom.configDir ?? "" },
-    { key: "config.language", value: rom.configLanguage ?? "en" },
+    { key: "rom.skillSystem", value: metadata.skillSystem },
+    { key: "rom.notes", value: JSON.stringify(metadata.notes) },
+    { key: "config.dir", value: metadata.configDir ?? "" },
+    { key: "config.language", value: metadata.configLanguage },
     { key: "chapters.available", value: String(rom.chaptersAvailable) },
     {
       key: "events.available",
-      value: String(rom.chaptersAvailable && rom.eventScripts.scripts.length > 0),
+      value: String(rom.eventsAvailable),
     },
     // `mainPath` is not stored: it is `derived_play_order` filtered to
     // role='main'. `branches` and `closedLoop` are not expressible from the
@@ -88,7 +89,7 @@ async function insertMeta(db: ExtractDb, rom: ParsedRom): Promise<void> {
 }
 
 /** Empty slots (no name, class or level) are skipped; the count lands in meta. */
-async function insertUnits(db: ExtractDb, rom: ParsedRom): Promise<void> {
+async function insertUnits(db: ExtractDb, rom: ExtractionSnapshot): Promise<void> {
   let skipped = 0;
   for (const u of rom.units) {
     if (u.isEmpty) {
@@ -139,7 +140,7 @@ async function insertUnits(db: ExtractDb, rom: ParsedRom): Promise<void> {
   await db.insert(t.meta).values({ key: "units.emptySlots", value: String(skipped) });
 }
 
-async function insertClasses(db: ExtractDb, rom: ParsedRom): Promise<void> {
+async function insertClasses(db: ExtractDb, rom: ExtractionSnapshot): Promise<void> {
   for (const c of rom.classes) {
     await db.insert(t.classes).values({
       id: c.id,
@@ -219,7 +220,7 @@ async function insertClasses(db: ExtractDb, rom: ParsedRom): Promise<void> {
   }
 }
 
-async function insertSupports(db: ExtractDb, rom: ParsedRom): Promise<void> {
+async function insertSupports(db: ExtractDb, rom: ExtractionSnapshot): Promise<void> {
   // Every referenced affinity id gets a row, named or not: a unit carrying
   // an unnamed hack affinity is data, not an absence of data.
   const affinityIds = new Set<number>(rom.affinityNames.keys());
@@ -260,7 +261,7 @@ async function insertSupports(db: ExtractDb, rom: ParsedRom): Promise<void> {
   // The deduplicated pair view is the `supports` command now - nothing to insert.
 }
 
-async function insertItemsAndTerrain(db: ExtractDb, rom: ParsedRom): Promise<void> {
+async function insertItemsAndTerrain(db: ExtractDb, rom: ExtractionSnapshot): Promise<void> {
   for (const i of rom.items) {
     await db.insert(t.items).values({
       id: i.id,
@@ -328,7 +329,7 @@ async function insertItemsAndTerrain(db: ExtractDb, rom: ParsedRom): Promise<voi
   }
 }
 
-async function insertChapters(db: ExtractDb, rom: ParsedRom): Promise<void> {
+async function insertChapters(db: ExtractDb, rom: ExtractionSnapshot): Promise<void> {
   for (const c of rom.chapters) {
     await db.insert(t.chapters).values({
       mapIndex: c.index,
@@ -389,7 +390,7 @@ async function insertChapters(db: ExtractDb, rom: ParsedRom): Promise<void> {
  * transitions it reads are what the `transitions` command prints over the raw
  * event layer.
  */
-async function insertStory(db: ExtractDb, rom: ParsedRom): Promise<void> {
+async function insertStory(db: ExtractDb, rom: ExtractionSnapshot): Promise<void> {
   for (const step of rom.playOrder.steps) {
     await db.insert(t.derivedPlayOrder).values({
       mapIndex: step.mapIndex,
@@ -406,7 +407,7 @@ async function insertStory(db: ExtractDb, rom: ParsedRom): Promise<void> {
  * thing that distinguishes "no skill system" from "a skill system whose learn
  * lists carry no difficulty bits".
  */
-async function insertSkills(db: ExtractDb, rom: ParsedRom): Promise<void> {
+async function insertSkills(db: ExtractDb, rom: ExtractionSnapshot): Promise<void> {
   const skills = rom.skills;
   if (skills === null) {
     await db.insert(t.meta).values({ key: "skills.classSkillExtends", value: "false" });
@@ -538,20 +539,8 @@ async function insertEventTrace(db: ExtractDb, trace: EventTrace): Promise<void>
   }
 }
 
-/**
- * The stats each unit enters each chapter with, at each difficulty.
- *
- * Pure arithmetic over tables that are already parsed, so it lives beside the
- * insert rather than in the reader - but see `tables/unitStats.ts` for why it
- * is materialized instead of left to the query layer.
- */
-async function insertUnitStats(db: ExtractDb, rom: ParsedRom, trace: EventTrace): Promise<void> {
-  const rows = buildUnitStats({
-    units: rom.units,
-    classes: rom.classes,
-    chapters: rom.chapters,
-    trace,
-  });
+/** Persist simulator output without running game rules inside the transaction. */
+async function insertUnitStats(db: ExtractDb, rows: readonly UnitStatRow[]): Promise<void> {
   for (const r of rows) {
     await db.insert(t.derivedUnitStats).values({
       mapIndex: r.mapIndex,
@@ -582,7 +571,7 @@ async function insertUnitStats(db: ExtractDb, rom: ParsedRom, trace: EventTrace)
 }
 
 /** Condition slots, shops, map objects and the forced-sortie table. */
-async function insertWorldData(db: ExtractDb, rom: ParsedRom): Promise<void> {
+async function insertWorldData(db: ExtractDb, rom: ExtractionSnapshot): Promise<void> {
   for (const slot of rom.condSlots) {
     await db
       .insert(t.condSlots)

@@ -17,8 +17,8 @@ import { dirname, join, resolve } from "node:path";
 
 import { and, asc, gt, ne } from "drizzle-orm";
 
-import { openDb } from "../src/db/index.ts";
-import { units } from "../src/db/schema.ts";
+import { openDb } from "../src/repository/open.ts";
+import { units } from "../src/repository/schema.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = join(HERE, "..", "..");

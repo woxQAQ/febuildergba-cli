@@ -1,7 +1,7 @@
-import { reachableInstructions } from "../tables/eventTrace.ts";
-import type { Command } from "./types.ts";
+import { reachableInstructions } from "../model/events.ts";
+import { defineDbCommand } from "./types.ts";
 
-export const gains: Command<"db"> = {
+export const gains = defineDbCommand({
   name: "gains",
   input: "db",
   summary: "List gold and items each chapter's events hand directly to the player",
@@ -35,4 +35,4 @@ export const gains: Command<"db"> = {
         }))),
     };
   },
-};
+});

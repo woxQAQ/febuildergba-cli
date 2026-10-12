@@ -1,8 +1,8 @@
-import { traceTransitionSteps, walkTransitions } from "../tables/storyPath.ts";
-import type { TracedInstruction } from "../tables/eventTrace.ts";
-import type { Command } from "./types.ts";
+import { traceTransitionSteps, walkTransitions } from "../model/storyPath.ts";
+import type { TracedInstruction } from "../model/events.ts";
+import { defineDbCommand } from "./types.ts";
 
-export const transitions: Command<"db"> = {
+export const transitions = defineDbCommand({
   name: "transitions",
   input: "db",
   summary: "List where each chapter's END_EVENT advances the story to",
@@ -41,4 +41,4 @@ export const transitions: Command<"db"> = {
       }));
     });
   },
-};
+});

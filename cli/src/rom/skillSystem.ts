@@ -23,7 +23,8 @@
  */
 
 import type { RomBuffer } from "./RomBuffer.ts";
-import type { GameVersion } from "./detect.ts";
+import type { GameVersion } from "../model/game.ts";
+import type { SkillPointers } from "../model/snapshotRecords.ts";
 
 /** A skill-system family, or `none`. Names match FEBuilderGBA's enum. */
 export type SkillSystem = "SkillSystem" | "FE8N" | "yugudora" | "midori" | "none";
@@ -222,23 +223,6 @@ function findPattern(rom: RomBuffer, pattern: readonly number[]): number {
     return addr;
   }
   return -1;
-}
-
-/** The slot each skill table's pointer lives in, or `null` when unresolved. */
-export interface SkillPointers {
-  /** `FindIconPointer`: 16x16 icon tiles, 128 bytes per skill. */
-  icon: number | null;
-  /** `FindTextPointer`: `u16` text id per skill id. */
-  text: number | null;
-  anime: number | null;
-  /** `FindAssignPersonalSkillPointer`: one `u8` skill id per **unit** id. */
-  assignUnit: number | null;
-  /** `FindAssignClassSkillPointer`: one `u8` skill id per **class** id. */
-  assignClass: number | null;
-  /** `FindAssignClassLevelUpSkillPointer`: a `u32` pointer list per class. */
-  levelUpClass: number | null;
-  /** `FindAssignUnitLevelUpSkillPointer`: a `u32` pointer list per unit. */
-  levelUpUnit: number | null;
 }
 
 /**

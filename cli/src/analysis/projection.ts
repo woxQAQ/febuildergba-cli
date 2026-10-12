@@ -5,7 +5,7 @@
  * This is **expectation arithmetic, not a probability simulation**: a stat's
  * expected value after `k` level-ups is `base + growth * k / 100`, and the
  * trajectory below is that expectation carried chapter by chapter. The
- * contrast with `tables/unitStats.ts` is deliberate and worth stating:
+ * contrast with `extract/unitStats.ts` is deliberate and worth stating:
  *   - `unitStats.ts` ports FEBuilderGBA's `GrowSimulator` line by line to
  *     reproduce what the *game* shows for one fixed appearance - bit-exact
  *     doubles, C# banker's rounding (`csRound`), upstream's `> 256` clamp
@@ -16,7 +16,7 @@
  *     exactly what a training recommendation needs.
  *
  * Rules and where they come from:
- *   - Starting stats are `class base + unit delta` (`tables/units.ts`,
+ *   - Starting stats are `class base + unit delta` (`model/stats.ts`,
  *     `startingStats`); the unit table's `level` field is the join level.
  *   - Growth rates are unsigned percentages stored **per unit**
  *     (`tables/units.ts` `+28..34`). FE growths belong to the person, not the
@@ -26,7 +26,7 @@
  *     (`tables/classes.ts` `+34..39` - the ROM has no luck bonus) and resets
  *     the level to 1. The promotion *direction* is recovered from the reverse
  *     `promotesToClassId` link plus `sortOrder`, by `buildPromotionGraph` in
- *     `tables/classes.ts` - the one implementation, shared with `load.ts`.
+ *     `model/promotion.ts` - the one implementation, shared with extraction.
  *   - Caps (`tables/classes.ts` `+19..25`) bind stepwise: once a stat
  *     reaches its current class's cap it stays there until a promotion
  *     raises the ceiling. That mirrors the in-game rule that a capped stat
@@ -86,8 +86,8 @@
  */
 
 import type { AnalysisClass, AnalysisUnit, ExpCurveInput, ProjectionInput } from "./data.ts";
-import type { Difficulty } from "../tables/unitStats.ts";
-import { buildPromotionGraph } from "../tables/classes.ts";
+import type { Difficulty } from "../model/stats.ts";
+import { buildPromotionGraph } from "../model/promotion.ts";
 import { collectAppearances, isPlayerArmyAppearance } from "./appearances.ts";
 import type { CombatantProfile } from "./expcurve.ts";
 import { battleExp, combatantOf, computeExpCurve } from "./expcurve.ts";

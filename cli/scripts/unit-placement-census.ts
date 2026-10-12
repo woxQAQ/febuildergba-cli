@@ -11,9 +11,10 @@
  * detail for one map-setting index.
  */
 
-import { load } from "../src/load.ts";
-import { classifyUnitArg, type LoadKind } from "../src/tables/eventScript.ts";
-import { reachableInstructions, type TracedBlockUnit } from "../src/tables/eventTrace.ts";
+import { extractData } from "../src/extract/service.ts";
+import { classifyUnitArg } from "../src/tables/eventScript.ts";
+import type { LoadKind } from "../src/model/game.ts";
+import { reachableInstructions, type TracedBlockUnit } from "../src/model/events.ts";
 
 const argv = process.argv.slice(2);
 const romPath =
@@ -22,9 +23,10 @@ const romPath =
 const chapterFlag = argv.indexOf("--chapter");
 const onlyChapter = chapterFlag >= 0 ? Number(argv[chapterFlag + 1]) : null;
 
-const loaded = load(romPath);
+const loaded = extractData(romPath);
+for (const diagnostic of loaded.diagnostics) console.error(`warning: ${diagnostic}`);
 const { chapters, eventTrace } = loaded;
-if (!loaded.chaptersAvailable || loaded.eventScripts.scripts.length === 0) {
+if (!loaded.chaptersAvailable || !loaded.eventsAvailable) {
   throw new Error("chapter/event evidence is unavailable; supply canonical cli/data resources");
 }
 
@@ -39,7 +41,7 @@ interface Block {
 }
 
 /**
- * Decode only in load(), then attribute instructions through the shared reach
+ * Decode only in extraction, then attribute instructions through the shared reach
  * walk. A load site shared by chapters is counted once in this whole-ROM
  * census, but appears in each chapter's projection.
  */

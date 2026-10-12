@@ -22,11 +22,12 @@
  */
 
 import { RomBuffer } from "../rom/RomBuffer.ts";
-import { hex } from "../format.ts";
 import type { TextContext } from "../text/huffman.ts";
 import { decodeTextId, displayName, sanitizeName, sanitizeText } from "../text/huffman.ts";
-import type { ClassBases } from "./classes.ts";
-import type { ResolvedTable, WeaponLevels } from "./common.ts";
+import type { ClassBases, UnitStats, UnitGrowths } from "../model/stats.ts";
+import { combineStartingStats } from "../model/stats.ts";
+import type { Unit } from "../model/snapshotRecords.ts";
+import type { ResolvedTable } from "./common.ts";
 import { readWeaponLevels } from "./common.ts";
 
 export const UNIT_RECORD_SIZE = 52;
@@ -54,96 +55,6 @@ export const UNIT_OFFSET = {
   supportPointer: 44,
   talkGroup: 48,
 } as const;
-
-/**
- * A unit's **per-unit** base stats: the 7 stats at `+12..18` plus constitution
- * at `+19`. These are **signed deltas**, not final values - ユニット別能力
- * (`X_BASE`, `@UNITBASE`, InputFormRef.cs:12022): `startingStat = class base +
- * unit base`; the field may be negative, and a sum of -1 **wraps to the maximum**
- * on load (so `0xFF` is -1, not +255). Zero (70 of 255 populated slots in the
- * test ROM) means "no adjustment on top of the class base".
- */
-export interface UnitStats {
-  hp: number;
-  str: number;
-  skl: number;
-  spd: number;
-  def: number;
-  res: number;
-  lck: number;
-  con: number;
-}
-
-/**
- * The stats a unit actually starts with: class base + per-unit delta.
- *
- * `lck` has no class base in FE, so it equals the per-unit value. `con` uses
- * the class's constitution base. See `UnitStats` for the source of the rule.
- */
-export type UnitStartingStats = UnitStats;
-
-export interface UnitGrowths {
-  hp: number;
-  str: number;
-  skl: number;
-  spd: number;
-  def: number;
-  res: number;
-  lck: number;
-}
-
-export interface Unit {
-  /** Unit id as used by the game and by support data. 1-based. */
-  id: number;
-  /** Index into the unit table. 0-based. `id === index + 1` for vanilla data. */
-  index: number;
-  address: number;
-  nameTextId: number;
-  descriptionTextId: number;
-  /**
-   * Display name: decoded, control bytes removed, `@XXXX` escapes stripped.
-   * Upstream is inconsistent - `UnitForm.GetUnitNameByAddr` keeps the escapes,
-   * `StatusUnitsMenuForm.GetNameFast` strips them; this CLI strips, because 17
-   * units in `dream-of-five.gba` carry a trailing `@001F`. The unstripped form
-   * is in {@link Unit.nameRaw}.
-   */
-  name: string;
-  /** Decoded name with `@XXXX` escapes left in place. See {@link Unit.name}. */
-  nameRaw: string;
-  description: string;
-  classId: number;
-  className: string;
-  /**
-   * True when this unit's class is the promoted half of a base/promoted pair
-   * (some class's reverse `promotesToClassId` points at it), so it has no
-   * promotion left. Hack rosters skew this way - Vision Quest starts 74% of
-   * playable units promoted - so it is a real strategic field, derived here from
-   * the class table.
-   */
-  isPromotedClass: boolean;
-  mapFaceId: number;
-  portraitId: number;
-  attribute: number;
-  sortOrder: number;
-  level: number;
-  /** Per-unit deltas, **signed**. See `UnitStats`. */
-  stats: UnitStats;
-  /** Class base + per-unit delta: what the unit actually starts with. */
-  startingStats: UnitStartingStats;
-  growths: UnitGrowths;
-  /** Sum of the seven growth rates. A rough "how much does this unit scale" signal. */
-  growthTotal: number;
-  weaponLevels: WeaponLevels;
-  abilityFlags: [number, number, number, number];
-  /** Raw pointer value stored at +44. */
-  supportPointer: number;
-  /** File offset the support pointer resolves to, or 0 when unset/invalid. */
-  supportAddress: number;
-  /** True when +44 held a pointer that lands inside the ROM. */
-  hasSupportData: boolean;
-  /** Heuristic: no name, no class and no level means an unused slot. */
-  isEmpty: boolean;
-}
 
 export interface UnitTableContext {
   rom: RomBuffer;
@@ -175,28 +86,6 @@ function readStats(rom: RomBuffer, addr: number): UnitStats {
     res: rom.i8(addr + o + 5),
     lck: rom.i8(addr + o + 6),
     con: rom.i8(addr + UNIT_OFFSET.constitution),
-  };
-}
-
-/**
- * `class base + unit base`. Luck has no class base, so it passes through.
- * Constitution uses the class's `con` base.
- */
-export function combineStartingStats(
-  unit: UnitStats,
-  classBases: ClassBases | undefined,
-): UnitStartingStats {
-  const base = (key: keyof ClassBases): number => classBases?.[key] ?? 0;
-  return {
-    hp: base("hp") + unit.hp,
-    str: base("str") + unit.str,
-    skl: base("skl") + unit.skl,
-    spd: base("spd") + unit.spd,
-    def: base("def") + unit.def,
-    res: base("res") + unit.res,
-    // No class luck base exists in FE: luck is purely per-unit.
-    lck: unit.lck,
-    con: base("con") + unit.con,
   };
 }
 
@@ -296,25 +185,4 @@ export function readAllUnits(ctx: UnitTableContext): Unit[] {
 /** Look up a unit by its 1-based id. */
 export function findUnitById(units: readonly Unit[], id: number): Unit | undefined {
   return units.find((u) => u.id === id);
-}
-
-/**
- * Map unit id -> display name. Falls back to `Unit 0xNN` for ids the table
- * does not cover, so support output never has holes. Typed on the two fields
- * it reads, so the db loader's rows (a `Pick` of `Unit`) pass too.
- */
-export function buildUnitNameMap(
-  units: readonly { id: number; name: string }[],
-): Map<number, string> {
-  const map = new Map<number, string>();
-  for (const unit of units) {
-    if (unit.id !== 0) map.set(unit.id, unit.name);
-  }
-  return map;
-}
-
-export function unitNameOrId(nameMap: ReadonlyMap<number, string>, id: number): string {
-  const name = nameMap.get(id);
-  if (name && name.length > 0) return name;
-  return `Unit ${hex(id, 2)}`;
 }

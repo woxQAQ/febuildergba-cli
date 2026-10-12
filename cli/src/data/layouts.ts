@@ -15,7 +15,8 @@
  * table's `checkPointer = 0x2c`, the support-data pointer every unit has.
  */
 
-import type { GameVersion } from "../rom/detect.ts";
+import type { GameVersion } from "../model/game.ts";
+import type { ForceSortieTermination } from "../model/snapshotRecords.ts";
 import { RomBuffer } from "../rom/RomBuffer.ts";
 
 export interface FixedSlot {
@@ -246,7 +247,7 @@ export interface ForceSortieLayout {
    * `0xFFFF` (FE8). `'fixed'` - the table holds exactly `count` records, one per
    * map id starting at `mapIdBase` (FE7, whose editor hardcodes `i < 23`).
    */
-  termination: "terminator" | "fixed";
+  termination: ForceSortieTermination;
   /** Only for `'fixed'`. */
   count?: number;
   /** Only for `'fixed'`: record `i` applies to map id `mapIdBase + i`. */

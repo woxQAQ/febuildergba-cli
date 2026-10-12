@@ -46,37 +46,11 @@ import { resolveTableSlot } from "../data/layouts.ts";
 import { RomBuffer } from "../rom/RomBuffer.ts";
 import type { TextContext } from "../text/huffman.ts";
 import { decodeTextId } from "../text/huffman.ts";
-import type { CondSlot } from "./eventScript.ts";
+import type { CondSlot, CondSlotInfo, PostPlacement, PlacedUnit, Chapter } from "../model/snapshotRecords.ts";
+import type { CondKind, UnitSide } from "../model/game.ts";
+import { COND_KINDS, UNIT_SIDES } from "../model/game.ts";
 
 // ---------------------------------------------------------------- condition slots
-
-/** Kinds of entry in the event-condition table, matching `CONDTYPE`. */
-export const COND_KINDS = [
-  "TURN",
-  "TALK",
-  "OBJECT",
-  "ALWAYS",
-  "TUTORIAL",
-  "TRAP",
-  "PLAYER_UNIT",
-  "ENEMY_UNIT",
-  "FREEMAP_PLAYER_UNIT",
-  "FREEMAP_ENEMY_UNIT",
-  "START_EVENT",
-  "END_EVENT",
-  "UNKNOWN",
-] as const;
-
-export type CondKind = (typeof COND_KINDS)[number];
-
-/**
- * A condition slot as described by `config/data/eventcond_<game>.txt`: a flag
- * on the left, a human-readable name on the right. FE8U has 20 of them.
- */
-export interface CondSlotInfo extends CondSlot {
-  index: number;
-  kind: CondKind;
-}
 
 function toCondKind(flag: string): CondKind {
   const upper = flag.trim().toUpperCase();
@@ -261,17 +235,6 @@ export function parseUnitGrowAutolevel(grow: number): number {
   return grow & 0x1;
 }
 
-/**
- * Allegiance, indexed by {@link parseUnitGrowAssign}. Names from the combo box
- * `L_3_UNITGROW_ASSIGN` (`EventUnitForm.Designer.cs:1259-1263`): 自軍 / 友軍 /
- * 敵軍 / 消滅. `removed` is not a side - a 消滅 unit is deleted on map load (how
- * a hack removes a roster unit), its wait icon rendering in the gray palette
- * (`ImageUnitWaitIconFrom.cs:173-176`).
- */
-export type UnitSide = "player" | "ally" | "enemy" | "removed";
-
-export const UNIT_SIDES: readonly UnitSide[] = ["player", "ally", "enemy", "removed"];
-
 /** `U.ParseUnitGrowAssign` counterpart, for the allegiance field. */
 export function unitSideOf(grow: number): UnitSide {
   return UNIT_SIDES[parseUnitGrowAssign(grow)] ?? "player";
@@ -286,63 +249,6 @@ export function decodeUnitPosition(
     return { x: packed & 0x3f, y: (packed >> 6) & 0x3f, ext: (packed >> 12) & 0x7 };
   }
   return { x: packed & 0xff, y: (packed >> 8) & 0xff, ext: null };
-}
-
-export interface PostPlacement {
-  /** Decoded packed FE8 coordinate at `+0`. */
-  x: number;
-  y: number;
-  ext: number | null;
-  /** `+2`: movement speed override for the approach (0 = default). */
-  speed: number;
-  /** `+3`: unit id this step belongs to (0 = the placed unit itself). */
-  unitId: number;
-  /** `+6`: frames to wait before this step. */
-  wait: number;
-}
-
-export interface PlacedUnit {
-  /** Byte offset of this record in the ROM. */
-  addr: number;
-  /** `+0`. Zero terminates the block and is never emitted. */
-  unitId: number;
-  /** `+1`. Zero means "use the unit's own class". */
-  classId: number;
-  /** `+2`. Unit id this unit acts after; 0 for none. */
-  commander: number;
-  /** Decoded from `+3` via `U.ParseUnitGrowLV`. */
-  level: number;
-  /**
-   * Raw `+3` (the reference's `B3`): the only place a placement records its
-   * allegiance - see {@link parseUnitGrowLevel}.
-   */
-  unitGrow: number;
-  /** `+3` bits 1-2 (`U.ParseUnitGrowAssign`). */
-  assign: number;
-  /** `+3` bits 1-2 decoded: player / ally / enemy / removed. */
-  side: UnitSide;
-  /** `+3` bit 0: 0 = no autolevel, 1 = autolevel by class growths. */
-  autolevel: number;
-  /** `+4`, the packed pre-placement coordinate. */
-  position: number;
-  /**
-   * Decoded `position`. For FE8 this is the coordinate the unit is *staged* at
-   * before the placement script runs; the coordinates it actually ends up on
-   * live in the array at `postPlacementAddr` (see `postPlacementCount`).
-   */
-  prePlacementCoord: { x: number; y: number; ext: number | null };
-  /** `+7`: number of post-placement coordinates. */
-  postPlacementCount: number;
-  /** `+8`: file offset of the post-placement coordinate array (0 when absent). */
-  postPlacementAddr: number;
-  /**
-   * The post-placement steps, decoded from the 8-byte records at
-   * `postPlacementAddr` (u16 packed pos, u8 speed, u8 unit id, u16 wait -
-   * `EventUnitForm.cs` writes them at `8 * i`). Empty when absent.
-   */
-  postPlacements: PostPlacement[];
-  /** `+12..15`: starting items. */
-  items: number[];
 }
 
 /**
@@ -416,93 +322,6 @@ export function readPlacements(
 }
 
 // ---------------------------------------------------------------- chapters
-
-export interface Chapter {
-  /**
-   * Map setting index, i.e. the row number in the map-setting table.
-   *
-   * **This is NOT the chapter number.** The table has a row per map id, so it
-   * also counts unused slots, world-map/skirmish maps and bonus maps. Use
-   * `chapterNumber` when you mean "which chapter is this".
-   */
-  index: number;
-  mapSettingAddr: number;
-  /**
-   * `u16(addr + 0x80) / 2`: the number the game shows in the prep screen and
-   * uses for the ending's turn count (`J_128`,
-   * `AccessibleDescription = "@MAPSETTING_CHAPTOR_ID"`,
-   * `InputFormRef.cs:12097`). Stored doubled so gaiden chapters can occupy half
-   * steps: prologue 0, `C1` 2, `C26` 52, `Finale` 54 (27), `Postscript` 55
-   * (27.5). Zero = no chapter number (every unused slot and bonus map).
-   */
-  chapterNumber: number;
-  /** `u16(addr + 0x80)` before halving. */
-  chapterNumberRaw: number;
-  /**
-   * `u16(addr + 0x70)`: "map name 1" text id (`J_112_TEXT`, マップ名1) - the prep
-   * screen title. One of the four "is this a map setting record" probes in
-   * `IsMapSettingEnd`.
-   */
-  titleTextId: number;
-  /**
-   * Decoded chapter title, e.g. `C7A: ... Into the ...`. Empty when there is no
-   * text context, the id is 0, or the id does not decode. Distinguishes a real
-   * chapter from a placeholder: unused slots are blank, world-map encounter maps
-   * decode to `@001F`.
-   */
-  title: string;
-  /** Event plist index from the map setting record. */
-  eventPlist: number;
-  /** `u8(addr + 12)`; 0 = none, else the game's rain/snow/sandstorm id. */
-  weatherId: number;
-  /** Raw `u16` at `layout.map.difficultyPos` (+0x14); 0 when not transcribed. */
-  difficultyRaw: number;
-  /**
-   * Enemy level bonus on hard: `(difficultyRaw & 0xF0) >> 4`. Effective enemy
-   * level is `level + hardBoost` before autolevel and class bases.
-   */
-  hardBoost: number;
-  /** Enemy level penalty on normal: `(difficultyRaw >> 8) & 0xF`. */
-  normalPenalty: number;
-  /** Enemy level penalty on easy: `difficultyRaw & 0xF`. */
-  easyPenalty: number;
-  /** File offset of the event-condition table (0 when unresolved). */
-  condTableAddr: number;
-  /** The 20 raw pointer values from the condition table. */
-  condPointers: number[];
-  /** Normal-mode player placement block, or 0. */
-  playerPlacementAddr: number;
-  /** Hard-mode player placement block, or 0. */
-  hardPlacementAddr: number;
-  /** START_EVENT script, or 0. */
-  startEventAddr: number;
-  /** END_EVENT script, or 0. */
-  endEventAddr: number;
-  /**
-   * Deployment slot count = `placements.length`, the same number the game
-   * computes: `GetChapterAllyUnitCount` (`0x08012344`) resolves slot 10/11 via
-   * `GetChapterAllyUnitDataPointer` (`0x08083348`) and counts 20-byte records
-   * until `u8(+0) == 0` - byte-for-byte what {@link readPlacements} does. The
-   * block doubles as the slot list: prep-screen chapters fill unused slots with
-   * a placeholder template (this ROM: `unit 2 / Thief`, one per coordinate), so
-   * `placements` can hold twelve records for one character. Read the count.
-   */
-  deploySlots: number;
-  /**
-   * Hard-mode slots (condition slot 11), equal to `deploySlots` unless slot 11
-   * points elsewhere - here only `mapIndex 22` (`C10B: Needle's Eye`), whose
-   * slot 11 is a 9-record block of green allies. `GetChapterAllyUnitCount`
-   * (`0x08012344`) does not filter allegiance, so it counts 9, and the hard prep
-   * screen would offer 9. The same block is also loaded by the start event
-   * (`402C0100` at `0x14c2128`), so the greens are placed either way; only the
-   * count is odd. Verify in-game.
-   */
-  deploySlotsHard: number;
-  /** Units on the field at the start of the chapter. */
-  placements: PlacedUnit[];
-  /** Hard-mode variant of {@link placements}, or `[]` when slot 11 is absent. */
-  hardPlacements: PlacedUnit[];
-}
 
 export function readChapters(
   rom: RomBuffer,

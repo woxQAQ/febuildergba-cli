@@ -59,10 +59,12 @@ import {
   unHuffmanRawBytes,
 } from "../text/huffman.ts";
 import { decodeItemFontBytes } from "../text/itemFont.ts";
-import type { ResolvedTable, WeaponLevels } from "./common.ts";
+import type { ResolvedTable } from "./common.ts";
 import { readWeaponLevels } from "./common.ts";
-import type { ClassFlagDef, MountKind } from "./classFlags.ts";
+import type { ClassFlagDef } from "./classFlags.ts";
 import { classifyMount, decodeAbilityFlags, specialActionRole } from "./classFlags.ts";
+import type { ClassBases } from "../model/stats.ts";
+import type { TerrainBonuses, UnitClass } from "../model/snapshotRecords.ts";
 
 export const CLASS_RECORD_SIZE = 84;
 
@@ -105,137 +107,6 @@ export const CLASS_OFFSET = {
   terrainResistancePointer: 76,
   unlabelled80: 80,
 } as const;
-
-export interface ClassBases {
-  hp: number;
-  str: number;
-  skl: number;
-  spd: number;
-  def: number;
-  res: number;
-  con: number;
-}
-
-/**
- * What a class *adds* to its avoid / defence / resistance while standing on a
- * terrain. All three arrays are indexed by the same terrain id `0x00..0x40` the
- * movement-cost table uses.
- */
-export interface TerrainBonuses {
-  avoid: number[];
-  def: number[];
-  res: number[];
-}
-
-export interface UnitClass {
-  id: number;
-  index: number;
-  address: number;
-  nameTextId: number;
-  name: string;
-  description: string;
-  /**
-   * The class this one is promoted FROM - a **reverse** link despite the name.
-   * Verified FE8U: `Knight`(1) stores 3 (`General`), `Paladin`(7) stores 5
-   * (`Lance Cavalier`); reading it forward gives nonsense. The name is kept
-   * because {@link CLASS_OFFSET.promotesToClassId} reads byte `+5` and
-   * FEBuilderGBA's own label for it is 転職先 (promotion *destination*), so a
-   * reader comparing the two should not find them quietly disagreeing. Read
-   * {@link buildPromotionGraph} instead of resolving the direction here.
-   *
-   * The pair links **both ways** (base -> promoted and promoted -> base), so
-   * the byte alone cannot order it; `sortOrder` breaks the tie.
-   */
-  promotesToClassId: number;
-  /**
-   * Promotion tier; each base/promoted pair shares one value (1 = Brawler/Great
-   * Chief, 2 = Gladiator, ...). Read this to know which side a class is on.
-   */
-  sortOrder: number;
-  movementRange: number;
-  movementSpeed: number;
-  /**
-   * `+26`: **class power** (威力等级), the divisor/multiplier of the FE6/7/8
-   * experience formula. The designer label is 経験値補正値 with
-   * `AccessibleDescription = "@CLASS_POWER"` (ClassForm.Designer.cs `J_26`,
-   * same in ClassFE6Form.Designer.cs), and the FE8U decomp names the byte
-   * `ClassData.classRelativePower` at `0x1A` (include/bmunit.h). Vanilla
-   * values are 1 (trainees/civilians), 2 (thieves, healers, dancers),
-   * 3 (everything else), 5 (final bosses); 0 marks the empty entry.
-   * Earlier read as "experience bonus" - a mistranslation of the label.
-   */
-  classPower: number;
-  bases: ClassBases;
-  /** Stat caps, same field order as `bases`. */
-  caps: ClassBases;
-  enemyGrowths: {
-    hp: number;
-    str: number;
-    skl: number;
-    spd: number;
-    def: number;
-    res: number;
-    lck: number;
-  };
-  /** Stat gains applied on promotion. Six fields - the ROM has no luck bonus. */
-  promotionBonuses: {
-    hp: number;
-    str: number;
-    skl: number;
-    spd: number;
-    def: number;
-    res: number;
-  };
-  weaponLevels: WeaponLevels;
-  /** The raw four ability bytes at `+40`..`+43`. */
-  abilityFlags: [number, number, number, number];
-  /**
-   * Decoded ability flags as stable ids (`mountHorse`, `canto`, `dance`, ...).
-   *
-   * Stable ids remain available without label resources. Display labels come
-   * from `unitclass_checkbox_<game>.txt`; see `tables/classFlags.ts`.
-   */
-  abilityFlagIds: string[];
-  /** Mount category from the icon flags. `null` for foot units. */
-  mount: MountKind;
-  /** Utility role from the action flags, or `null`. */
-  specialAction: "dancer" | "bard" | "thief" | null;
-  /**
-   * Cost to enter each terrain type, indexed by terrain id. `0xFF` means the
-   * class cannot enter that terrain. Read from the pointer at `+56`.
-   */
-  movementCosts: number[];
-  /** Rain-weather cost table (`+60`), or `[]` when the class has none. */
-  movementCostsRain: number[];
-  /** Snow-weather cost table (`+64`), or `[]` when the class has none. */
-  movementCostsSnow: number[];
-  /**
-   * True when every *passable* terrain costs the same - the mechanical signature
-   * of a flier, whose cost table is uniform except impassable terrain. A
-   * cross-check (the ability flags give `mountPegasus`/`mountWyvern` directly);
-   * disagreement signals a mis-parse.
-   */
-  flying: boolean;
-  /**
-   * Terrain avoid/defence/resistance bonuses, indexed by the same terrain id.
-   * `ClassForm.cs:517-521` maps 地形回避/地形防御/地形魔防 to `+68`/`+72`/`+76`;
-   * `MoveCostForm.cs:329-334` dereferences each as `p32(classAddr + offset)`
-   * before indexing, so they are pointers like `+56`. `null` when unusable.
-   */
-  terrainBonuses: TerrainBonuses | null;
-  /**
-   * True when this class gets **no terrain bonus on any terrain** - the
-   * definition of ignoring terrain, and the most complete of three signals:
-   * icon flags (`+41` bits 0x08/0x10) find 9 classes on the fixture, uniform
-   * movement costs (`+56`) 17, all-zero terrain bonus (`+68`) 17 with the
-   * **identical set**. The 8 the flags miss are airborne monsters (Manakete,
-   * Phantom, Mogall, Arch Mogall, Gargoyle, Grotesque, Dracolich), which have no
-   * mount flag because their icons are not flier icons.
-   */
-  terrainBonusImmune: boolean;
-  /** Heuristic: name id 0 and class id 0 means an unused slot. */
-  isEmpty: boolean;
-}
 
 export interface ClassTableContext {
   rom: RomBuffer;
@@ -411,49 +282,4 @@ export function buildClassNameMap(classes: readonly UnitClass[]): Map<number, st
     if (cls.name.length > 0) map.set(cls.id, cls.name);
   }
   return map;
-}
-
-/**
- * The class table's promotion graph, resolved once. `+5` is a reverse link (see
- * {@link UnitClass.promotesToClassId}) and the pair links both ways, so the
- * direction can only be recovered by comparing {@link UnitClass.sortOrder} -
- * across the vanilla base/promoted pairs the **higher** value is the promoted
- * side. Both halves of the answer are needed often enough that reading the byte
- * directly is how the two callers of this used to drift apart, so the rule
- * lives here and nowhere else.
- */
-export interface PromotionClass {
-  id: number;
-  promotesToClassId: number;
-  sortOrder: number;
-}
-
-export interface PromotionGraph<T extends PromotionClass> {
-  /** Class ids that are the promoted half of a pair, with a promotion left. */
-  readonly promoted: ReadonlySet<number>;
-  /** Base class id -> the class it promotes into. Absent when it has none. */
-  readonly targets: ReadonlyMap<number, T>;
-}
-
-/**
- * Three-tier chains exist (trainee -> base -> promoted) and `+5` names each
- * class's *own* base, so a promoted class whose reverse link points at another
- * promoted class still yields a correct base -> promoted edge.
- */
-export function buildPromotionGraph<T extends PromotionClass>(classes: readonly T[]): PromotionGraph<T> {
-  const byId = new Map(classes.map((c) => [c.id, c]));
-  const promoted = new Set<number>();
-  for (const c of classes) {
-    const target = byId.get(c.promotesToClassId);
-    if (target && target.sortOrder < c.sortOrder) promoted.add(c.id);
-  }
-
-  const targets = new Map<number, T>();
-  for (const c of classes) {
-    if (!promoted.has(c.id)) continue;
-    const base = byId.get(c.promotesToClassId);
-    if (base !== undefined && base.id !== c.id) targets.set(base.id, c);
-  }
-
-  return { promoted, targets };
 }

@@ -1,66 +1,53 @@
 /**
- * ROM loading, in one stage: read the file, identify the game, read every table
- * the extractor persists.
- *
- * It used to be two (`loadRom` for the identity, `parseRom` for everything), so
- * that a diagnostic like `text` would not pay the ~650 ms a full parse costs on
- * a 30 MB hack. `text` was the only consumer of the cheap half, and it needs
- * nothing from the parse stage - it wants a text decoder, which
- * `tables/huffman.ts` builds from a buffer and a layout. That is `text`'s own
- * dependency, not a second granularity of ROM loading; the split, the two
- * entry points and the two types it required were the cost of pretending
- * otherwise.
+ * Extraction service: identify the game and read every table the extractor
+ * persists. Storage and terminal output belong to the callers.
  */
 
 import { readFileSync } from "node:fs";
 
-import { RomBuffer } from "./rom/RomBuffer.ts";
-import type { GameVersion, RomIdentity } from "./rom/detect.ts";
-import { detectVersion, MIN_ROM_SIZES } from "./rom/detect.ts";
-import type { GameLayout } from "./data/layouts.ts";
-import { getLayout } from "./data/layouts.ts";
-import type { TextContext } from "./text/huffman.ts";
-import { makeTextContext } from "./text/huffman.ts";
-import { resolveTable } from "./tables/common.ts";
-import type { UnitClass } from "./tables/classes.ts";
-import { buildClassNameMap, buildPromotionGraph, readAllClasses } from "./tables/classes.ts";
-import type { Unit } from "./tables/units.ts";
-import { buildUnitNameMap, readAllUnits } from "./tables/units.ts";
-import type { SupportReadResult } from "./tables/supports.ts";
-import { readSupports } from "./tables/supports.ts";
-import type { SupportBonus } from "./tables/supportBonus.ts";
-import { readAffinityNames, readSupportBonuses } from "./tables/supportBonus.ts";
-import type { TerrainReadResult } from "./tables/terrainNames.ts";
-import { readTerrainNames } from "./tables/terrainNames.ts";
-import { DEFAULT_LANGUAGE, findConfigDataDir, isKnownLanguage } from "./config/data.ts";
-import { loadClassFlags } from "./tables/classFlags.ts";
-import type { EventScriptTable } from "./tables/eventScript.ts";
-import { loadConditionSlots, loadEventScripts } from "./tables/eventScript.ts";
-import type { Chapter, CondSlotInfo, MapSettingTable } from "./tables/chapters.ts";
-import { describeCondSlots, readChapters, readMapSettingTable } from "./tables/chapters.ts";
-import type { PlayOrder } from "./tables/storyPath.ts";
-import { buildPlayOrder, isRealMap, readAllTransitions } from "./tables/storyPath.ts";
-import type { ForceSortieTable } from "./tables/forceSortie.ts";
-import { readForceSortie } from "./tables/forceSortie.ts";
-import type { Item, ItemReadResult } from "./tables/items.ts";
+import { RomBuffer } from "../rom/RomBuffer.ts";
+import type { RomIdentity } from "../rom/detect.ts";
+import type { GameVersion } from "../model/game.ts";
+import { detectVersion, MIN_ROM_SIZES } from "../rom/detect.ts";
+import type { GameLayout } from "../data/layouts.ts";
+import { getLayout } from "../data/layouts.ts";
+import type { TextContext } from "../text/huffman.ts";
+import { makeTextContext } from "../text/huffman.ts";
+import { resolveTable } from "../tables/common.ts";
+import { buildClassNameMap, readAllClasses } from "../tables/classes.ts";
+import { buildPromotionGraph } from "../model/promotion.ts";
+import { readAllUnits } from "../tables/units.ts";
+import { buildUnitNameMap } from "../format.ts";
+import { readSupports } from "../tables/supports.ts";
+import { readAffinityNames, readSupportBonuses } from "../tables/supportBonus.ts";
+import { readTerrainNames } from "../tables/terrainNames.ts";
+import { DEFAULT_LANGUAGE, findConfigDataDir, isKnownLanguage } from "../config/data.ts";
+import { loadClassFlags } from "../tables/classFlags.ts";
+import type { EventScriptTable } from "../tables/eventScript.ts";
+import { loadConditionSlots, loadEventScripts } from "../tables/eventScript.ts";
+import type { MapSettingTable } from "../tables/chapters.ts";
+import { describeCondSlots, readChapters, readMapSettingTable } from "../tables/chapters.ts";
+import { isRealMap, readAllTransitions } from "../tables/storyPath.ts";
+import { buildPlayOrder } from "../model/storyPath.ts";
+import { readForceSortie } from "../tables/forceSortie.ts";
+import type { ItemReadResult } from "../model/snapshotRecords.ts";
 import {
   buildItemMap,
   loadItemEffectNames,
   readItems,
   readPromotionTables,
-} from "./tables/items.ts";
-import type { SkillReadResult } from "./tables/skills.ts";
-import { readSkills } from "./tables/skills.ts";
-import type { ShopReadResult } from "./tables/shops.ts";
-import { readShops } from "./tables/shops.ts";
-import type { ChapterObjects } from "./tables/mapObjects.ts";
-import { readAllObjects } from "./tables/mapObjects.ts";
-import type { EventTrace } from "./tables/eventTrace.ts";
-import { eventDecodeWarning, extractEventTrace } from "./tables/eventTrace.ts";
+} from "../tables/items.ts";
+import { readSkills } from "../tables/skills.ts";
+import { readShops } from "../tables/shops.ts";
+import { readAllObjects } from "../tables/mapObjects.ts";
+import { extractEventTrace } from "../tables/eventTrace.ts";
+import { eventDecodeWarning } from "../model/events.ts";
+import { buildUnitStats } from "./unitStats.ts";
+import type { ExtractionSnapshot } from "../model/snapshot.ts";
 
 /**
  * The ROM plus what `text` needs to decode it: no table walk, no
- * `config/data`. Separate from `load` because it is a different dependency set,
+ * `config/data`. Separate from extraction because it is a different dependency set,
  * not a cheaper granularity of the same one - decoding a text id needs the
  * Huffman context, which is built from the buffer and the layout.
  */
@@ -73,7 +60,7 @@ export interface LoadedRom {
 }
 
 /**
- * Read the ROM file and identify the game: every check `load` performs, minus
+ * Read the ROM file and identify the game: every check extraction performs, minus
  * the parse. Throws `RomNotFoundError` for an unreadable path and
  * `UnsupportedRomError` for a file that is not a supported ROM - both carry a
  * one-line message, not a stack trace.
@@ -83,7 +70,7 @@ export function readRom(path: string): LoadedRom {
 }
 
 /**
- * `load`'s two halves: `rom` is what `readRom` returns, `bare` is the same
+ * Identity and decoding context: `rom` is what `readRom` returns, `bare` is the same
  * without a Huffman context for callers that build one themselves.
  */
 function identify(path: string): { rom: LoadedRom; bare: Omit<LoadedRom, "text"> } {
@@ -139,84 +126,21 @@ function identify(path: string): { rom: LoadedRom; bare: Omit<LoadedRom, "text">
 }
 
 /**
- * Read the ROM file and read every table the extractor persists - the whole
- * pipeline `extract` runs. `options.warn` also carries the "config/data is
- * missing" warning, so a caller that wants silence passes a no-op.
+ * Build the complete snapshot without opening a database or printing warnings.
+ * Diagnostics travel with the records so library consumers receive them too.
  */
-export function load(path: string, options: LoadOptions = {}): ParsedRom {
+export function extractData(path: string, options: ExtractOptions = {}): ExtractionSnapshot {
   const { rom: loaded, bare } = identify(path);
   const language = options.language;
-  const warn = options.warn ?? ((message: string) => console.error(`warning: ${message}`));
+  const diagnostics: string[] = [];
   if (language !== undefined && !isKnownLanguage(language)) {
-    // `load` is also a library entry point, so it cannot assume the CLI
-    // validated `--lang` first. Same predicate as the CLI raises on - see
-    // `isKnownLanguage`; only the response differs (warn, not exit 2).
-    warn(`unknown --lang "${language}"; falling back to the default language`);
-    return parse(bare, loaded.text, { ...options, language: DEFAULT_LANGUAGE });
+    diagnostics.push(`unknown --lang "${language}"; falling back to the default language`);
+    return parse(bare, loaded.text, { ...options, language: DEFAULT_LANGUAGE }, diagnostics);
   }
-  return parse(bare, loaded.text, options);
+  return parse(bare, loaded.text, options, diagnostics);
 }
 
-/**
- * A loaded ROM plus every table the extractor persists - the ~650 ms a full
- * parse costs on a 30 MB hack. This is what `extract` walks into the db.
- */
-export interface ParsedRom extends LoadedRom {
-  /** Resolved `config/data` directory, or `null` when not found. */
-  configDir: string | null;
-  /**
-   * The `--lang` value this ROM was parsed with, or `null` for the default.
-   * Recorded in the db's `meta` table so a surprising name in the output can
-   * be traced to a language choice rather than guessed at.
-   */
-  configLanguage: string | null;
-  classes: UnitClass[];
-  units: Unit[];
-  supports: SupportReadResult;
-  /** Support-affinity bonus table. See `tables/supportBonus.ts` for caveats. */
-  supportBonuses: SupportBonus[];
-  /** Affinity id (1..7) -> name, decoded from the ROM's own text ids. */
-  affinityNames: Map<number, string>;
-  /**
-   * Terrain names, indexed by the same terrain id a class's movement-cost
-   * table uses. See `tables/terrainNames.ts`.
-   */
-  terrainNames: TerrainReadResult;
-  /** Condition-slot descriptions from `eventcond_<game>.txt`. */
-  condSlots: CondSlotInfo[];
-  /** Event-script opcode table; empty when `config/data` is missing. */
-  eventScripts: EventScriptTable;
-  /** Decoded once; story order, persistence and census consume this evidence. */
-  eventTrace: EventTrace;
-  /** Missing chapter inputs must not be mistaken for a game with no chapters. */
-  chaptersAvailable: boolean;
-  /** One entry per map setting record. */
-  chapters: Chapter[];
-  /**
-   * The order the chapters are played in, main path and side chapters together.
-   * This - not `chapterNumber` - is what orders the game; see
-   * `tables/storyPath.ts`.
-   */
-  playOrder: PlayOrder;
-  /**
-   * Forced-deployment ("必ず出撃") table, or `null` when the game has none.
-   * See `tables/forceSortie.ts` for the recovered record layout.
-   */
-  forceSortie: ForceSortieTable | null;
-  /** One entry per item id; index 0 is the empty slot. */
-  items: Item[];
-  /** Shops (prep screen + per-map), or `null` when the game layout has none. */
-  shopData: ShopReadResult | null;
-  /** Chests, villages, doors and seize points, one entry per chapter. */
-  chapterObjects: ChapterObjects[];
-  /**
-   * Skill tables, or `null` when the ROM carries no decodable skill system.
-   * See `tables/skills.ts` - `null` means "no skills", not "parse failed".
-   */
-  skills: SkillReadResult | null;
-}
-
-export interface LoadOptions {
+export interface ExtractOptions {
   /**
    * Explicit `config/data` directory. Defaults to the vendored `cli/data/`
    * copy (see `config/data.ts`); override only to test against an upstream tree.
@@ -228,11 +152,6 @@ export interface LoadOptions {
    * FEBuilderGBA's own order.
    */
   language?: string;
-  /**
-   * Where to send the "config/data is missing" warning. Defaults to stderr.
-   * Pass a no-op to stay quiet (library use).
-   */
-  warn?: (message: string) => void;
 }
 
 export class UnsupportedRomError extends Error {
@@ -276,11 +195,12 @@ function titleFragment(version: string): string {
 function parse(
   base: Omit<LoadedRom, "text">,
   text: TextContext,
-  options: LoadOptions,
-): ParsedRom {
+  options: ExtractOptions,
+  diagnostics: string[],
+): ExtractionSnapshot {
   const { path, rom: buffer, identity, layout } = base;
   const game = titleFragment(identity.version);
-  const warn = options.warn ?? ((message: string) => console.error(`warning: ${message}`));
+  const warn = (message: string): void => { diagnostics.push(message); };
   const language = options.language;
 
   // Labels are optional; canonical event definitions are required to interpret
@@ -384,13 +304,20 @@ function parse(
   });
 
   return {
-    path,
-    rom: buffer,
-    identity,
-    layout,
-    text,
-    configDir,
-    configLanguage: language ?? null,
+    metadata: {
+      path,
+      sizeBytes: buffer.length,
+      gameCode: identity.gameCode,
+      title: identity.title,
+      version: identity.version,
+      displayName: layout.displayName,
+      isMultibyte: layout.text.isMultibyte,
+      skillSystem: identity.skillSystem,
+      notes: identity.notes,
+      configDir,
+      configLanguage: language ?? DEFAULT_LANGUAGE,
+    },
+    diagnostics,
     classes,
     units,
     supports,
@@ -398,11 +325,12 @@ function parse(
     affinityNames,
     terrainNames,
     condSlots,
-    eventScripts,
     eventTrace,
     chaptersAvailable,
+    eventsAvailable: chaptersAvailable && eventScripts.scripts.length > 0,
     chapters,
     playOrder,
+    unitStats: buildUnitStats({ units, classes, chapters, trace: eventTrace }),
     forceSortie,
     items,
     shopData,

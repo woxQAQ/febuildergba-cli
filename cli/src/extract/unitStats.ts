@@ -43,64 +43,12 @@
  *     `event_unit_loads.block_id`, using the shared event reach walk.
  */
 
-import type { Chapter, PlacedUnit, UnitSide } from "./chapters.ts";
-import type { UnitClass } from "./classes.ts";
-import type { EventTrace, TracedInstruction, TracedBlockUnit } from "./eventTrace.ts";
-import { reachableScripts } from "./eventTrace.ts";
-import type { Unit } from "./units.ts";
-
-export type Difficulty = "easy" | "normal" | "hard";
-
-/** Cheapest first. The order is the emit order, and it is stable. */
-export const DIFFICULTIES: readonly Difficulty[] = ["easy", "normal", "hard"];
-
-/** The seven stats the simulator grows, plus constitution. */
-export interface SimStats {
-  hp: number;
-  str: number;
-  skl: number;
-  spd: number;
-  def: number;
-  res: number;
-  lck: number;
-  con: number;
-}
-
-/** How a unit got onto the map. */
-export type AppearanceSource = "placement" | "event";
-
-export interface UnitStatRow {
-  mapIndex: number;
-  difficulty: Difficulty;
-  source: AppearanceSource;
-  /**
-   * Identifies the block within the source: **0** = the normal placement block
-   * (slot 10) and **1** = the hard one (slot 11) for `placement`; the
-   * `load_blocks.id` for `event`.
-   */
-  sourceId: number;
-  /** Row number within that block. */
-  position: number;
-  unitId: number;
-  /** Resolved: a record's `classId` of 0 means the unit's own class. */
-  classId: number;
-  side: UnitSide;
-  /** The level the record stores, before any adjustment. */
-  shownLevel: number;
-  /** The difficulty adjustment applied; always 0 for non-enemies. See the module doc. */
-  levelDelta: number;
-  /** `shownLevel + levelDelta`, deliberately not clamped. */
-  level: number;
-  /** `level < 0`: the game underflows and the enemy comes out maxed. See the module doc. */
-  levelUnderflow: boolean;
-  /** The record's grow flag: `false` means fixed stats, no growth at all. */
-  autolevel: boolean;
-  /** The level the growth actually ran to: `level + 10` when promoted. */
-  growLevel: number;
-  /** True when either the unit's or the class's `+41` bit 0 is set. */
-  promoted: boolean;
-  stats: SimStats;
-}
+import type { Chapter, PlacedUnit, UnitClass, Unit } from "../model/snapshotRecords.ts";
+import type { UnitSide } from "../model/game.ts";
+import type { EventTrace, TracedInstruction, TracedBlockUnit } from "../model/events.ts";
+import { reachableScripts } from "../model/events.ts";
+import type { Difficulty, UnitStatRow, SimStats, AppearanceSource } from "../model/stats.ts";
+import { DIFFICULTIES } from "../model/stats.ts";
 
 export interface UnitStatContext {
   units: readonly Unit[];

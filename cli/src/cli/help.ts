@@ -87,7 +87,7 @@ export function usage(): string {
     "  fe-rom extract ../fixtures/dream-of-five.gba   # writes dream-of-five.db",
     "  fe-rom roster dream-of-five.db",
     "  sqlite3 dream-of-five.db 'SELECT id, name FROM units WHERE has_support_data'",
-    "The full schema and its conventions are documented in src/db/schema.ts.",
+    "The full schema and its conventions are documented in src/repository/schema.ts.",
     "",
     "Exit codes: 0 ok, 1 the input (ROM or db) could not be read, 2 bad arguments.",
     "",

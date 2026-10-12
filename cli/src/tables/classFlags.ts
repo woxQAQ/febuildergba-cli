@@ -211,7 +211,7 @@ export function decodeAbilityFlags(
  * exclusive in practice; when a hack sets several, report the first in
  * wyvern > pegasus > horse order (wyvern/pegasus imply flying, more specific).
  */
-export type MountKind = "wyvern" | "pegasus" | "horse" | "armour" | null;
+import type { MountKind } from "../model/game.ts";
 
 export function classifyMount(flags: readonly string[]): MountKind {
   const has = (f: string): boolean => flags.includes(f);

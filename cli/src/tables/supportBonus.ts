@@ -83,6 +83,8 @@
 import { RomBuffer } from "../rom/RomBuffer.ts";
 import type { TextContext } from "../text/huffman.ts";
 import { decodeTextId, displayName } from "../text/huffman.ts";
+import type { SupportBonus } from "../model/snapshotRecords.ts";
+import { SUPPORT_BONUS_FIELDS } from "../model/snapshotRecords.ts";
 
 /**
  * `InputFormRef.GetAttributeName()` - hardcoded in the reference.
@@ -142,34 +144,6 @@ export const AFFINITY_TEXT_IDS: Readonly<Record<number, number>> = {
 };
 
 export const SUPPORT_BONUS_RECORD_SIZE = 8;
-
-/**
- * Field names for bytes 1..7 of a record, in offset order.
- *
- * Transcribed from the labels adjacent to `B1`-`B7` in
- * `SupportAttributeForm.Designer.cs`. Byte 7's label is literally `??` in the
- * reference, and the disassembly above shows the game never reads it, so it
- * stays unnamed here rather than being guessed.
- */
-export const SUPPORT_BONUS_FIELDS = [
-  "atk", // 攻撃
-  "def", // 防御
-  "hit", // 命中
-  "avoid", // 回避
-  "crit", // 必殺
-  "critAvoid", // 必殺回避
-  "unknown7", // J_7, labelled "??" in the reference; never read by the game
-] as const;
-
-export interface SupportBonus {
-  /** Affinity id, 1..7. */
-  affinity: number;
-  affinityName: string;
-  /** Raw 8 bytes, exactly as stored. */
-  raw: number[];
-  /** Bytes 1..7 keyed by {@link SUPPORT_BONUS_FIELDS}. */
-  bonuses: Record<(typeof SUPPORT_BONUS_FIELDS)[number], number>;
-}
 
 /**
  * Read the support-bonus table.

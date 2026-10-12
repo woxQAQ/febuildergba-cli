@@ -6,15 +6,15 @@
  * one fractional field for display.
  */
 
-import { expCurveOf } from "../db/analysis.ts";
-import type { Command } from "./types.ts";
+import { expCurveOf } from "../analysis/service.ts";
+import { defineDbCommand } from "./types.ts";
 
 /** Display rounding: levels are fractional by construction (exp / 100). */
 function round2(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
-export const expcurve: Command<"db"> = {
+export const expcurve = defineDbCommand({
   name: "expcurve",
   input: "db",
   summary: "Show how much experience each chapter offers, per difficulty",
@@ -37,4 +37,4 @@ export const expcurve: Command<"db"> = {
       })),
     };
   },
-};
+});

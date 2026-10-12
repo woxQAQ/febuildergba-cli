@@ -38,7 +38,7 @@
  */
 
 import type { RomBuffer } from "../rom/RomBuffer.ts";
-import type { SkillPointers } from "../rom/skillSystem.ts";
+import type { SkillPointers, Skill, SkillAssignment, SkillLearn, SkillReadResult } from "../model/snapshotRecords.ts";
 import { hasClassSkillExtends, resolveSkillPointers } from "../rom/skillSystem.ts";
 import type { TextContext } from "../text/huffman.ts";
 import { decodeTextId, sanitizeText, stripAllCodes } from "../text/huffman.ts";
@@ -48,62 +48,6 @@ const MAX_SKILLS = 255;
 
 /** Upper bound on a learn list; upstream lints 20+ entries as suspicious. */
 const MAX_LEARN_ENTRIES = 32;
-
-export interface Skill {
-  id: number;
-  /** Text id from the `text` table; 0 = the empty skill slot. */
-  nameTextId: number;
-  /** Upstream's name rule: text before the first `:`. Empty when there is none. */
-  name: string;
-  /**
-   * Everything after the first `:`, trimmed. The text table's own format is
-   * `Name:Description` - `SkillTextToName` splits on the first colon and keeps
-   * the left half - so this is the right half, and it is where the patch
-   * actually documents what a skill does ("攻撃時に...", "地形..."). Empty when
-   * the string carries no colon, which is also when {@link name} is empty.
-   */
-  description: string;
-  /** The full decoded string, for the cases where {@link name} is empty. */
-  text: string;
-}
-
-/** An innate skill: one per unit/class at most, so `skillId` is never 0. */
-export interface SkillAssignment {
-  ownerId: number;
-  skillId: number;
-}
-
-export interface SkillLearn {
-  ownerId: number;
-  /** Index inside the owner's learn list. */
-  position: number;
-  /**
-   * `rawLevel & 0x1f` with the extension, else the whole byte.
-   *
-   * `255` is not a level: it means the skill is innate on entering the class
-   * directly and is *lost* by promoting into it. See the module doc.
-   */
-  level: number;
-  skillId: number;
-  /** The level byte as stored; the flags live in its high bits. */
-  rawLevel: number;
-  playerOnly: boolean;
-  enemyOnly: boolean;
-  /** Both sides (`(rawLevel & 96) == 96`) - upstream calls this 通常・ハード共通. */
-  bothSides: boolean;
-  hardOnly: boolean;
-}
-
-export interface SkillReadResult {
-  pointers: SkillPointers;
-  /** Whether the level byte's player/enemy/hard bits are meaningful. */
-  classSkillExtends: boolean;
-  skills: Skill[];
-  unitSkills: SkillAssignment[];
-  classSkills: SkillAssignment[];
-  unitLearns: SkillLearn[];
-  classLearns: SkillLearn[];
-}
 
 export interface SkillReadOptions {
   rom: RomBuffer;

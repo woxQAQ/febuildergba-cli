@@ -11,7 +11,7 @@ export interface ParsedArgv {
   /** The registered command, or `null` when the word is not one. */
   resolved: AnyCommand | null;
   /** The ROM path for `"rom"` commands, the extract db path for `"db"` ones. */
-  romPath: string;
+  path: string;
   /** Positionals after the ROM path - `text` takes text ids here. */
   args: string[];
   flags: ResolvedFlags;
@@ -126,7 +126,7 @@ export function parseArgv(argv: readonly string[]): ParsedArgv {
   return {
     command,
     resolved,
-    romPath: positionals[1] ?? "",
+    path: positionals[1] ?? "",
     args: positionals.slice(2),
     help: values.help === true,
     flags: {

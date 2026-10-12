@@ -1,5 +1,5 @@
 /**
- * Opening an extract database. drizzle has no `node:sqlite` driver, so this
+ * Repository connection. drizzle has no `node:sqlite` driver, so this
  * adapts `DatabaseSync` to drizzle's sqlite-proxy interface: drizzle builds
  * typed SQL from `schema.ts`, the callback runs it on the built-in driver. The
  * proxy callback is async in type only.

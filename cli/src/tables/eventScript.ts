@@ -29,6 +29,8 @@ import {
   isComment,
 } from "../config/data.ts";
 import type { RomBuffer } from "../rom/RomBuffer.ts";
+import type { LoadKind } from "../model/game.ts";
+import type { CondSlot } from "../model/snapshotRecords.ts";
 
 /** Argument type names, matching `EventScript.ArgType` by string. */
 export const ARG_TYPE_FIXED = "FIXED";
@@ -471,8 +473,6 @@ export function destinationOf(rom: RomBuffer, code: EventCode): number | null {
 }
 
 /** Classification of a unit-pointer operand, independent of its display label. */
-export type LoadKind = "recruit" | "load" | "cutscene" | "other";
-
 function patternByte(pattern: string, i: number): number {
   if (i < 0) return -1;
   const at = i * 2;
@@ -546,11 +546,6 @@ function isFe8DummyEnd(rom: RomBuffer, code: EventCode): boolean {
 }
 
 /** Chapter-condition slot kinds, from `config/data/eventcond_<game>.txt`. */
-export interface CondSlot {
-  flag: string;
-  name: string;
-}
-
 export function loadConditionSlots(configDir: string, game: string, language?: string): CondSlot[] {
   const path = resolveCanonicalDataFile(configDir, "eventcond_", game);
   if (path === null) return [];

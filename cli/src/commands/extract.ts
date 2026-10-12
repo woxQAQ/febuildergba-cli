@@ -1,8 +1,9 @@
 import { renameSync, unlinkSync } from "node:fs";
 import { basename, extname, resolve } from "node:path";
 
-import { openDb } from "../db/index.ts";
-import { populate } from "../db/populate.ts";
+import { extractData } from "../extract/service.ts";
+import { openDb } from "../repository/open.ts";
+import { writeSnapshot } from "../repository/write.ts";
 import type { Command } from "./types.ts";
 
 /**
@@ -24,10 +25,9 @@ function unlinkIfExists(path: string): void {
   }
 }
 
-export const extract: Command<"rom", "parsed"> = {
+export const extract: Command<"rom"> = {
   name: "extract",
   input: "rom",
-  romInput: "parsed",
   summary: "Parse the whole ROM once into a SQLite database for SQL analysis",
   description:
     "Parses every table the ROM carries - units, classes, supports, chapters " +
@@ -39,7 +39,7 @@ export const extract: Command<"rom", "parsed"> = {
     "neither costs a re-parse.\n\n" +
     "The schema stores facts, not presentations: names join by id, prices " +
     "are `uses * unit_price`; per-question derivations such as the roster of " +
-    "support-bearing units are commands of their own. See src/db/schema.ts " +
+    "support-bearing units are commands of their own. See src/repository/schema.ts " +
     "for the full table list and conventions.\n\n" +
     "An existing output file is replaced atomically: the extract is built " +
     "into a scratch file next to the output and renamed over it, so a failed " +
@@ -47,8 +47,8 @@ export const extract: Command<"rom", "parsed"> = {
     "an extract is a rebuildable artifact, not state.\n\n" +
     "Note: this uses Node's built-in node:sqlite, which prints an " +
     "ExperimentalWarning on stderr. It is harmless.",
-  run: async ({ rom, flags }) => {
-    const out = flags.out ?? defaultOutPath(rom.path);
+  run: async ({ path, flags }) => {
+    const out = flags.out ?? defaultOutPath(path);
 
     // Rebuild into a scratch file, then rename over the output: a failed
     // extract must not take the previous good database down with it. The
@@ -62,15 +62,21 @@ export const extract: Command<"rom", "parsed"> = {
     try {
       const handle = openDb(tmp);
       try {
-        result = await populate(handle, rom);
+        const snapshot = extractData(path, {
+          ...(flags.lang === undefined ? {} : { language: flags.lang }),
+        });
+        for (const diagnostic of snapshot.diagnostics) {
+          console.error(`warning: ${diagnostic}`);
+        }
+        result = await writeSnapshot(handle, snapshot);
       } finally {
         handle.close();
       }
+      renameSync(tmp, out);
     } catch (error) {
       unlinkIfExists(tmp);
       throw error;
     }
-    renameSync(tmp, out);
     const elapsed = performance.now() - started;
 
     const rows = Object.values(result.tables).reduce((a, n) => a + n, 0);

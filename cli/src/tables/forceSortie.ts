@@ -51,34 +51,10 @@
 
 import type { ForceSortieLayout, GameLayout } from "../data/layouts.ts";
 import { RomBuffer } from "../rom/RomBuffer.ts";
+import type { ForceSortieRecord, ForceSortieTable } from "../model/snapshotRecords.ts";
 
 /** The terminator of a `'terminator'`-style table (`u16(+0)`). */
 export const FORCE_SORTIE_TERMINATOR = 0xffff;
-
-export interface ForceSortieRecord {
-  /** Position in the table. */
-  index: number;
-  /** File offset of the record. */
-  addr: number;
-  /** `+0`. The unit that must be deployed. */
-  unitId: number;
-  /** `+2`. `0xFF` = any route, otherwise must equal `ChapterData + 0x1B`. */
-  route: number;
-  /** `+3`. `0xFF` = any map, otherwise a map-setting index. */
-  mapIndex: number;
-}
-
-export interface ForceSortieTable {
-  /** File offset of the 4-byte slot holding the table pointer. */
-  slotOffset: number;
-  /** File offset of the table itself. */
-  tableOffset: number;
-  recordSize: number;
-  count: number;
-  /** How the end of the table was found. */
-  termination: ForceSortieLayout["termination"];
-  records: ForceSortieRecord[];
-}
 
 /**
  * Read the forced-deployment table.

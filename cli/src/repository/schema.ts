@@ -1,6 +1,6 @@
 /**
  * The extract database schema, as drizzle table definitions - the single source
- * of truth. `ddl.ts` generates CREATE TABLE from them, `populate.ts` inserts
+ * of truth. `ddl.ts` generates CREATE TABLE from them, `write.ts` inserts
  * through them, query-side consumers select through them; no hand-written SQL
  * copy to drift.
  *
@@ -44,7 +44,7 @@
 
 import { integer, primaryKey, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
 import { foreignKey } from "drizzle-orm/sqlite-core";
-import type { TracedArgument } from "../tables/eventTrace.ts";
+import type { TracedArgument } from "../model/events.ts";
 
 /** Provenance and run-level facts, as key/value pairs. */
 export const meta = sqliteTable("meta", {
@@ -568,7 +568,7 @@ export const derivedPlayOrder = sqliteTable("derived_play_order", {
  *
  * A ROM stores *inputs* (unit, class, level, grow flag) and the game computes
  * seven numbers on map load; this is that computation, ported from
- * FEBuilderGBA's simulator (`tables/unitStats.ts` for algorithm/provenance).
+ * FEBuilderGBA's simulator (`extract/unitStats.ts` for algorithm/provenance).
  *
  * Materialized rather than a view because the arithmetic is not SQL's: C#
  * `Math.Round` is banker's rounding and the growth is a double product, so a

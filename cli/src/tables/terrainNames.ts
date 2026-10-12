@@ -22,38 +22,11 @@ import type { RomBuffer } from "../rom/RomBuffer.ts";
 import type { TerrainNameLayout } from "../data/layouts.ts";
 import type { TextContext } from "../text/huffman.ts";
 import { decodeTextId, sanitizeName, stripAllCodes } from "../text/huffman.ts";
+import type { TerrainName, TerrainReadResult } from "../model/snapshotRecords.ts";
 
 /** `U.isPointerOrNULL`: either 0 or a usable GBA pointer. */
 function isPointerOrNull(value: number): boolean {
   return value === 0 || (value >= 0x0800_0000 && value < 0x0a00_0000);
-}
-
-export interface TerrainName {
-  /** Terrain id, 0..0x40. Also the index into a class's movement-cost table. */
-  id: number;
-  /** Decoded name; `''` when the record is empty or undecodable. */
-  name: string;
-  /** Non-multibyte releases only: the text id the name was decoded from. */
-  textId: number | null;
-  /** Multibyte releases only: file offset of the raw string. */
-  nameAddress: number | null;
-  /** False when the name could not be decoded (Shift-JIS releases). */
-  decoded: boolean;
-  /** Raw bytes, always present - useful for the undecoded case. */
-  raw: number[];
-}
-
-export interface TerrainTable {
-  slotOffset: number;
-  tableOffset: number;
-  recordSize: number;
-  isMultibyte: boolean;
-  count: number;
-}
-
-export interface TerrainReadResult {
-  table: TerrainTable | null;
-  names: TerrainName[];
 }
 
 /**

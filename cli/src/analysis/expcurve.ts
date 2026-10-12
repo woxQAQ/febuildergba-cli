@@ -59,8 +59,8 @@
  *
  * The budget itself
  *
- * Enemies come from `derived_unit_stats` (`data.unitStats` - what `populate`
- * computed with `tables/unitStats.ts`'s simulator), which already resolves
+ * Enemies come from `derived_unit_stats` (`data.unitStats` - simulator output
+ * materialized by extraction), which already resolves
  * each appearance's level under each difficulty. The budget measures the
  * chapter at **parity**:
  * a hypothetical player unit that fights every enemy at that enemy's own
@@ -78,9 +78,9 @@
  */
 
 import type { AnalysisClass, ExpCurveInput } from "./data.ts";
-import type { GameVersion } from "../rom/detect.ts";
-import type { Difficulty, UnitStatRow } from "../tables/unitStats.ts";
-import { DIFFICULTIES } from "../tables/unitStats.ts";
+import type { GameVersion } from "../model/game.ts";
+import type { Difficulty, UnitStatRow } from "../model/stats.ts";
+import { DIFFICULTIES } from "../model/stats.ts";
 
 // ----------------------------------------------------------------- constants
 // Every value cited; see the module doc for the source abbreviations.
@@ -418,7 +418,7 @@ export function computeExpCurve(data: ExpCurveInput, opts: ExpCurveOptions = {})
       for (const row of enemies) {
         const cls = classById.get(row.classId) as AnalysisClass;
         // A level that underflowed below 0 wraps to a maxed enemy in the
-        // game (see tables/unitStats.ts); no formula input survives that.
+        // game (see extract/unitStats.ts); no formula input survives that.
         // Clamp to 0 so the parity computation stays symmetric - the level
         // terms cancel, which is the only reading the budget can defend.
         const level = row.levelUnderflow ? 0 : row.level;

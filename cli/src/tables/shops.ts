@@ -31,42 +31,7 @@
 
 import type { RomBuffer } from "../rom/RomBuffer.ts";
 import type { ShopLayout } from "../data/layouts.ts";
-import type { ChapterObjects } from "./mapObjects.ts";
-import type { Item } from "./items.ts";
-
-export type ShopKind = "weapon" | "item" | "secret" | "prep";
-
-export interface ShopEntry {
-  itemId: number;
-  /** Durability the shop sells at; 0 = full. */
-  uses: number;
-  /** `uses || item.uses` — the durability you actually receive. */
-  effectiveUses: number;
-  name: string;
-  /** `effectiveUses x item.unitPrice`. */
-  price: number;
-}
-
-export interface Shop {
-  kind: ShopKind;
-  /** Human label, e.g. `C7A: ... Into the Fire weapon`. */
-  label: string;
-  /** File offset of the 2-byte entry list. */
-  addr: number;
-  /** Map-setting index this shop belongs to; `null` for the prep shop. */
-  mapIndex: number | null;
-  /** Chapter number (`u16(+0x80)/2`), or `null` for the prep shop. */
-  chapterNumber: number | null;
-  chapterTitle: string | null;
-  entries: ShopEntry[];
-}
-
-export interface ShopReadResult {
-  prepShopAddress: number;
-  shops: Shop[];
-  /** Addresses that looked like a shop pointer but held no entries. */
-  emptyCount: number;
-}
+import type { ChapterObjects, Item, ShopKind, ShopEntry, Shop, ShopReadResult } from "../model/snapshotRecords.ts";
 
 function readEntryList(
   rom: RomBuffer,

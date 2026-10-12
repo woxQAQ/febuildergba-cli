@@ -38,7 +38,7 @@ TURN / TALK 步长来自布局，FE7 TURN 另有 12 字节短记录；OBJECT / A
 
 事件语义固定来自 `event_<game>.en.txt`；翻译只能覆盖描述及参数显示名字。
 缺少 canonical 英文定义时明确标记不可用，不选择另一种语言作为语义来源。
-`load()` 解码一次，剧情顺序、数据库写入、单位属性模拟和普查均消费这份 trace。
+`extract/service.ts` 解码一次，剧情顺序、数据库写入、单位属性模拟和普查均消费这份 trace。
 退出指令也保留；`UNKNOWN` 使用稳定操作标识，与翻译字符串无关。
 
 `event_instructions` 保存源地址、原始字节（hex）、匹配模式和变量操作数。
@@ -122,7 +122,7 @@ FE8 把坐标打包进一个 u16：`x = bits 0-5`、`y = bits 6-11`、`ext = bit
 ## 6. 产物版本与完整性
 
 `meta.extract.revision` 同时约束解码及物化推导规则。规则变化即使不改 SQL 列，
-也必须提升 `db/revision.ts` 中的 revision。读取旧库要求重新 extract，不迁移
+也必须提升 `repository/revision.ts` 中的 revision。读取旧库要求重新 extract，不迁移
 旧结论。
 
 `chapters.available` / `events.available` 区分缺失输入与合法空集合。依赖缺失
