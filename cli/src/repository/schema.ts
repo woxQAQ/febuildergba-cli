@@ -268,6 +268,30 @@ export const classTerrainBonuses = sqliteTable(
 );
 
 /**
+ * Class-change branch table (CC分岐), FE8 only: the two promotion targets the
+ * CC menu offers each class (`tables/classBranch.ts`). One row per class,
+ * zeros included - `branch_1`/`branch_2` are 0 exactly when the class has no
+ * branch in that slot, which is why no row is ever filtered out.
+ *
+ * Neither branch column carries an FK: both are raw record bytes whose target
+ * can sit outside the extracted class range in a hack, the same stance
+ * `classes.promotes_to_class_id` takes. `class_id` does carry one - every row
+ * names a class the class scan kept.
+ */
+export const classBranches = sqliteTable(
+  "class_branches",
+  {
+    classId: integer("class_id").notNull(),
+    branch1: integer("branch_1").notNull(),
+    branch2: integer("branch_2").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.classId] }),
+    foreignKey({ columns: [t.classId], foreignColumns: [classes.id] }),
+  ],
+);
+
+/**
  * Mobility is the `roles` command's classification over `classes.mount` - the
  * mount flags first, then the mechanical flier checks. Deliberately not a
  * column: the fallbacks in `commands/roles.ts` are an analysis convention.
@@ -992,6 +1016,7 @@ export const TABLES = [
   classAbilityFlags,
   classMovementCosts,
   classTerrainBonuses,
+  classBranches,
   skills,
   unitSkills,
   classSkills,

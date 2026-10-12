@@ -22,7 +22,8 @@
  *     related tables empty, rather than letting an empty table read as a legal
  *     empty set.
  *   - **`null`** - the game genuinely has no such table (`support`,
- *     `forceSortie` on FE6, each evidenced in its field's doc). No diagnostic:
+ *     `forceSortie` and `classBranch` on FE6, each evidenced in its field's
+ *     doc). No diagnostic:
  *     an empty table is the truth.
  * `scripts/check-upstream.ts` re-derives every transcribed number from the C#
  * sources, so a value that rots fails `npm run check` instead of drifting.
@@ -267,6 +268,36 @@ export interface ForceSortieLayout {
   mapIdBase?: number;
 }
 
+/**
+ * Class-change branch table (CC分岐), FE8 only. `ccbranch_pointer` holds a GBA
+ * pointer to a dense array indexed by class id: **two `u8` class ids per
+ * class**, the promotion targets the CC menu offers (`CCBranchForm`: block
+ * size 2, `u8(addr + 0)` / `u8(addr + 1)`; `0` = no branch in that slot). The
+ * record count is the class table's own count (`ClassForm.DataCount()`), so
+ * the array is one entry per extracted class - zeros included.
+ *
+ * This, not the class record's `+5` byte, is what the promotion menu reads:
+ * `+5` is only the main-chain target (the CC3 branch patch reads it as a third
+ * option). `ccbranch2_pointer` is the same array + 1 - the second column with
+ * the thumb bit set - so it needs no entry of its own.
+ *
+ * FE6/FE7 assign `ccbranch_pointer = 0x0`: those games have no branch table
+ * (`GetCCCount` answers from `isHighClass` alone without consulting any
+ * table), which is absence, not a porting gap - hence `null`.
+ */
+export interface ClassBranchLayout {
+  /** Slot holding the table pointer. Dereference once before reading records. */
+  slot: number;
+  /** Bytes per class: two u8 class ids. */
+  recordSize: number;
+  /**
+   * Upper bound on class ids. Mirrors the class table's cap (upstream expresses
+   * it as a hardcoded loop bound in `ClassForm.Init`, not a `RomInfo` constant,
+   * which is why `unitClass.maxCount` is unchecked too).
+   */
+  maxCount: number;
+}
+
 export interface GameLayout {
   version: GameVersion;
   /** FEBuilderGBA's `VersionToFilename` / `TitleToFilename`. */
@@ -287,6 +318,12 @@ export interface GameLayout {
    * absence, not a porting gap.
    */
   forceSortie: ForceSortieLayout | null;
+  /**
+   * Class-change branch table, or `null` when the game genuinely has none:
+   * `ROMFE6JP/7U/7JP.cs` set `ccbranch_pointer = 0`, evidence of absence. Only
+   * FE8 branches promotions. See {@link ClassBranchLayout}.
+   */
+  classBranch: ClassBranchLayout | null;
   /**
    * Item table. **Omitted** when the constants are not transcribed for this
    * game yet (every game but FE8U): the game has items, the port does not.
@@ -377,6 +414,9 @@ const FE8U: GameLayout = {
     { effectId: 0x32, slot: 0x29214, ref: "cc_item_sun_bracelet_pointer" },
   ],
   forceSortie: { slot: 0x8483c, recordSize: 4, termination: "terminator" },
+  // `ROMFE8U.cs:76 ccbranch_pointer`. `ccbranch2_pointer = 0xCC7C8` is this
+  // table + 1 (see {@link ClassBranchLayout}), so it is not stored separately.
+  classBranch: { slot: 0xcc7d0, recordSize: 2, maxCount: 0x100 },
   item: {
     // `U.FindROMPointer(rom, addr => rom.u32(0xC) == 0, candidates)`; all eight
     // candidates resolve here, search kept for other FE8 revisions.
@@ -463,6 +503,9 @@ const FE8J: GameLayout = {
     difficultyPos: 0x14,
   },
   forceSortie: { slot: 0x86b08, recordSize: 4, termination: "terminator" },
+  // `ROMFE8JP.cs:76 ccbranch_pointer`; `ccbranch2_pointer = 0xD14E4` is the
+  // same table + 1.
+  classBranch: { slot: 0xd14ec, recordSize: 2, maxCount: 0x100 },
 };
 
 const FE7U: GameLayout = {
@@ -503,6 +546,8 @@ const FE7U: GameLayout = {
   // with `GetMapName(i + 0x17)`, i.e. the table is a dense array over map ids
   // 0x17..0x2D with no terminator. Not verified against a real FE7 ROM.
   forceSortie: { slot: 0x8ddcc, recordSize: 4, termination: "fixed", count: 23, mapIdBase: 0x17 },
+  // `ROMFE7U.cs:76 ccbranch_pointer = 0x0` - FE7 has no branch table.
+  classBranch: null,
 };
 
 const FE7J: GameLayout = {
@@ -538,6 +583,8 @@ const FE7J: GameLayout = {
     difficultyPos: 0x14, // `MapSettingFE7Form.J_20`, same as FE7U. Unverified.
   },
   forceSortie: { slot: 0x8e6f8, recordSize: 4, termination: "fixed", count: 23, mapIdBase: 0x17 },
+  // `ROMFE7JP.cs:76 ccbranch_pointer = 0x0` - FE7 has no branch table.
+  classBranch: null,
 };
 
 /**
@@ -580,6 +627,8 @@ const FE6J: GameLayout = {
   },
   // `ROMFE6JP.cs` sets `event_force_sortie_pointer = 0x0` - FE6 has no table.
   forceSortie: null,
+  // `ROMFE6JP.cs:87 ccbranch_pointer = 0x0` - FE6 has no branch table either.
+  classBranch: null,
 };
 
 export const LAYOUTS: Readonly<Record<GameVersion, GameLayout>> = {

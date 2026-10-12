@@ -30,6 +30,7 @@ import { describeCondSlots, readChapters, readMapSettingTable } from "../tables/
 import { isRealMap, readAllTransitions } from "../tables/storyPath.ts";
 import { buildPlayOrder } from "../model/storyPath.ts";
 import { readForceSortie } from "../tables/forceSortie.ts";
+import { readClassBranches } from "../tables/classBranch.ts";
 import type { ItemReadResult } from "../model/snapshotRecords.ts";
 import {
   buildItemMap,
@@ -229,6 +230,23 @@ function parse(
     abilityFlagDefs: classFlagDefs,
   });
 
+  // The branch table is indexed by class id and one record per extracted
+  // class, so it reads after the class scan and nothing else.
+  const classBranch = readClassBranches(
+    buffer,
+    layout,
+    classes.map((c) => c.id),
+  );
+  if (layout.classBranch !== null && classBranch === null && classes.length > 0) {
+    // The game has the table (FE8); an empty `class_branches` must not read
+    // as "nothing promotes" - the same stance the untranscribed warning takes.
+    warn(
+      `CCBranch table unreadable for ${identity.version}: the slot at ` +
+        `0x${layout.classBranch.slot.toString(16)} holds no usable pointer, ` +
+        "so class_branches stays empty although the game has the table",
+    );
+  }
+
   const units = readAllUnits({
     rom: buffer,
     table: resolveTable(buffer, layout.unit),
@@ -353,6 +371,7 @@ function parse(
     playOrder,
     unitStats: buildUnitStats({ units, classes, chapters, trace: eventTrace }),
     forceSortie,
+    classBranch,
     items,
     shopData,
     chapterObjects,

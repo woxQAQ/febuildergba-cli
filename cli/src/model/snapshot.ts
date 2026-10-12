@@ -13,6 +13,7 @@ import type {
   SupportBonus,
   TerrainReadResult,
   ForceSortieTable,
+  ClassBranchTable,
   Item,
   ShopReadResult,
   ChapterObjects,
@@ -53,6 +54,8 @@ export interface ExtractionSnapshot {
   playOrder: PlayOrder;
   unitStats: UnitStatRow[];
   forceSortie: ForceSortieTable | null;
+  /** Class-change branch table; `null` on FE6/FE7, which have none. */
+  classBranch: ClassBranchTable | null;
   items: Item[];
   shopData: ShopReadResult | null;
   chapterObjects: ChapterObjects[];

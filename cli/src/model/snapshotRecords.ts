@@ -466,6 +466,33 @@ export interface ForceSortieTable {
 }
 
 /**
+ * One row of the class-change branch table: the two promotion targets the CC
+ * menu offers this class. `0` = no branch in that slot. See
+ * `tables/classBranch.ts` for why this table and not the class record's `+5`.
+ */
+export interface ClassBranchEntry {
+  /** The class this entry belongs to; also the row's index in the table. */
+  classId: number;
+  /** File offset of the 2-byte record. */
+  addr: number;
+  /** `+0`. First promotion target; 0 = none. */
+  branch1: number;
+  /** `+1`. Second promotion target; 0 = none. */
+  branch2: number;
+}
+
+export interface ClassBranchTable {
+  /** File offset of the 4-byte slot holding the table pointer. */
+  slotOffset: number;
+  /** File offset of the table itself. */
+  tableOffset: number;
+  recordSize: number;
+  /** Entries read: one per extracted class. */
+  count: number;
+  entries: ClassBranchEntry[];
+}
+
+/**
  * Equipped-stat bonuses, read from the table `+12` points at.
  *
  * Record layout per `ItemStatBonusesForm.cs` (HP / 攻撃 / 技 / 速さ / 守備 /

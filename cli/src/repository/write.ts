@@ -295,6 +295,21 @@ async function insertClasses(db: ExtractDb, rom: ExtractionSnapshot): Promise<vo
 }
 
 /**
+ * The class-change branch table. Runs after `classes` - every row's class id
+ * must exist - and reads no other table. Empty for FE6/FE7, which have no
+ * branch table: an empty `class_branches` is the truth there, not a gap.
+ */
+async function insertClassBranches(db: ExtractDb, rom: ExtractionSnapshot): Promise<void> {
+  if (rom.classBranch === null) return;
+  const rows: (typeof t.classBranches.$inferInsert)[] = rom.classBranch.entries.map((e) => ({
+    classId: e.classId,
+    branch1: e.branch1,
+    branch2: e.branch2,
+  }));
+  await insertInChunks(rows, (chunk) => db.insert(t.classBranches).values(chunk));
+}
+
+/**
  * Affinities and their bonus table. Every referenced affinity id gets a row,
  * named or not: a unit carrying an unnamed hack affinity is data, not an
  * absence of data. Runs before `units` because support bonuses reference
@@ -813,6 +828,7 @@ export const TABLE_WRITERS: readonly TableWriter[] = [
     tables: [t.classes, t.classAbilityFlags, t.classMovementCosts, t.classTerrainBonuses],
     write: insertClasses,
   },
+  { name: "classBranches", tables: [t.classBranches], write: insertClassBranches },
   { name: "skills", tables: [t.skills, t.meta], write: insertSkillSystem },
   { name: "units", tables: [t.units, t.meta], write: insertUnits },
   {

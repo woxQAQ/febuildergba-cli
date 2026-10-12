@@ -299,6 +299,30 @@ function layoutDrift(version: GameVersion, cs: ReadonlyMap<string, string>): Dri
   if (layout.forceSortie !== null) {
     expect("forceSortie.slot", num(layout.forceSortie.slot), "event_force_sortie_pointer");
   }
+  if (layout.classBranch !== null) {
+    expect("classBranch.slot", num(layout.classBranch.slot), "ccbranch_pointer");
+  } else {
+    // `null` claims the game has no branch table, which upstream evidences by
+    // assigning the pointer 0 - the two-direction stance `forceSortie` takes
+    // for FE6, applied to the same kind of claim.
+    const raw = cs.get("ccbranch_pointer");
+    if (raw === undefined) {
+      drift.push({
+        label: "classBranch",
+        ours: "none",
+        theirs: `no ccbranch_pointer in ${CS_FILE[version]}`,
+      });
+    } else {
+      const value = parseValue(raw);
+      if (value === null || value.kind !== "number" || value.value !== 0) {
+        drift.push({
+          label: "classBranch",
+          ours: "none",
+          theirs: value === null ? `could not read "${raw.trim()}"` : showTheirs(value),
+        });
+      }
+    }
+  }
   if (layout.item !== undefined) {
     expect("item.slot", slot(layout.item.slot), "item_pointer");
     expect("item.recordSize", num(layout.item.recordSize), "item_datasize");
@@ -418,6 +442,49 @@ function checkMapSettingDifficulty(csDir: string): Problem[] {
   return problems;
 }
 
+/**
+ * Check `classBranch.recordSize` against its only C# anchor.
+ * `CCBranchForm.Init` builds the `InputFormRef` over `ccbranch_pointer` with
+ * the record size as the block-size argument, and the two columns are read as
+ * `u8(addr + 0)` / `u8(addr + 1)` - the same mechanical derivation
+ * {@link checkMapSettingDifficulty} performs for a designer-file-only offset.
+ */
+function checkClassBranchRecordSize(csDir: string): Problem[] {
+  const path = join(csDir, "CCBranchForm.cs");
+  if (!existsSync(path)) {
+    return [{ where: "classBranch recordSize", detail: "CCBranchForm.cs is missing" }];
+  }
+  const source = readFileSync(path, "utf8");
+  const problems: Problem[] = [];
+
+  const init = /RomInfo\.ccbranch_pointer\s*,\s*(\d+)\s*,/.exec(source);
+  const theirs = init === null ? null : Number(init[1]);
+  for (const version of ["FE8U", "FE8J"] as const) {
+    const ours = LAYOUTS[version].classBranch?.recordSize ?? null;
+    if (ours === null || theirs === null || ours !== theirs) {
+      problems.push({
+        where: `classBranch recordSize ${version}`,
+        detail:
+          theirs === null
+            ? "no block size after ccbranch_pointer in CCBranchForm.cs"
+            : `cli says ${ours === null ? "none" : showNum(ours)}, upstream says ${showNum(theirs)}`,
+      });
+    }
+  }
+
+  // The two u8 columns are what makes the record size 2 rather than one u16.
+  for (const column of [0, 1]) {
+    if (!source.includes(`u8(list[i].addr + ${column})`)) {
+      problems.push({
+        where: "classBranch recordSize",
+        detail: `CCBranchForm.cs never reads u8(addr + ${column}); the two-column layout is unverified`,
+      });
+    }
+  }
+
+  return problems;
+}
+
 function checkConfigData(upstreamData: string): Problem[] {
   const problems: Problem[] = [];
   // Exactly the four prefixes `config/data.ts` documents, so the provenance
@@ -485,12 +552,14 @@ function main(): void {
   const problems = [
     ...checkLayouts(csDir),
     ...checkMapSettingDifficulty(csDir),
+    ...checkClassBranchRecordSize(csDir),
     ...checkConfigData(upstreamData),
   ];
 
   if (problems.length === 0) {
     console.log(`layouts: ${Object.keys(CS_FILE).length} games agree with ROMFE*.cs`);
     console.log("difficulty: 4 games match the map-setting designer labels");
+    console.log("classBranch: record size matches CCBranchForm.cs");
   } else {
     console.log(`layouts / difficulty / config/data: ${problems.length} difference(s)`);
     for (const p of problems) console.log(`  ${p.where}: ${p.detail}`);
