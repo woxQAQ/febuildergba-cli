@@ -29,7 +29,7 @@ export function prepareAnalysis(repository: ExtractHandle, path: string): Analys
     if (!(await repository.availability())[kind]) {
       throw new Error(
         `${path}: ${kind} data is unavailable, not empty - ` +
-          "re-run extract with the canonical cli/data resources and a readable chapter table",
+          "re-run extract with the canonical data resources and a readable chapter table",
       );
     }
   };

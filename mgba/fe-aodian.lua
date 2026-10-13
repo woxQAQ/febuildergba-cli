@@ -440,7 +440,7 @@ local function traceText(trace)
 end
 
 -- ===========================================================================
--- 名称表（可选，由 cli/scripts/emit-mgba-units.ts 生成 mgba/units.lua）
+-- 名称表（可选，由 scripts/emit-mgba-units.ts 生成 mgba/units.lua）
 -- ===========================================================================
 
 local NAMES = (function()

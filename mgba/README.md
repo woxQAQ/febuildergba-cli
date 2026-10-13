@@ -15,7 +15,7 @@
 ```
 mgba/
   fe-aodian.lua        主脚本（mGBA Lua，纯 ASCII 面板，只读）
-  units.lua            角色 id -> 名字（生成物，由 cli/scripts/emit-mgba-units.ts 产出）
+  units.lua            角色 id -> 名字（生成物，由 scripts/emit-mgba-units.ts 产出）
   test/
     selftest.lua       124 项自测：算法 + 假内存端到端（含防闪烁）
     battle_golden.py   独立 Python 实现，产出战斗模型的黄金数值
@@ -239,8 +239,7 @@ mGBA 每往文本缓冲写一次（`clear` / `print`），就会把整块文本�
 ### 重新生成角色名表
 
 ```bash
-cd cli
-node src/index.ts dump          # 先产出 out/*.json
+node src/index.ts extract fixtures/dream-of-five.gba --out out/dream-of-five.db
 node scripts/emit-mgba-units.ts # -> mgba/units.lua
 ```
 

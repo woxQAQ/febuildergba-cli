@@ -3,9 +3,9 @@ r
 .DS_Store
 .vs/
 
-# cli/ - TypeScript ROM parser (see AGENTS.md section 5)
-cli/node_modules/
-cli/out/
+# dependencies and extract outputs
+node_modules/
+out/
 
 # agent session memory
 .workbuddy/

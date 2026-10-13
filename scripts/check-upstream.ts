@@ -4,21 +4,21 @@
  *
  *   1. `src/data/layouts.ts` - the per-game pointer tables, transcribed by eye
  *      from `FEBuilderGBA/FEBuilderGBA/ROMFE*.cs`.
- *   2. `cli/data/*.txt` - the 36 vendored `config/data` files, copied there by
- *      hand so `cli/` stands alone.
+ *   2. `data/*.txt` - the 36 vendored `config/data` files, copied there by
+ *      hand so the repo stands alone.
  *
  * Upstream line numbers move whenever FEBuilderGBA does, so this script checks
  * the transcription mechanically rather than trusting prose to stay accurate.
  *
- * Usage (from `cli/`):
+ * Usage (from the repo root):
  *
  *     node scripts/check-upstream.ts            # report and exit non-zero on drift
  *     node scripts/check-upstream.ts --update   # also record the submodule commit
  *
  * Exit codes: 0 everything agrees, 1 drift found, 2 the check could not run.
  *
- * It needs the `FEBuilderGBA` submodule, which `cli/` deliberately does not
- * need at runtime. Without it the script says so and exits 0 - a bare `cli/`
+ * It needs the `FEBuilderGBA` submodule, which the CLI deliberately does not
+ * need at runtime. Without it the script says so and exits 0 - a bare
  * checkout is still valid, it just cannot be verified here.
  */
 
@@ -32,12 +32,11 @@ import type { GameVersion } from "../src/model/game.ts";
 import type { SlotRef } from "../src/data/layouts.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const CLI_ROOT = join(HERE, "..");
-const REPO = join(CLI_ROOT, "..");
-const VENDORED_DATA = join(CLI_ROOT, "data");
+const REPO = join(HERE, "..");
+const VENDORED_DATA = join(REPO, "data");
 const STAMP_FILE = join(VENDORED_DATA, "UPSTREAM.txt");
 
-/** The `config/data` families `cli/data/` vendors - see `src/config/data.ts`. */
+/** The `config/data` families `data/` vendors - see `src/config/data.ts`. */
 const VENDORED_PREFIXES: readonly string[] = [
   "unitclass_checkbox_",
   "event_",

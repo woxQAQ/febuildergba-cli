@@ -3,7 +3,7 @@
  * neither in the C# code nor in the ROM (class ability bit names, the
  * event-script opcode table, chapter-condition names). FEBuilderGBA ships them
  * under `config/data/`; this CLI does not read the C# checkout, but vendors the
- * exact subset it consumes into `cli/data/` so the project stands alone. Four
+ * exact subset it consumes into `data/` so the project stands alone. Four
  * prefixes, each for FE6/FE7/FE8 in three languages (bare = Japanese, `.en`,
  * `.zh`), 36 files:
  *   - `unitclass_checkbox_<game>*.txt`    - class ability bit names
@@ -28,14 +28,14 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 /**
- * The vendored `cli/data/` copy is the only source, so the CLI never has to
+ * The vendored `data/` copy is the only source, so the CLI never has to
  * reach into the sibling `FEBuilderGBA/` checkout and its behaviour does not
  * depend on environment variables. Library callers can pass `configDir` to
  * `loadRom` to point elsewhere (e.g. a fresh upstream tree).
  */
 function vendoredDataDir(): string {
   const here = dirname(fileURLToPath(import.meta.url));
-  // src/config -> src -> cli
+  // src/config -> src -> repo root
   return resolve(here, "..", "..", "data");
 }
 

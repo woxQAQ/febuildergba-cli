@@ -146,7 +146,7 @@ export function extractData(path: string, options: ExtractOptions = {}): Extract
 
 export interface ExtractOptions {
   /**
-   * Explicit `config/data` directory. Defaults to the vendored `cli/data/`
+   * Explicit `config/data` directory. Defaults to the vendored `data/`
    * copy (see `config/data.ts`); override only to test against an upstream tree.
    */
   configDir?: string;
@@ -214,7 +214,7 @@ function parse(
   const configDir = findConfigDataDir(options.configDir);
   if (configDir === null) {
     warn(
-      "config/data not found - the vendored cli/data directory is missing, so " +
+      "config/data not found - the vendored data directory is missing, so " +
         "class ability names, the event-script opcode table and the " +
         "chapter-condition names are all unavailable and an extract leaves " +
         "the related tables empty. Library callers can pass configDir to " +

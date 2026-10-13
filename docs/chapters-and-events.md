@@ -1,6 +1,6 @@
 # 章节与事件
 
-本文是 `cli/` 中「章节」与「事件」两层的证据记录：哪些结论是从 ROM 字节或
+本文是「章节」与「事件」两层的证据记录：哪些结论是从 ROM 字节或
 FEBuilderGBA 反汇编读出来的，哪些是推断。代码里的引用（如
 `tables/chapters.ts` 的 `docs/chapters-and-events.md` §3.19）都指向本文。
 

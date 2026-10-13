@@ -8,7 +8,7 @@ import type { Command } from "./types.ts";
 
 /**
  * Default output path: the ROM's file stem with a `.db` suffix, in the
- * current directory - `fe-rom extract ../fixtures/dream-of-five.gba` writes
+ * current directory - `fe-rom extract fixtures/dream-of-five.gba` writes
  * `./dream-of-five.db`.
  */
 function defaultOutPath(romPath: string): string {

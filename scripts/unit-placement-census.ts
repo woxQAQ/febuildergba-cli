@@ -7,7 +7,7 @@
  * is the evidence for that and a regression check on the reader.
  *
  * Usage: node scripts/unit-placement-census.ts [rom.gba] [--chapter N]
- * Default ROM `../../fixtures/dream-of-five.gba`; `--chapter N` prints per-block
+ * Default ROM `../fixtures/dream-of-five.gba`; `--chapter N` prints per-block
  * detail for one map-setting index.
  */
 
@@ -19,7 +19,7 @@ import { reachableInstructions, type TracedBlockUnit } from "../src/model/events
 const argv = process.argv.slice(2);
 const romPath =
   argv.find((a) => a.endsWith(".gba")) ??
-  new URL("../../fixtures/dream-of-five.gba", import.meta.url).pathname;
+  new URL("../fixtures/dream-of-five.gba", import.meta.url).pathname;
 const chapterFlag = argv.indexOf("--chapter");
 const onlyChapter = chapterFlag >= 0 ? Number(argv[chapterFlag + 1]) : null;
 
@@ -27,7 +27,7 @@ const loaded = extractData(romPath);
 for (const diagnostic of loaded.diagnostics) console.error(`warning: ${diagnostic}`);
 const { chapters, eventTrace } = loaded;
 if (!loaded.chaptersAvailable || !loaded.eventsAvailable) {
-  throw new Error("chapter/event evidence is unavailable; supply canonical cli/data resources");
+  throw new Error("chapter/event evidence is unavailable; supply canonical data resources");
 }
 
 const hex = (n: number): string => "0x" + n.toString(16).padStart(7, "0");

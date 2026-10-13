@@ -58,8 +58,8 @@ function optionLines(
 /**
  * `fe-rom --help`
  *
- * The examples assume the current directory is `cli/`, which is where the
- * package lives and where its npm scripts run from.
+ * The examples assume the current directory is the repo root, which is where
+ * the package lives and where its npm scripts run from.
  */
 export function usage(): string {
   const width = commandColumnWidth();
@@ -84,18 +84,18 @@ export function usage(): string {
     "",
     "Analysis happens against the extracted database: run `extract` once, then",
     "hand the .db to the analysis commands, or query it with SQL directly:",
-    "  fe-rom extract ../fixtures/dream-of-five.gba   # writes dream-of-five.db",
+    "  fe-rom extract fixtures/dream-of-five.gba   # writes dream-of-five.db",
     "  fe-rom roster dream-of-five.db",
     "  sqlite3 dream-of-five.db 'SELECT id, name FROM units WHERE has_support_data'",
     "The full schema and its conventions are documented in src/repository/schema.ts.",
     "",
     "Exit codes: 0 ok, 1 the input (ROM or db) could not be read, 2 bad arguments.",
     "",
-    "Examples (run from cli/):",
-    "  fe-rom extract  ../fixtures/dream-of-five.gba",
-    "  fe-rom extract  ../fixtures/dream-of-five.gba --out do5.db --lang zh",
+    "Examples (run from the repo root):",
+    "  fe-rom extract  fixtures/dream-of-five.gba",
+    "  fe-rom extract  fixtures/dream-of-five.gba --out do5.db --lang zh",
     "  fe-rom roster   dream-of-five.db",
-    "  fe-rom text     ../fixtures/dream-of-five.gba 703 704 --range 0x210-0x218",
+    "  fe-rom text     fixtures/dream-of-five.gba 703 704 --range 0x210-0x218",
   ].join("\n");
 }
 
