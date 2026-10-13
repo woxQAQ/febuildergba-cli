@@ -140,4 +140,14 @@ export class RomBuffer {
     this.ensure(addr, len);
     return this.data.subarray(addr, addr + len);
   }
+
+  /**
+   * Byte-for-byte signature compare, false rather than throwing off the end.
+   * Reference: `U.memcmp` (U.cs). Every patch-signature search goes through
+   * this (`rom/skillSystem.ts`, `rom/magicSplit.ts`).
+   */
+  matches(addr: number, signature: readonly number[]): boolean {
+    if (!this.isSafeOffset(addr + signature.length)) return false;
+    return signature.every((byte, i) => this.u8(addr + i) === byte);
+  }
 }

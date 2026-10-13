@@ -32,6 +32,7 @@ export interface SnapshotMetadata {
   displayName: string;
   isMultibyte: boolean;
   skillSystem: string;
+  magicSplit: string;
   notes: string[];
   configDir: string | null;
   configLanguage: string;

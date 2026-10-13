@@ -59,12 +59,6 @@ const SIGNATURES: readonly SkillSystemSignature[] = [
   { name: "SkillSystem", version: "FE8U", addr: 0x02_acf8, signature: [0x70, 0x47] },
 ];
 
-/** Byte-for-byte `U.memcmp`, returning false rather than throwing off the end. */
-function matchesAt(rom: RomBuffer, addr: number, signature: readonly number[]): boolean {
-  if (!rom.isSafeOffset(addr + signature.length)) return false;
-  return signature.every((byte, i) => rom.u8(addr + i) === byte);
-}
-
 /**
  * Which skill system this ROM carries, or `none`.
  *
@@ -76,7 +70,7 @@ export function detectSkillSystem(rom: RomBuffer, version: GameVersion | null): 
   if (version === null) return "none";
   for (const entry of SIGNATURES) {
     if (entry.version !== version) continue;
-    if (matchesAt(rom, entry.addr, entry.signature)) return entry.name;
+    if (rom.matches(entry.addr, entry.signature)) return entry.name;
   }
   return "none";
 }

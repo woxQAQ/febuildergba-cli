@@ -136,6 +136,10 @@ async function insertMeta(db: ExtractDb, rom: ExtractionSnapshot): Promise<void>
     // only - it gates how the rest of the ROM should be interpreted (a
     // patched ROM relocates other tables), it is not skill data.
     { key: "rom.skillSystem", value: metadata.skillSystem },
+    // Which magic-split patch family the ROM carries, or "none". Detection
+    // only - it gates how unit/class attack stats must be read (a patched ROM
+    // keeps magic out of the strength field), it is not magic data.
+    { key: "rom.magicSplit", value: metadata.magicSplit },
     { key: "rom.notes", value: JSON.stringify(metadata.notes) },
     { key: "config.dir", value: metadata.configDir ?? "" },
     { key: "config.language", value: metadata.configLanguage },
@@ -837,7 +841,11 @@ export const TABLE_WRITERS: readonly TableWriter[] = [
     write: insertSkillAssignments,
   },
   { name: "affinities", tables: [t.affinities, t.supportBonuses], write: insertAffinities },
-  { name: "supportLinks", tables: [t.supportEntries, t.supportPartners], write: insertSupportLinks },
+  {
+    name: "supportLinks",
+    tables: [t.supportEntries, t.supportPartners],
+    write: insertSupportLinks,
+  },
   {
     name: "items",
     tables: [t.items, t.itemEffectiveness, t.itemPromotions, t.terrains],

@@ -352,6 +352,7 @@ function parse(
       displayName: layout.displayName,
       isMultibyte: layout.text.isMultibyte,
       skillSystem: identity.skillSystem,
+      magicSplit: identity.magicSplit,
       notes: identity.notes,
       configDir,
       configLanguage: language ?? DEFAULT_LANGUAGE,

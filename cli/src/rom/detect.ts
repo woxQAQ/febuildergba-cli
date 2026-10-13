@@ -8,6 +8,8 @@ import { RomBuffer } from "./RomBuffer.ts";
 import { hex } from "../format.ts";
 import type { SkillSystem } from "./skillSystem.ts";
 import { detectSkillSystem } from "./skillSystem.ts";
+import type { MagicSplit } from "./magicSplit.ts";
+import { detectMagicSplit } from "./magicSplit.ts";
 import type { GameVersion } from "../model/game.ts";
 
 /** FEBuilderGBA reads 6 bytes here: 4-byte game code + 2-byte maker code. */
@@ -56,6 +58,15 @@ export interface RomIdentity {
    * is decoded yet; see `skillSystem.ts`.
    */
   skillSystem: SkillSystem;
+  /**
+   * Which magic-split patch family the ROM carries, or `"none"`.
+   *
+   * This is identification only - a present family means the game keeps magic
+   * in tables separate from the strength field, so unit and class attack stats
+   * cannot be read as plain FE8 values. The magic tables themselves are not
+   * decoded yet; see `magicSplit.ts`.
+   */
+  magicSplit: MagicSplit;
 }
 
 /** The ROM must at least contain the header we read. */
@@ -86,6 +97,7 @@ export function detectVersion(rom: RomBuffer): RomIdentity {
       // Nothing to probe yet, and `none` is the honest answer for a file we
       // cannot even trust a version from.
       skillSystem: "none",
+      magicSplit: "none",
     };
   }
 
@@ -121,5 +133,6 @@ export function detectVersion(rom: RomBuffer): RomIdentity {
     size: rom.length,
     notes,
     skillSystem: detectSkillSystem(rom, version),
+    magicSplit: detectMagicSplit(rom, version),
   };
 }
