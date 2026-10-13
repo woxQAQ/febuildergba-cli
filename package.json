@@ -3,10 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "description": "GBA Fire Emblem ROM extractor. Parses a ROM once into a SQLite database for SQL analysis.",
-  "type": "module",
   "bin": {
     "fe-rom": "src/index.ts"
   },
+  "type": "module",
   "scripts": {
     "extract": "node src/index.ts extract",
     "typecheck": "tsc --noEmit",
