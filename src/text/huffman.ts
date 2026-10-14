@@ -18,6 +18,7 @@ import { RomBuffer } from "../rom/RomBuffer.ts";
 import { hex } from "../format.ts";
 import type { TextLayout } from "../data/layouts.ts";
 import type { TextPointerKind } from "../model/snapshotRecords.ts";
+import { decodeItemFontBytes, restoreItemFontText } from "./itemFont.ts";
 
 export interface TextContext {
   treeBase: number;
@@ -484,6 +485,40 @@ export function classifyTextPointer(pointer: number): TextPointerKind {
   if (isUnHuffmanPatchPointer(pointer)) return "unhuffman";
   if (RomBuffer.isPointer(pointer)) return "huffman";
   return "invalid";
+}
+
+/**
+ * Decode a text-table entry, dispatching on its storage format.
+ *
+ * Hacks mix formats freely, and the same table can hold both: an entry whose
+ * pointer is an unHuffman-patch marker stores its string **un-compressed in the
+ * item font** (a separate glyph space - see `itemFont.ts`), while everything
+ * else is a normal Huffman stream. Sending an item-font entry through
+ * `decodeTextId` mangles it: `applySpecialGlyphs` expands only Latin-1 accents,
+ * so every glyph survives as `@00XX` and `stripAllCodes` then deletes it,
+ * leaving only the incidental ASCII - Vision Quest's unit 64 became `"l"`.
+ *
+ * This is the entry point every name reader should use; `classes.ts` has done
+ * the dispatch inline since `Sword Pegasus` was decoded as `"w"`.
+ */
+export function decodeTextEntry(rom: RomBuffer, id: number, ctx: TextContext): string {
+  if (id === 0) return "";
+
+  const entry = ctx.textBase + id * 4;
+  if (!rom.isSafeOffset(entry)) return "";
+
+  const pointer = rom.u32(entry);
+  if (isUnHuffmanPatchPointer(pointer)) {
+    const addr = rom.toOffset(convertUnHuffmanPatchToPointer(pointer));
+    const { text } = decodeItemFontBytes(unHuffmanRawBytes(rom, addr));
+    return text.trim();
+  }
+
+  const decoded = decodeTextId(rom, id, ctx);
+  // Same glyph space, different storage: some hacks Huffman-compress item-font
+  // bytes (Vision Quest's unit names). `restoreItemFontText` recognises the
+  // `@00XX` pattern and maps it back, or returns the decode untouched.
+  return restoreItemFontText(decoded) ?? decoded;
 }
 
 export interface DecodedText {

@@ -7,21 +7,12 @@
  * `stripAllCodes` deletes it, leaving the incidental ASCII. That is how Vision
  * Quest's `Sword Pegasus` (id 71) became `"w"` and `Sword Cavalier` (id 35)
  * `"w li"`.
+ *
+ * The dispatch now lives in `decodeTextEntry` (shared with the unit table);
+ * unit names had the same bug - unit 64 is `Radoslav`, not `"l"`.
  */
 function readClassName(rom: RomBuffer, textId: number, text: TextContext): string {
-  if (textId === 0) return "";
-
-  const entry = text.textBase + textId * 4;
-  if (!rom.isSafeOffset(entry)) return "";
-
-  const pointer = rom.u32(entry);
-  if (isUnHuffmanPatchPointer(pointer)) {
-    const addr = rom.toOffset(convertUnHuffmanPatchToPointer(pointer));
-    const { text: name } = decodeItemFontBytes(unHuffmanRawBytes(rom, addr));
-    return name.trim();
-  }
-
-  return displayName(decodeTextId(rom, textId, text));
+  return displayName(decodeTextEntry(rom, textId, text));
 }
 
 /**
@@ -49,16 +40,10 @@ function readClassName(rom: RomBuffer, textId: number, text: TextContext): strin
 import { RomBuffer } from "../rom/RomBuffer.ts";
 import type { TextContext } from "../text/huffman.ts";
 import {
-  classifyTextPointer,
-  convertUnHuffmanPatchToPointer,
-  decodeTextId,
+  decodeTextEntry,
   displayName,
-  isUnHuffmanPatchPointer,
   sanitizeText,
-  stripAllCodes,
-  unHuffmanRawBytes,
 } from "../text/huffman.ts";
-import { decodeItemFontBytes } from "../text/itemFont.ts";
 import type { ResolvedTable } from "./common.ts";
 import { readWeaponLevels } from "./common.ts";
 import type { ClassFlagDef } from "./classFlags.ts";
@@ -207,7 +192,7 @@ export function readClass(ctx: ClassTableContext, index: number): UnitClass | nu
     address: addr,
     nameTextId,
     name: readClassName(rom, nameTextId, text),
-    description: sanitizeText(decodeTextId(rom, descriptionTextId, text)),
+    description: sanitizeText(decodeTextEntry(rom, descriptionTextId, text)),
     promotesToClassId: rom.u8(addr + CLASS_OFFSET.promotesToClassId),
     sortOrder: rom.u8(addr + CLASS_OFFSET.sortOrder),
     movementRange: rom.u8(addr + CLASS_OFFSET.movementRange),

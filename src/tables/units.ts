@@ -23,7 +23,7 @@
 
 import { RomBuffer } from "../rom/RomBuffer.ts";
 import type { TextContext } from "../text/huffman.ts";
-import { decodeTextId, displayName, sanitizeName, sanitizeText } from "../text/huffman.ts";
+import { decodeTextEntry, displayName, sanitizeName, sanitizeText } from "../text/huffman.ts";
 import type { ClassBases, UnitStats, UnitGrowths } from "../model/stats.ts";
 import { combineStartingStats } from "../model/stats.ts";
 import type { Unit } from "../model/snapshotRecords.ts";
@@ -117,10 +117,12 @@ export function readUnit(ctx: UnitTableContext, index: number): Unit | null {
   // `displayName` rather than `sanitizeName`: 17 names in this ROM decode with
   // a trailing `@001F` glyph escape, which is display noise, not part of the
   // name. The unstripped form is kept alongside it. See `text/huffman.ts`.
-  const decodedName = decodeTextId(rom, nameTextId, text);
+  // `decodeTextEntry` (not `decodeTextId`): 7 names in this ROM are stored in
+  // the item font - see its doc comment. Unit 64 is `Radoslav`, not `"l"`.
+  const decodedName = decodeTextEntry(rom, nameTextId, text);
   const name = displayName(decodedName);
   const nameRaw = sanitizeName(decodedName);
-  const description = sanitizeText(decodeTextId(rom, descriptionTextId, text));
+  const description = sanitizeText(decodeTextEntry(rom, descriptionTextId, text));
 
   const stats = readStats(rom, addr);
   const growths = readGrowths(rom, addr);

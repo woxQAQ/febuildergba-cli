@@ -126,3 +126,54 @@ export function decodeItemFontBytes(bytes: readonly number[]): ItemFontDecodeRes
 
   return { text, unknown };
 }
+
+/**
+ * Restore an item-font string that has been through the ordinary text decoder.
+ *
+ * This is the **Huffman-stored** variant: the ROM compresses a normal text
+ * entry whose payload is item-font bytes (`Radoslav`'s name is the compressed
+ * stream `AC 81 84 8C 90 6C 81 97`). The decoder renders each glyph `>= 0x81`
+ * as `@00XX` because `applySpecialGlyphs` only expands Latin-1 accents, and
+ * `stripAllCodes` then deletes every one - leaving only the incidental ASCII
+ * (`"l"` for Radoslav, `"w"` for Honeydew, `""` for Onderdonk).
+ *
+ * Detection is deliberately narrow: at least one `@00XX` in the item-font code
+ * range `0x81..0xBC`, and **every** code must map. A plain `@001F` terminator
+ * (17 unit names in this ROM) does not trigger it. Returns `null` when the text
+ * is not item-font, so callers keep the ordinary decode.
+ */
+export function restoreItemFontText(text: string): string | null {
+  const codes: number[] = [];
+  const escape = /@([0-9A-Fa-f]{4})/g;
+  let m: RegExpExecArray | null;
+  while ((m = escape.exec(text)) !== null) {
+    const hex = m[1];
+    if (hex !== undefined) codes.push(parseInt(hex, 16));
+  }
+
+  const itemFontCodes = codes.filter((c) => c >= 0x81 && c <= 0xbc);
+  if (itemFontCodes.length === 0) return null;
+
+  let out = "";
+  let last = 0;
+  escape.lastIndex = 0;
+  while ((m = escape.exec(text)) !== null) {
+    const hex = m[1];
+    if (hex === undefined) return null;
+    out += text.slice(last, m.index);
+    const code = parseInt(hex, 16);
+    if (code === 0x1f) {
+      // terminator, as `stripAllCodes` drops it
+    } else if (code < 0x80) {
+      out += String.fromCharCode(code);
+    } else {
+      const ch = ITEM_FONT[code];
+      if (ch === undefined) return null; // not item-font after all
+      out += ch;
+    }
+    last = m.index + m[0].length;
+  }
+  out += text.slice(last);
+
+  return out;
+}
