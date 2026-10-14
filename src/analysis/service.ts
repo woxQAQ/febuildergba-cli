@@ -11,7 +11,7 @@ import type { ExpCurveOptions, ExpCurveResult } from "./expcurve.ts";
 import { computeJoins } from "./joins.ts";
 import type { UnitJoin } from "./joins.ts";
 import { projectUnits } from "./projection.ts";
-import type { ProjectionOptions, UnitProjection } from "./projection.ts";
+import type { UnitProjection } from "./projection.ts";
 import type { AnalysisUnit } from "./data.ts";
 import type { ExtractHandle } from "../repository/read.ts";
 import { combineStartingStats } from "../model/stats.ts";
@@ -135,25 +135,20 @@ export async function expCurveOf(
 }
 
 /**
- * `projection`: the exp curve's rows plus the roster. It reads `units` and
- * `trace` where `expcurve` does not, because the projection is the half that
- * projects people and ranks their joins.
+ * `projection`: the roster's read facts and stat ceilings. It reads `units` and
+ * `trace` (the join ranking) where `expcurve` does not, but not `unitStats`: the
+ * chapter-by-chapter expectation that consumed it was removed - see
+ * `analysis/projection.ts` for why.
  */
-export async function projectionOf(
-  x: AnalysisSource,
-  opts: ProjectionOptions = {},
-): Promise<UnitProjection[]> {
-  return projectUnits(
-    {
-      game: await x.game(),
-      classes: await x.classes(),
-      unitStats: await x.unitStats(),
-      playOrder: await x.playOrder(),
-      units: await unitsOf(x),
-      chapters: await x.chapters(),
-      trace: await x.trace(),
-      debugMaps: new Set((await x.debugMaps()).map((r) => r.mapIndex)),
-    },
-    opts,
-  );
+export async function projectionOf(x: AnalysisSource): Promise<UnitProjection[]> {
+  return projectUnits({
+    game: await x.game(),
+    classes: await x.classes(),
+    unitStats: await x.unitStats(),
+    playOrder: await x.playOrder(),
+    units: await unitsOf(x),
+    chapters: await x.chapters(),
+    trace: await x.trace(),
+    debugMaps: new Set((await x.debugMaps()).map((r) => r.mapIndex)),
+  });
 }

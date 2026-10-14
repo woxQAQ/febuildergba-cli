@@ -62,11 +62,43 @@ export interface SkillReadOptions {
    * other value (including `none`) returns `null`.
    */
   skillSystem: string;
-  /** Unit id count for the per-unit tables (`UnitForm.DataCount()`). */
+  /**
+   * Highest unit id the unit table carries, i.e. the per-unit tables' id
+   * **cardinality** (`max(id) + 1`). Not the number of units read: the two
+   * differ whenever the ids have a gap, and an id-indexed table must be read
+   * to the id, not to the count.
+   */
   unitCount: number;
-  /** Class id count for the per-class tables (`ClassForm.DataCount()`). */
+  /** Same as {@link unitCount}, for the class table (`max(id) + 1`). */
   classCount: number;
   text: TextContext;
+}
+
+/**
+ * `max(id) + 1` over a scanned table: the id cardinality an id-indexed table
+ * must be indexed by.
+ *
+ * The array length is the wrong quantity. `readAllClasses` stops at the first
+ * class id 0 (`ClassForm.Init`'s predicate) and `readAllUnits` at the table's
+ * own end, so a length is "rows we happened to keep", while an assignment table
+ * is indexed by the game's own id. The two agree only while the ids are
+ * contiguous; with a gap the length undercounts, and every owner at or past the
+ * gap is read at an offset unrelated to its id. No fixture here has a gap (both
+ * ROMs read 128 classes with ids 0..127), so this is a bound that is right for
+ * a reason, not a bug fix - neither fixture's output changes.
+ *
+ * Empty entries are excluded because class 0's reserved slot is a real row that
+ * no assignment table indexes.
+ */
+export function idCardinality(
+  rows: readonly { id: number; isEmpty: boolean }[],
+): number {
+  let max = -1;
+  for (const row of rows) {
+    if (row.isEmpty) continue;
+    if (row.id > max) max = row.id;
+  }
+  return max + 1;
 }
 
 /** Decode a skill's text and apply upstream's `SkillTextToName` rule. */
@@ -86,7 +118,20 @@ function decodeSkillName(
   };
 }
 
-/** One `u8` per owner: `u8(base + id)`, skipping zeros. */
+/**
+ * One `u8` per owner: `u8(base + id)`, skipping zeros.
+ *
+ * `count` is the id cardinality the table is indexed by, not the number of
+ * owners we scanned ({@link idCardinality}); the two differ on a table whose ids
+ * have a gap.
+ *
+ * There is deliberately no "did I stop early?" probe: a byte past the table is
+ * not distinguishable from an owner's entry. The class id space ends at 0xFE/0xFF
+ * with both bytes 0xFF, and the neighbouring table follows immediately, so a
+ * scan for non-zero bytes past `count` reports the next table's data as this
+ * one's. A heuristic here would fire on a correct bound as readily as it would
+ * catch a wrong one.
+ */
 function readAssignments(rom: RomBuffer, base: number, count: number): SkillAssignment[] {
   const out: SkillAssignment[] = [];
   for (let ownerId = 0; ownerId < count; ownerId++) {

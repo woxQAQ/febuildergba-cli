@@ -39,7 +39,7 @@ import {
   readItems,
   readPromotionTables,
 } from "../tables/items.ts";
-import { readSkills } from "../tables/skills.ts";
+import { readSkills, idCardinality } from "../tables/skills.ts";
 import { readShops } from "../tables/shops.ts";
 import { readAllObjects } from "../tables/mapObjects.ts";
 import { extractEventTrace } from "../tables/eventTrace.ts";
@@ -340,11 +340,16 @@ function parse(
   // Skills last: the tables are independent of everything above, and this is
   // the only reader that searches the ROM for signatures rather than
   // dereferencing a known slot.
+  //
+  // The per-id tables are indexed by unit **id** and class **id**, not by a
+  // position in the scan, so they are read to the id cardinality and not to
+  // `units.length` / `classes.length`. The two differ on this ROM: the class
+  // scan stops at the first class id 0 while the class ids run to 127.
   const skills = readSkills({
     rom: buffer,
     skillSystem: identity.skillSystem,
-    unitCount: units.length,
-    classCount: classes.length,
+    unitCount: idCardinality(units),
+    classCount: idCardinality(classes),
     text,
   });
 
