@@ -359,7 +359,7 @@ export function openExtract(path: string): ExtractHandle {
           name: u.name,
           classId: u.classId,
           className: classNames.get(u.classId) ?? "",
-          attribute: u.affinityId,
+          affinityId: u.affinityId,
           level: u.level,
           isEmpty: false,
           isPromotedClass: u.isPromotedClass,
@@ -579,7 +579,8 @@ export function openExtract(path: string): ExtractHandle {
           position: s.position,
           scriptId: s.scriptId,
           // `turnStart`/`turnEnd` are written from the same `slot.turn`
-          // (write.ts), so they are null together; one test covers both.
+          // (write.ts), so they are null together; the cast rests on that
+          // write-side invariant.
           turn:
             s.turnStart === null
               ? null

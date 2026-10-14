@@ -85,7 +85,8 @@
  *     playable predicate.
  */
 
-import type { AnalysisClass, AnalysisUnit, ExpCurveInput, ProjectionInput } from "./data.ts";
+import type { AnalysisUnit, ExpCurveInput, ProjectionInput } from "./data.ts";
+import type { ClassRecord } from "../model/records.ts";
 import type { Difficulty } from "../model/stats.ts";
 import { buildPromotionGraph } from "../model/promotion.ts";
 import { collectAppearances, isPlayerArmyAppearance } from "./appearances.ts";
@@ -201,9 +202,9 @@ const DEFAULT_EXP_SHARE = 0.1;
  */
 function expEfficiencyOf(
   unit: AnalysisUnit,
-  cls: AnalysisClass | undefined,
+  cls: ClassRecord | undefined,
   enemyPowerRef: number,
-  classById: ReadonlyMap<number, AnalysisClass>,
+  classById: ReadonlyMap<number, ClassRecord>,
   game: ExpCurveInput["game"],
   difficulty: Difficulty,
 ): ExpEfficiency | null {
@@ -257,8 +258,8 @@ function buildJoinPositions(data: ProjectionInput): Map<number, number> {
 
 interface SimContext {
   growths: Readonly<Record<GrownStat, number>>;
-  classById: ReadonlyMap<number, AnalysisClass>;
-  targets: ReadonlyMap<number, AnalysisClass>;
+  classById: ReadonlyMap<number, ClassRecord>;
+  targets: ReadonlyMap<number, ClassRecord>;
   promoteAt: number;
 }
 
@@ -278,7 +279,7 @@ function growBy(state: SimState, levels: number, ctx: SimContext): void {
 }
 
 /** Caps bind permanently until a promotion raises them, so truncation is stepwise. */
-function capAt(state: SimState, cls: AnalysisClass | undefined): void {
+function capAt(state: SimState, cls: ClassRecord | undefined): void {
   if (cls === undefined) return; // class id outside the table: no caps to apply
   for (const s of GROWN_STATS) {
     // The cap row's seventh field is con, not luck (same order as `bases`):
@@ -288,7 +289,7 @@ function capAt(state: SimState, cls: AnalysisClass | undefined): void {
   }
 }
 
-function applyPromotion(state: SimState, target: AnalysisClass): void {
+function applyPromotion(state: SimState, target: ClassRecord): void {
   // Six bonuses - the ROM has no promotion luck bonus (`tables/classes.ts`).
   for (const s of GROWN_STATS) {
     if (s === "lck") continue;
@@ -301,7 +302,7 @@ function applyPromotion(state: SimState, target: AnalysisClass): void {
   capAt(state, target);
 }
 
-function initState(unit: AnalysisUnit, cls: AnalysisClass | undefined): SimState {
+function initState(unit: AnalysisUnit, cls: ClassRecord | undefined): SimState {
   const stats = {} as Record<GrownStat, number>;
   for (const s of GROWN_STATS) stats[s] = unit.startingStats[s];
   const state: SimState = {

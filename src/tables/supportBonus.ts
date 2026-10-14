@@ -3,7 +3,7 @@
  *
  * 1. Affinity names: `InputFormRef.GetAttributeName()` is a hardcoded `switch`,
  *    authoritative: 1 炎, 2 雷, 3 風, 4 氷, 5 闇, 6 光, 7 理. Each unit carries
- *    one at unit-record `+9` (`Unit.attribute`).
+ *    one at unit-record `+9` (`Unit.affinityId`).
  * 2. Support-bonus table at `RomInfo.support_attribute_pointer`, 8 bytes/record
  *    (`SupportAttributeForm.cs`), read while `u8(addr) != 0`: byte 0 is the
  *    affinity id, the table ends at the first zero record.

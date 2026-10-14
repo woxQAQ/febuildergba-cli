@@ -1,4 +1,4 @@
-import type { AnalysisClass } from "../analysis/data.ts";
+import type { ClassRecord } from "../model/records.ts";
 import { defineDbCommand } from "./types.ts";
 
 export type Mobility = "flying" | "mounted" | "armour" | "normal";
@@ -10,7 +10,7 @@ export type Mobility = "flying" | "mounted" | "armour" | "normal";
  * Stable mount flags remain decodable without config/data display labels.
  * Inferring more from movement costs is an analysis convention.
  */
-function mobilityOf(c: AnalysisClass): Mobility {
+function mobilityOf(c: ClassRecord): Mobility {
   if (c.mount === "wyvern" || c.mount === "pegasus") return "flying";
   if (c.mount === "horse") return "mounted";
   if (c.mount === "armour") return "armour";

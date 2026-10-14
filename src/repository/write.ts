@@ -179,7 +179,7 @@ async function insertUnits(db: ExtractDb, rom: ExtractionSnapshot): Promise<void
       isPromotedClass: u.isPromotedClass,
       mapFaceId: u.mapFaceId,
       portraitId: u.portraitId,
-      affinityId: u.attribute,
+      affinityId: u.affinityId,
       sortOrder: u.sortOrder,
       level: u.level,
       deltaHp: u.stats.hp,
@@ -329,7 +329,7 @@ async function insertAffinities(db: ExtractDb, rom: ExtractionSnapshot): Promise
   const affinityIds = new Set<number>(rom.affinityNames.keys());
   for (const b of rom.supportBonuses) affinityIds.add(b.affinity);
   for (const u of rom.units) {
-    if (u.attribute !== 0) affinityIds.add(u.attribute);
+    if (u.affinityId !== 0) affinityIds.add(u.affinityId);
   }
   const affinityRows: (typeof t.affinities.$inferInsert)[] = [...affinityIds]
     .sort((a, b) => a - b)

@@ -77,8 +77,9 @@
  * chapters. See `EXP_CURVE_ASSUMPTIONS`.
  */
 
-import type { AnalysisClass, ExpCurveInput } from "./data.ts";
+import type { ExpCurveInput } from "./data.ts";
 import type { GameVersion } from "../model/game.ts";
+import type { ClassRecord } from "../model/records.ts";
 import type { Difficulty, UnitStatRow } from "../model/stats.ts";
 import { DIFFICULTIES } from "../model/stats.ts";
 
@@ -178,10 +179,10 @@ export interface CombatantProfile {
  * dependency.
  */
 export function combatantOf(
-  cls: AnalysisClass,
+  cls: ClassRecord,
   level: number,
   promoted: boolean,
-  classById: ReadonlyMap<number, AnalysisClass>,
+  classById: ReadonlyMap<number, ClassRecord>,
   game: GameVersion,
 ): CombatantProfile {
   const linked =
@@ -394,7 +395,7 @@ export function computeExpCurve(data: ExpCurveInput, opts: ExpCurveOptions = {})
 
   // (mapIndex, difficulty) -> counted enemy rows, with the class resolved once
   // here rather than looked up again at consumption.
-  const byChapter = new Map<string, { row: UnitStatRow; cls: AnalysisClass }[]>();
+  const byChapter = new Map<string, { row: UnitStatRow; cls: ClassRecord }[]>();
   for (const row of rows) {
     if (row.side !== "enemy") continue;
     const cls = classById.get(row.classId);

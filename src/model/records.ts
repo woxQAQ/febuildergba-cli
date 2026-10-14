@@ -8,7 +8,7 @@ export interface UnitRecord {
   name: string;
   classId: number;
   className: string;
-  attribute: number;
+  affinityId: number;
   level: number;
   isEmpty: boolean;
   isPromotedClass: boolean;

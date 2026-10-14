@@ -10,7 +10,7 @@
  *   +5   u8   base class id         +37  u8  low-class custom animation
  *   +6   u16  map face id           +38  u8  high-class custom animation
  *   +8   u8   portrait id           +39  u8  (unlabelled)
- *   +9   u8   attribute             +40..43 u8  ability flags (4 bytes)
+ *   +9   u8   affinity              +40..43 u8  ability flags (4 bytes)
  *   +10  u8   sort order            +44  p32 support data pointer
  *   +11  u8   level                 +48  u8  talk group
  *   +12..18 u8 base stats (7)       +49..51 u8 (unlabelled)
@@ -40,7 +40,7 @@ export const UNIT_OFFSET = {
   classId: 5,
   mapFaceId: 6,
   portraitId: 8,
-  attribute: 9,
+  affinityId: 9,
   sortOrder: 10,
   level: 11,
   baseStats: 12,
@@ -145,7 +145,7 @@ export function readUnit(ctx: UnitTableContext, index: number): Unit | null {
     isPromotedClass: ctx.promotedClassIds?.has(classId) ?? false,
     mapFaceId: rom.u16(addr + UNIT_OFFSET.mapFaceId),
     portraitId: rom.u8(addr + UNIT_OFFSET.portraitId),
-    attribute: rom.u8(addr + UNIT_OFFSET.attribute),
+    affinityId: rom.u8(addr + UNIT_OFFSET.affinityId),
     sortOrder: rom.u8(addr + UNIT_OFFSET.sortOrder),
     level,
     stats,

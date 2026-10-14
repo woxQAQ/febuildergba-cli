@@ -18,7 +18,7 @@ export const roster = defineDbCommand({
         name: u.name,
         classId: u.classId,
         className: u.className,
-        affinityId: u.attribute,
+        affinityId: u.affinityId,
         level: u.level,
       }));
   },

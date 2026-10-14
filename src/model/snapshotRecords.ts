@@ -72,7 +72,7 @@ export interface Unit {
   isPromotedClass: boolean;
   mapFaceId: number;
   portraitId: number;
-  attribute: number;
+  affinityId: number;
   sortOrder: number;
   level: number;
   /** Per-unit deltas, **signed**. See `UnitStats`. */
