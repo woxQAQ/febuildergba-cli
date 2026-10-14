@@ -46,9 +46,9 @@ export async function writeSnapshot(
   // message that says what the caller did wrong. `commands/extract.ts` stays
   // the intended caller: it builds a scratch file and renames it over the
   // output, so it always hands this function a fresh one.
-  const existing = sqlite
-    .prepare("SELECT name FROM sqlite_master WHERE type = 'table'")
-    .all() as { name: string }[];
+  const existing = sqlite.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as {
+    name: string;
+  }[];
   if (existing.length > 0) {
     throw new Error(
       `${handle.path}: already carries ${existing.length} table(s) (${existing[0]!.name}, ...); ` +

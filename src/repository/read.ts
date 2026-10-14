@@ -589,9 +589,9 @@ export function openExtract(path: string): ExtractHandle {
             t.chapterEventSlots.position,
           )
           .all();
-        const turnOf = (s: (typeof t.chapterEventSlots.$inferSelect)): NonNullable<
-          ChapterEventSlot["turn"]
-        > | null => {
+        const turnOf = (
+          s: typeof t.chapterEventSlots.$inferSelect,
+        ): NonNullable<ChapterEventSlot["turn"]> | null => {
           if (s.turnStart === null) return null;
           if (s.turnEnd === null) {
             throw new Error(

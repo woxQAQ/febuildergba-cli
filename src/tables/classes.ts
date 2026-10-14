@@ -39,11 +39,7 @@ function readClassName(rom: RomBuffer, textId: number, text: TextContext): strin
 
 import { RomBuffer } from "../rom/RomBuffer.ts";
 import type { TextContext } from "../text/huffman.ts";
-import {
-  decodeTextEntry,
-  displayName,
-  sanitizeText,
-} from "../text/huffman.ts";
+import { decodeTextEntry, displayName, sanitizeText } from "../text/huffman.ts";
 import type { ResolvedTable } from "./common.ts";
 import { readWeaponLevels } from "./common.ts";
 import type { ClassFlagDef } from "./classFlags.ts";
