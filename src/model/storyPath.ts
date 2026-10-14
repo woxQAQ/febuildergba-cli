@@ -156,8 +156,10 @@ export function buildPlayOrder(
     startCandidates: walk.candidates.map((c) => c.mapIndex),
     startReason:
       walk.candidates[0] === undefined
-        ? "no map numbered 1 that no real numbered chapter leads into"
-        : "map-table order among the maps numbered 1 that no real numbered " +
+        ? "no opening map: nothing numbered 1, and no chapter-0 prologue " +
+          "leading into one, that no real numbered chapter leads into"
+        : "lowest map id among the opening candidates - a chapter numbered 1, " +
+          "or a chapter-0 prologue leading into one - that no real numbered " +
           `chapter leads into (chose map ${walk.candidates[0].mapIndex})`,
   };
 }
@@ -179,7 +181,9 @@ interface MainWalk {
 /**
  * Incoming edges count only from real, numbered chapters. Padded rows and
  * unnumbered post-battle/bonus/skirmish maps cannot disqualify an opening map.
- * Among maps numbered 1, table order selects the first eligible candidate.
+ * The opening is the lowest map id that no real chapter leads into: a chapter
+ * numbered 1 (acts restart their numbering at 1), or a chapter numbered 0 that
+ * steps into one (FE8 numbers its prologue 0).
  */
 function walkMainPath(
   edges: readonly ChapterEdges[],
@@ -193,12 +197,27 @@ function walkMainPath(
     for (const t of e.transitions) reachedFromRealChapter.add(t.targetMap);
   }
 
-  const candidates = edges.filter(
-    (e) =>
-      e.chapterNumber === 1 &&
-      steppingDestinations(e).length > 0 &&
-      !reachedFromRealChapter.has(e.mapIndex),
-  );
+  /**
+   * Opening candidates. A chapter numbered 1 qualifies on its own. A chapter
+   * numbered 0 qualifies only when it steps into a numbered chapter - that is
+   * the prologue signature (FE8: map 0 numbered 0, stepping into chapter 1).
+   * Chapter 0 otherwise means unnumbered bonus content: Vision Quest's
+   * chapter-0 trial maps are all roots too, and any of them seeding the walk
+   * would replace the real opening. Among candidates the lowest map id wins,
+   * because the map-setting table is ordered by map id and a prologue precedes
+   * the chapter it leads into.
+   */
+  const candidates = edges
+    .filter((e) => {
+      if (steppingDestinations(e).length === 0) return false;
+      if (reachedFromRealChapter.has(e.mapIndex)) return false;
+      if (e.chapterNumber === 1) return true;
+      return (
+        e.chapterNumber === 0 &&
+        steppingDestinations(e).some((d) => byMap.get(d)?.chapterNumber === 1)
+      );
+    })
+    .sort((a, b) => a.mapIndex - b.mapIndex);
 
   const chain: ChapterEdges[] = [];
   const branches: PathBranch[] = [];

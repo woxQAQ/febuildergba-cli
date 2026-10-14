@@ -28,6 +28,12 @@ export interface AppearancesInput {
   units: readonly AnalysisUnit[];
   chapters: readonly AnalysisChapter[];
   trace: EventGraph;
+  /**
+   * Debug (developer) maps (`meta` `debugMaps`): real rows no playthrough
+   * visits. Appearances there are dropped, so a debug load block cannot pose
+   * as a unit's earliest army entry.
+   */
+  debugMaps: ReadonlySet<number>;
 }
 
 /** `analysis/availability.ts` - the unit x chapter matrix. */

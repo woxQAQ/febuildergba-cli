@@ -153,6 +153,10 @@ async function insertMeta(db: ExtractDb, rom: ExtractionSnapshot): Promise<void>
     // table, so they stay here as run-level facts.
     { key: "playOrder.branches", value: JSON.stringify(rom.playOrder.branches) },
     { key: "playOrder.closedLoop", value: JSON.stringify(rom.playOrder.closedLoop) },
+    // Debug maps, as `{mapIndex, reason}` records. The appearance-based
+    // analyses drop them; a db predating this build reads as none, which only
+    // means "re-extract to get the exclusion".
+    { key: "debugMaps", value: JSON.stringify(rom.debugMaps) },
   ]);
 }
 

@@ -54,6 +54,7 @@ import type {
   TracedScript,
 } from "../model/events.ts";
 import type { PlayOrderStep } from "../model/storyPath.ts";
+import type { DebugMapRecord } from "../model/debugMap.ts";
 import type { UnitStatRow } from "../model/stats.ts";
 import { openDb } from "./open.ts";
 import type { OpenDb } from "./open.ts";
@@ -175,6 +176,13 @@ export interface ExtractHandle {
   chapters(): Promise<ChapterRecord[]>;
   /** `derived_play_order`: the steps, and map index -> 1-based position. */
   playOrder(): Promise<PlayOrderRows>;
+  /**
+   * `meta` `debugMaps`: debug (developer) maps - real rows no playthrough
+   * visits. Empty when the ROM has none, and also when the db predates the
+   * key (a rebuildable artifact: re-extract to get the exclusion). Callers
+   * treat the records as a fact about the ROM, not as a quality signal.
+   */
+  debugMaps(): Promise<readonly DebugMapRecord[]>;
   /** `force_sortie` records; empty when the game has no such table. */
   forceSortie(): Promise<ForceSortieRow[]>;
   /** `support_partners` rows, in extract (directed-record) order. */
@@ -430,6 +438,26 @@ export function openExtract(path: string): ExtractHandle {
           playable: r.playable,
         }));
         return { steps, position: new Map(steps.map((s) => [s.mapIndex, s.order])) };
+      }),
+
+    debugMaps: () =>
+      once("debugMaps", async (): Promise<readonly DebugMapRecord[]> => {
+        const raw = (await metaOf()).get("debugMaps");
+        if (raw === undefined || raw === "") return [];
+        try {
+          const parsed: unknown = JSON.parse(raw);
+          if (!Array.isArray(parsed)) return [];
+          return parsed.filter(
+            (r): r is DebugMapRecord =>
+              typeof r === "object" &&
+              r !== null &&
+              typeof (r as DebugMapRecord).mapIndex === "number",
+          );
+        } catch {
+          // A corrupt value is not a reason to fail the command; the analyses
+          // then simply see no debug maps, which is the pre-key behaviour.
+          return [];
+        }
       }),
 
     forceSortie: () =>

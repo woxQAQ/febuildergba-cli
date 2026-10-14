@@ -15,6 +15,12 @@
  *     Event loads are kept verbatim: a reachable unit block is already a
  *     deliberate load, and the old `unit_joins` view reported them without a
  *     unit-table join - filtering here would lose parity for no gain.
+ *   - **Debug maps are dropped whole** (`data.debugMaps`, detected in
+ *     `model/debugMap.ts`): a jump-chapter menu or unit test bench is real
+ *     data, but its player-side load blocks are not army entries - dream-of-five's
+ *     map 60 otherwise poses as the join chapter of 17 roster units. Both
+ *     placements and event loads are filtered, so a unit seen only on a debug
+ *     map has no appearance at all and the consumers report "never joins".
  *
  * Player-army membership shares one predicate. Consumers still decide how
  * to rank appearances and handle off-path maps: `joins` counts them, while
@@ -52,6 +58,7 @@ export function collectAppearances(data: AppearancesInput): UnitAppearance[] {
   const seen = new Set<string>();
 
   const push = (a: UnitAppearance): void => {
+    if (data.debugMaps.has(a.mapIndex)) return;
     const key = `${a.unitId}|${a.mapIndex}|${a.side}|${a.source}|${a.placedClassId}`;
     if (seen.has(key)) return;
     seen.add(key);

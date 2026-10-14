@@ -25,6 +25,7 @@ export type AnalysisSource = Omit<ExtractHandle, "close"> & {
 export function prepareAnalysis(repository: ExtractHandle, path: string): AnalysisSource {
   const diagnostics: string[] = [];
   let eventQuality: Promise<void> | undefined;
+  let debugMapsWarned = false;
   const requireAvailable = async (kind: "chapters" | "events"): Promise<void> => {
     if (!(await repository.availability())[kind]) {
       throw new Error(
@@ -48,6 +49,20 @@ export function prepareAnalysis(repository: ExtractHandle, path: string): Analys
     scripts: () => repository.scripts(),
     forceSortie: () => repository.forceSortie(),
     supportPartners: () => repository.supportPartners(),
+    debugMaps: async () => {
+      // The exclusion is a fact about the ROM, but a silent one changes every
+      // join ranking, so say it once per session.
+      await requireEvents();
+      const records = await repository.debugMaps();
+      if (records.length > 0 && !debugMapsWarned) {
+        debugMapsWarned = true;
+        const list = records.map((r) => `map ${r.mapIndex} (${r.reason})`).join("; ");
+        diagnostics.push(
+          `excluded ${records.length} debug map(s) from joins/availability/projection: ${list}`,
+        );
+      }
+      return records;
+    },
     chapters: async () => {
       await requireAvailable("chapters");
       return repository.chapters();
@@ -86,6 +101,7 @@ export async function joinsOf(x: AnalysisSource): Promise<UnitJoin[]> {
     units: await unitsOf(x),
     chapters: await x.chapters(),
     trace: await x.trace(),
+    debugMaps: new Set((await x.debugMaps()).map((r) => r.mapIndex)),
     position: (await x.playOrder()).position,
   });
 }
@@ -98,6 +114,7 @@ export async function availabilityOf(x: AnalysisSource): Promise<UnitAvailabilit
     playOrder: await x.playOrder(),
     forceSortie: await x.forceSortie(),
     trace: await x.trace(),
+    debugMaps: new Set((await x.debugMaps()).map((r) => r.mapIndex)),
   });
 }
 
@@ -135,6 +152,7 @@ export async function projectionOf(
       units: await unitsOf(x),
       chapters: await x.chapters(),
       trace: await x.trace(),
+      debugMaps: new Set((await x.debugMaps()).map((r) => r.mapIndex)),
     },
     opts,
   );

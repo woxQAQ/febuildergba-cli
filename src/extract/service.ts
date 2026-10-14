@@ -29,6 +29,7 @@ import type { MapSettingTable } from "../tables/chapters.ts";
 import { describeCondSlots, readChapters, readMapSettingTable } from "../tables/chapters.ts";
 import { isRealMap, readAllTransitions } from "../tables/storyPath.ts";
 import { buildPlayOrder } from "../model/storyPath.ts";
+import { detectDebugMaps } from "../model/debugMap.ts";
 import { readForceSortie } from "../tables/forceSortie.ts";
 import { readClassBranches } from "../tables/classBranch.ts";
 import type { ItemReadResult } from "../model/snapshotRecords.ts";
@@ -296,6 +297,11 @@ function parse(
   const transitions = readAllTransitions(eventTrace, chapters);
   const realMaps = new Set(chapters.filter((c) => isRealMap(buffer, c)).map((c) => c.index));
   const playOrder = buildPlayOrder(transitions, (m) => realMaps.has(m));
+  // Debug content is detected over the same END_EVENT evidence as the play
+  // order, and read back from `meta` by the appearance-based analyses. It
+  // takes no realness predicate: a copied row can fail `isRealMap` (map 60's
+  // map-id byte is a stale 0) while still being the debug map.
+  const debugMaps = detectDebugMaps(transitions);
 
   const forceSortie = readForceSortie(buffer, layout);
 
@@ -370,6 +376,7 @@ function parse(
     eventsAvailable: chaptersAvailable && eventScripts.scripts.length > 0,
     chapters,
     playOrder,
+    debugMaps,
     unitStats: buildUnitStats({ units, classes, chapters, trace: eventTrace }),
     forceSortie,
     classBranch,
