@@ -114,7 +114,7 @@ export class RomBuffer {
    * a file offset.
    *
    * This is how nearly every table in the ROM is reached. `RomInfo.*_pointer`
-   * values in FEBuilderGBA are *slot* offsets, not table offsets — reading a
+   * values in FEBuilderGBA are *slot* offsets, not table offsets; reading a
    * table without going through `p32` is the classic mistake.
    *
    * Out-of-range slots yield 0 rather than throwing, matching FEBuilderGBA.

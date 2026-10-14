@@ -25,7 +25,7 @@
  * | `+26`  | `W26`   | 単価                          | **price per use (u16)**     |
  * | `+28`  | `B28`   | レベル                        | weapon rank (1=E … 251=S)   |
  * | `+29`  | `B29`   | アイコン                      | icon id                     |
- * | `+30`  | `B30`   | —                             | staff/effect id             |
+ * | `+30`  | `B30`   | (no label)                    | staff/effect id             |
  * | `+31`  | `B31`   | ダメージ追加効果               | damage bonus                |
  * | `+32`  | `B32`   | 武器LV熟練度                   | weapon exp                  |
  *

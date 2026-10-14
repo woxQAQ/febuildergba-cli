@@ -15,18 +15,9 @@
  *
  * Two jobs beyond the SELECTs:
  *
- *   - **Order comes from keys, never `rowid`.** For a table without an
- *     INTEGER PRIMARY KEY alias, SQLite does not guarantee rowid stability
- *     (VACUUM is documented as permitted to renumber such rows), and the
- *     schema guard below cannot see a reordering - so every SELECT orders
- *     explicitly. `units`/`classes` order by `id` - the join key every other
- *     table references them by, and therefore the canonical roster order. The
- *     event layer orders by its composite keys (`(script_id, seq[, position])`
- *     and friends): the extractor assigns script ids FIFO and walks operands
- *     in order, so key order equals insertion order. Tables whose row order
- *     carries no meaning (support partners, forced sortie, unit stats) order
- *     by their primary keys; their consumers dedup into maps and sort their
- *     own output, so the read order is only a deterministic tiebreak.
+ *   - **Order comes from keys, never `rowid`.** Every SELECT orders by an
+ *     explicit key; the rule and its rationale are stated once in `schema.ts`.
+ *     The comments at each query say why that key is the right order.
  *   - **Schema guard.** An old extract missing a table or column this loader
  *     reads is reported as "re-run extract", not a `no such column` from
  *     deep inside a query.

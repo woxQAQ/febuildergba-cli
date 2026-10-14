@@ -583,9 +583,9 @@ export interface Item {
   wexp: number;
   /** `+26`: price **per use**. */
   unitPrice: number;
-  /** `uses x unitPrice` — what a shop charges. */
+  /** `uses x unitPrice`: what a shop charges. */
   buyPrice: number;
-  /** `buyPrice / 2` — `ItemForm.cs:311`. */
+  /** `buyPrice / 2`: `ItemForm.cs:311`. */
   sellPrice: number;
   /** True when the item is a weapon or staff (type 0..7). */
   isWeapon: boolean;
@@ -609,7 +609,7 @@ export interface ShopEntry {
   itemId: number;
   /** Durability the shop sells at; 0 = full. */
   uses: number;
-  /** `uses || item.uses` — the durability you actually receive. */
+  /** `uses || item.uses`: the durability you actually receive. */
   effectiveUses: number;
   name: string;
   /** `effectiveUses x item.unitPrice`. */

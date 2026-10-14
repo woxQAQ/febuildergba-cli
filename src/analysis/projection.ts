@@ -118,7 +118,7 @@ export interface ProjectionPoint {
  * 标准基础职业单位(power = 参照敌 power、未转职)的比值。语义:
  *   - classPower 越高,伤害经验项 ÷power 越小,即「高 power 职业吃经验少」;
  *   - 入队即上级的单位有效等级 +20、bonus B 抬升自身 powerLevel,两项一起
- *     压缩经验 — 这就是上级单位挤压下级成长的量化。
+ *     压缩经验:这就是上级单位挤压下级成长的量化。
  * ratio < 1 表示低于标准线(典型:入队即转职的单位);> 1 见于学徒系
  * (power 1-2)。
  */
@@ -146,7 +146,7 @@ export interface UnitProjection {
   points: readonly ProjectionPoint[];
   /**
    * 入队时的经验效率概要;单位从不入队(或入队章不在任何已知路径上)时为
-   * null — 没有可参照的入队章敌方 power。
+   * null: 没有可参照的入队章敌方 power。
    */
   expEfficiency: ExpEfficiency | null;
   /**

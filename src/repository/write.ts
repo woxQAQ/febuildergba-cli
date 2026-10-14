@@ -6,16 +6,11 @@
  *
  * Inserts are chunked, not one statement per row - see `insertInChunks`.
  *
- * Foreign keys are enforced: the connection runs `PRAGMA foreign_keys = ON`
- * and asserts it took, and the insert order is the dependency order. That
- * order is declared once, in {@link TABLE_WRITERS} at the bottom of this file,
- * and checked against the schema's foreign keys by
- * {@link assertWritePipeline} before the transaction opens - it is no longer a
- * call sequence a reader has to trust.
- *
- * Dependency order matters because enforcement is immediate (not deferred):
- * a parent row must land before anything referencing it, so a dangling
- * reference fails the extract instead of silently storing null.
+ * Foreign keys are enforced on this connection and the insert order is the
+ * dependency order: declared once in {@link TABLE_WRITERS} below, checked
+ * against the schema by {@link assertWritePipeline} before the transaction
+ * opens. Enforcement is immediate (not deferred), so a dangling reference
+ * fails the extract instead of silently storing null.
  */
 
 import { sql } from "drizzle-orm";

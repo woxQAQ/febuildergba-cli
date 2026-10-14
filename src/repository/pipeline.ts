@@ -2,14 +2,11 @@
  * The write pipeline's contract: one entry per group of tables a single
  * inserter fills, declared in dependency order.
  *
- * Why this exists. `write.ts` inserts in dependency order because foreign
- * keys are enforced with immediate checking, so a parent row must land before
- * anything referencing it. That order used to live in two places - the call
- * sequence inside `writeSnapshot` and the `TABLES` array in `schema.ts` -
- * kept in sync by comments, and a mistake surfaced as a mid-extract FOREIGN
- * KEY failure. `TABLE_WRITERS` (in `write.ts`) is now the single declaration,
- * and {@link assertWritePipeline} checks it against the schema mechanically,
- * so the invariant is enforced rather than documented:
+ * Why this exists. The insert order must satisfy every foreign key (enforced
+ * with immediate checking on the write connection; the invariant is stated in
+ * `schema.ts`). It is declared once, in `TABLE_WRITERS` (`write.ts`), and this
+ * module checks that declaration against the schema mechanically, so the
+ * invariant is enforced rather than kept in sync by comments:
  *
  *   1. every writer fills only tables `TABLES` creates - filling an
  *      unregistered table would fail at INSERT time anyway ("no such table"),

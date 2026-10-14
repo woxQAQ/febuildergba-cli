@@ -32,7 +32,7 @@ function isPointerOrNull(value: number): boolean {
 /**
  * Read the terrain-name table.
  *
- * `maxCount` is only a safety bound — the reference walks until the terminator
+ * `maxCount` is only a safety bound; the reference walks until the terminator
  * or the end of the ROM (`ROM.getBlockDataCount`).
  */
 export function readTerrainNames(

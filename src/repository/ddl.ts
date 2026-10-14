@@ -5,11 +5,9 @@
  * single-column and composite foreign keys; anything else fails here, loudly,
  * at extract time.
  *
- * The emitted FOREIGN KEY clauses are only enforced when the connection has
- * `PRAGMA foreign_keys = ON` - a per-connection setting whose SQLite default
- * is off (`node:sqlite` enables it, but that is the driver's choice).
- * `write.ts` sets it explicitly and asserts it, so the declarations below are
- * enforced rather than documented.
+ * The emitted FOREIGN KEY clauses are enforced, not merely declared: the write
+ * connection runs with `PRAGMA foreign_keys = ON`, set and asserted in
+ * `write.ts`. The invariant itself is stated in `schema.ts`.
  *
  * Tables only, because tables are all the extract creates: the derivations that
  * used to ship as db views (roster, class_roles, support_edges,

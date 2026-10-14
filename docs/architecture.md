@@ -74,6 +74,18 @@ Repository 的原始读取方法仍可用于检查缺失输入的产物，本身
 提取 service 通过 snapshot 返回诊断；分析会话通过 `diagnostics()` 返回诊断。
 CLI 决定 stderr 格式，service 和 repository 不直接打印。
 
+## 注释语言
+
+源码注释三语分工，每种语言只承担一个角色：
+
+- 日文：FEBuilderGBA designer 里的字段标签（攻撃、必ず出撃、CC分岐表），是偏移量
+  转录的依据，保留原样，不当翻译用；
+- 中文：输出契约类型（`ProjectionPoint`、`ExpEfficiency`、道具名表等）的字段文档，
+  服务 JSON 的中文消费方；
+- 英文：其余全部内部 rationale。
+
+日文只作依据、中文只写契约、英文只写原理，不跨角色混用。
+
 ## 添加一张表
 
 系统最重要的资产是数据表，“加一张表”因此是一条被刻意维护的路径。按顺序走，
