@@ -21,6 +21,8 @@ export type ExtractSchema = typeof schema;
 export type ExtractDb = SqliteRemoteDatabase<ExtractSchema>;
 
 export interface OpenDb {
+  /** The file this handle owns; for error messages that name the database. */
+  readonly path: string;
   /** Typed drizzle handle. */
   db: ExtractDb;
   /**
@@ -57,6 +59,7 @@ export function openDb(path: string, options: { readOnly?: boolean } = {}): Open
   );
 
   return {
+    path,
     db,
     sqlite,
     close() {

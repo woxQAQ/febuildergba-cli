@@ -251,6 +251,22 @@ export function openExtract(path: string): ExtractHandle {
       const rows = await db.select().from(t.meta).all();
       return new Map(rows.map((r) => [r.key, r.value]));
     });
+
+  /**
+   * A `meta` flag this build always writes. A missing key is a db predating
+   * the flag and a value other than "true"/"false" is a corrupt one; both fail
+   * the command rather than reading as `false`, which used to make a broken
+   * extract indistinguishable from "no chapters".
+   */
+  const metaBool = (meta: Map<string, string>, key: string): boolean => {
+    const raw = meta.get(key);
+    if (raw === undefined) {
+      throw notAnExtractDb(path, `no \`${key}\` in \`meta\`; not an extract db`);
+    }
+    if (raw === "true") return true;
+    if (raw === "false") return false;
+    throw notAnExtractDb(path, `malformed \`meta\` \`${key}\` value ${JSON.stringify(raw)}`);
+  };
   const scriptsOf = () =>
     once("scripts", async (): Promise<TracedScript[]> =>
       db.select().from(t.eventScripts).orderBy(t.eventScripts.id).all(),
@@ -319,8 +335,8 @@ export function openExtract(path: string): ExtractHandle {
     availability: async () => {
       const meta = await metaOf();
       return {
-        chapters: meta.get("chapters.available") === "true",
-        events: meta.get("events.available") === "true",
+        chapters: metaBool(meta, "chapters.available"),
+        events: metaBool(meta, "events.available"),
       };
     },
     game: gameOf,
@@ -434,21 +450,31 @@ export function openExtract(path: string): ExtractHandle {
     debugMaps: () =>
       once("debugMaps", async (): Promise<readonly DebugMapRecord[]> => {
         const raw = (await metaOf()).get("debugMaps");
-        if (raw === undefined || raw === "") return [];
+        // Absent key: a db predating the build reads as no debug maps.
+        if (raw === undefined) return [];
+        let parsed: unknown;
         try {
-          const parsed: unknown = JSON.parse(raw);
-          if (!Array.isArray(parsed)) return [];
-          return parsed.filter(
-            (r): r is DebugMapRecord =>
-              typeof r === "object" &&
-              r !== null &&
-              typeof (r as DebugMapRecord).mapIndex === "number",
-          );
-        } catch {
-          // A corrupt value is not a reason to fail the command; the analyses
-          // then simply see no debug maps, which is the pre-key behaviour.
-          return [];
+          parsed = JSON.parse(raw);
+        } catch (error) {
+          // A value that is there but does not parse is corruption, and a
+          // silent `[]` here would drop the debug-map exclusion without a
+          // trace - the failure mode the write side works to avoid.
+          throw notAnExtractDb(path, "malformed `meta` `debugMaps` (not JSON)", error);
         }
+        if (!Array.isArray(parsed)) {
+          throw notAnExtractDb(path, "malformed `meta` `debugMaps` (not an array)");
+        }
+        return parsed.map((r) => {
+          if (
+            typeof r === "object" &&
+            r !== null &&
+            typeof (r as DebugMapRecord).mapIndex === "number" &&
+            typeof (r as DebugMapRecord).reason === "string"
+          ) {
+            return r as DebugMapRecord;
+          }
+          throw notAnExtractDb(path, `malformed \`meta\` \`debugMaps\` entry ${JSON.stringify(r)}`);
+        });
       }),
 
     forceSortie: () =>
@@ -563,19 +589,25 @@ export function openExtract(path: string): ExtractHandle {
             t.chapterEventSlots.position,
           )
           .all();
+        const turnOf = (s: (typeof t.chapterEventSlots.$inferSelect)): NonNullable<
+          ChapterEventSlot["turn"]
+        > | null => {
+          if (s.turnStart === null) return null;
+          if (s.turnEnd === null) {
+            throw new Error(
+              `${path}: event slot ${s.mapIndex}:${s.slotIndex} has turn_start ${s.turnStart} ` +
+                "with a null turn_end",
+            );
+          }
+          return { start: s.turnStart, end: s.turnEnd, phase: s.turnPhase };
+        };
         const chapterSlots: ChapterEventSlot[] = slotRows.map((s) => ({
           mapIndex: s.mapIndex,
           slotIndex: s.slotIndex,
           slotKind: s.slotKind,
           position: s.position,
           scriptId: s.scriptId,
-          // `turnStart`/`turnEnd` are written from the same `slot.turn`
-          // (write.ts), so they are null together; the cast rests on that
-          // write-side invariant.
-          turn:
-            s.turnStart === null
-              ? null
-              : { start: s.turnStart, end: s.turnEnd as number, phase: s.turnPhase },
+          turn: turnOf(s),
           condFlag: s.condFlag,
         }));
 

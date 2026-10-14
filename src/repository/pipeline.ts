@@ -15,7 +15,12 @@
  *      the "added a table to the schema but forgot the inserter" guard, which
  *      previously stored a silently empty table (and a zero row count);
  *   3. the array order satisfies every foreign key - the previous failure mode,
- *      now caught before BEGIN rather than as a rollback mid-extract.
+ *      now caught before BEGIN rather than as a rollback mid-extract. Order is
+ *      checked at two levels: across writers, and inside a writer, because a
+ *      writer's `tables` array is the order it inserts them (see
+ *      {@link TableWriter.tables}). The old check stopped at the writer
+ *      boundary, so a child table inserted before its parent inside one writer
+ *      passed the assertion and failed at INSERT as a mid-transaction rollback.
  *
  * A writer may fill several tables (the class inserter also fills the ability,
  * movement-cost and terrain-bonus children; the world inserter fills condition
@@ -36,7 +41,12 @@ import type { ExtractionSnapshot } from "../model/snapshot.ts";
 export interface TableWriter {
   /** Domain name, for error messages only. */
   readonly name: string;
-  /** Tables this writer fills; all must appear in `schema.ts`'s `TABLES`. */
+  /**
+   * Tables this writer fills, all in `schema.ts`'s `TABLES`, **in the order
+   * the writer inserts them**. The assertion reads this array as the insert
+   * order, so a reorder inside a writer that breaks a foreign key is caught
+   * here rather than as a rollback mid-extract.
+   */
   readonly tables: readonly SQLiteTable[];
   /** Fill them. Runs inside the write transaction, in array order. */
   readonly write: (db: ExtractDb, rom: ExtractionSnapshot) => Promise<void>;
@@ -70,20 +80,27 @@ export function assertWritePipeline(
     }
 
     // Foreign keys are enforced immediately, so every referenced table must be
-    // written by an earlier writer (or by this one - the class writer fills
+    // written before the table referencing it: by an earlier writer, or by an
+    // earlier entry in this writer's own `tables` array (the class writer fills
     // `classes` before its own children, the event writer fills
-    // `event_instructions` before its effect tables).
-    for (const table of writer.tables) {
+    // `event_instructions` before its effect tables). Checking per position,
+    // not per writer, is what makes the array a real contract.
+    const ownSoFar = new Set<string>();
+    for (const [index, table] of writer.tables.entries()) {
+      const name = tableName(table);
       for (const fk of getTableConfig(table).foreignKeys) {
         const target = tableName(fk.reference().foreignTable);
-        if (written.has(target) || own.includes(target)) continue;
-        const by = filledBy.get(target);
+        if (written.has(target) || ownSoFar.has(target)) continue;
+        const laterAt = own.indexOf(target);
         throw new Error(
-          `write pipeline: writer "${writer.name}" writes "${tableName(table)}" before its ` +
-            `foreign target "${target}"` +
-            (by === undefined ? ", which no earlier writer fills" : `, written by "${by}"`),
+          `write pipeline: writer "${writer.name}" writes "${name}" (position ${index}) ` +
+            `before its foreign target "${target}"` +
+            (laterAt === -1
+              ? ", which no earlier writer fills"
+              : `, which this writer fills later (position ${laterAt})`),
         );
       }
+      ownSoFar.add(name);
     }
 
     for (const name of own) {

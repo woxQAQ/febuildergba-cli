@@ -40,6 +40,22 @@ export async function writeSnapshot(
   // or a foreign target written after its referrer all fail now rather than
   // mid-transaction. See `pipeline.ts`.
   assertWritePipeline(TABLE_WRITERS, t.TABLES);
+
+  // The writer rebuilds from empty; it never merges into an existing db. The
+  // check turns the first CREATE TABLE's "table meta already exists" into a
+  // message that says what the caller did wrong. `commands/extract.ts` stays
+  // the intended caller: it builds a scratch file and renames it over the
+  // output, so it always hands this function a fresh one.
+  const existing = sqlite
+    .prepare("SELECT name FROM sqlite_master WHERE type = 'table'")
+    .all() as { name: string }[];
+  if (existing.length > 0) {
+    throw new Error(
+      `${handle.path}: already carries ${existing.length} table(s) (${existing[0]!.name}, ...); ` +
+        "writeSnapshot rebuilds from empty, so pass a fresh file",
+    );
+  }
+
   for (const statement of createTablesSql(t.TABLES)) sqlite.exec(statement);
 
   // Foreign-key enforcement is a per-connection setting. SQLite's own default
@@ -78,7 +94,10 @@ export async function writeSnapshot(
     }
     return { tables };
   } catch (error) {
-    sqlite.exec("ROLLBACK");
+    // Guarded: a failure after COMMIT (the row-count block above is inside this
+    // try) finds no active transaction, and an unconditional ROLLBACK would
+    // throw "cannot rollback - no transaction is active" over the real error.
+    if (sqlite.isTransaction) sqlite.exec("ROLLBACK");
     throw error;
   }
 }
@@ -822,7 +841,10 @@ async function insertWorldData(db: ExtractDb, rom: ExtractionSnapshot): Promise<
  * stay inside one inserter and one transaction.
  *
  * Adding a table means adding its inserter here in the right position; a
- * wrong position fails the extract at the assertion, not at the INSERT.
+ * wrong position fails the extract at the assertion, not at the INSERT. Each
+ * writer's `tables` array lists its own tables in the order that writer
+ * inserts them, and the assertion checks the foreign keys at both levels, so a
+ * reorder inside a writer is caught there too.
  */
 export const TABLE_WRITERS: readonly TableWriter[] = [
   { name: "meta", tables: [t.meta], write: insertMeta },
@@ -858,15 +880,18 @@ export const TABLE_WRITERS: readonly TableWriter[] = [
   { name: "story", tables: [t.derivedPlayOrder], write: insertStory },
   {
     name: "eventTrace",
+    // `insertEventTrace` inserts in exactly this order; the assertion in
+    // `pipeline.ts` reads the array as that order and checks the foreign keys
+    // against it, so a reorder there must be mirrored here.
     tables: [
       t.eventScripts,
       t.eventInstructions,
-      t.chapterEventSlots,
       t.loadBlocks,
       t.eventUnitLoads,
       t.eventCalls,
       t.eventGold,
       t.eventItemGrants,
+      t.chapterEventSlots,
       t.loadBlockUnits,
     ],
     write: (db, rom) => insertEventTrace(db, rom.eventTrace),
