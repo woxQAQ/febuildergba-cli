@@ -119,6 +119,8 @@ export function parseArgv(argv: readonly string[]): ParsedArgv {
   const out = str("out");
   const range = str("range");
   const lang = str("lang");
+  const actorLevel = str("actor-level");
+  const actorClassPower = str("actor-class-power");
   if (lang !== undefined && !isKnownLanguage(lang)) {
     throw new Error(`--lang expects one of ${LANGUAGE_NAMES.join(", ")}, got "${lang}"`);
   }
@@ -133,6 +135,9 @@ export function parseArgv(argv: readonly string[]): ParsedArgv {
       ...(out === undefined ? {} : { out }),
       ...(range === undefined ? {} : { range }),
       ...(lang === undefined ? {} : { lang }),
+      ...(actorLevel === undefined ? {} : { actorLevel }),
+      ...(actorClassPower === undefined ? {} : { actorClassPower }),
+      ...(values["actor-promoted"] === true ? { actorPromoted: true } : {}),
     },
   };
 }

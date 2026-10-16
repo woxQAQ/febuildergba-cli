@@ -601,6 +601,20 @@ export function openExtract(path: string): ExtractHandle {
           }
           return { start: s.turnStart, end: s.turnEnd, phase: s.turnPhase };
         };
+        // A TALK record carries both ids or neither: the pair is one fact, so a
+        // half-written pair is a broken artifact rather than a partial pair.
+        const talkOf = (
+          s: typeof t.chapterEventSlots.$inferSelect,
+        ): NonNullable<ChapterEventSlot["talk"]> | null => {
+          if (s.talkUnitFrom === null && s.talkUnitTo === null) return null;
+          if (s.talkUnitFrom === null || s.talkUnitTo === null) {
+            throw new Error(
+              `${path}: event slot ${s.mapIndex}:${s.slotIndex} has talk_unit_from ` +
+                `${s.talkUnitFrom} with talk_unit_to ${s.talkUnitTo}`,
+            );
+          }
+          return { from: s.talkUnitFrom, to: s.talkUnitTo };
+        };
         const chapterSlots: ChapterEventSlot[] = slotRows.map((s) => ({
           mapIndex: s.mapIndex,
           slotIndex: s.slotIndex,
@@ -608,6 +622,7 @@ export function openExtract(path: string): ExtractHandle {
           position: s.position,
           scriptId: s.scriptId,
           turn: turnOf(s),
+          talk: talkOf(s),
           condFlag: s.condFlag,
         }));
 

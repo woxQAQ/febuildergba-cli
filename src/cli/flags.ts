@@ -58,6 +58,32 @@ export const FLAGS: readonly FlagSpec[] = [
     commands: ["text"],
   },
   {
+    name: "actor-level",
+    type: "string",
+    arg: "<n>",
+    summary:
+      "Level of the attacker the exp budget is measured for; default 20, the " +
+      "highest unpromoted level",
+    commands: ["expcurve"],
+  },
+  {
+    name: "actor-class-power",
+    type: "string",
+    arg: "<n>",
+    summary:
+      "Class power (class table +26) of that attacker; default 3, the modal " +
+      "value across classes",
+    commands: ["expcurve"],
+  },
+  {
+    name: "actor-promoted",
+    type: "boolean",
+    summary:
+      "Treat the attacker as promoted (effective level +20). Its class-bonus-B " +
+      "term is not modelled; see the command's assumptions",
+    commands: ["expcurve"],
+  },
+  {
     name: "help",
     type: "boolean",
     short: "h",

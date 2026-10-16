@@ -697,6 +697,8 @@ async function insertEventTrace(db: ExtractDb, trace: EventTrace): Promise<void>
     turnStart: slot.turn?.start ?? null,
     turnEnd: slot.turn?.end ?? null,
     turnPhase: slot.turn?.phase ?? null,
+    talkUnitFrom: slot.talk?.from ?? null,
+    talkUnitTo: slot.talk?.to ?? null,
     condFlag: slot.condFlag,
   }));
   await insertInChunks(slotRows, (chunk) => db.insert(t.chapterEventSlots).values(chunk));

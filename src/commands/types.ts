@@ -40,6 +40,12 @@ export interface ResolvedFlags {
   range?: string;
   /** `extract`: language for the config/data name tables baked into the db. */
   lang?: string;
+  /** `expcurve`: level of the attacker the budget is measured for. */
+  actorLevel?: string;
+  /** `expcurve`: class power of that attacker. */
+  actorClassPower?: string;
+  /** `expcurve`: whether that attacker is promoted. */
+  actorPromoted?: boolean;
 }
 
 /**

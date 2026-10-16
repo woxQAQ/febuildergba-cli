@@ -57,17 +57,31 @@
  *     chapters 0-8. We model the whole game rather than those eight chapters
  *     - see {@link EXP_CURVE_ASSUMPTIONS}.
  *
- * The budget itself
+ * ## What the budget measures, and what it used to measure
  *
  * Enemies come from `derived_unit_stats` (`data.unitStats` - simulator output
- * materialized by extraction), which already resolves
- * each appearance's level under each difficulty. The budget measures the
- * chapter at **parity**:
- * a hypothetical player unit that fights every enemy at that enemy's own
- * level, class power and promotion status. At parity the level terms cancel
- * (`roundExp` is `31/power`, the power-level difference is 0), so a chapter's
- * budget is driven by enemy *count*, class powers and boss/thief flags - the
- * designer's offered exp, independent of any actual playthrough's levels.
+ * materialized by extraction), which already resolves each appearance's level
+ * under each difficulty.
+ *
+ * The budget is a measurement **for a stated player level**: given an attacker
+ * of level {@link ExpCurveOptions.actorLevel} in a class of power
+ * {@link ExpCurveOptions.actorClassPower} (promoted or not, by
+ * {@link ExpCurveOptions.actorPromoted}), how much exp does this chapter's
+ * enemy set hand out? The level is an input, not an assumption, so the level
+ * terms in the formula do not cancel and each enemy's grade, class power and
+ * boss/thief/mummy flags move the result independently.
+ *
+ * An earlier version fixed the attacker at the enemy's own level, class power
+ * and promotion status - "parity" - which made each term of the formula cancel
+ * against itself: `roundExp` collapsed to `31 / classPower` and
+ * `powerLevel(target) - powerLevel(actor)` to 0, leaving
+ * `battleExp == 31 / classPower + 20` for every enemy. With `classPower == 3`
+ * on 103 of this ROM's 127 classes, that is ~30.3 exp per enemy whatever the
+ * enemy is, so `totalExpAtParity` divided by `enemyCount` printed ~30 on 90 of
+ * 144 rows and the "budget" was a restatement of the enemy count. Measuring a
+ * chapter by fighting it with itself is not a measurement, and the name hid
+ * that. {@link ChapterExpBudget} still carries the enemy count, which was the
+ * part that was real.
  *
  * Reinforcements are counted: every enemy a reachable event load brings
  * (`source === "event"`) is exp on the table, listed separately as
@@ -290,19 +304,19 @@ export interface ChapterExpBudget {
   /** Counted enemies from event loads (reinforcements etc.). */
   eventLoadEnemyCount: number;
   /**
-   * Modal class power of the counted enemies, `null` when there are none -
-   * the reference power a "typical enemy of this chapter" has. Used by the
-   * projection's exp-efficiency summary.
+   * Modal class power of the counted enemies, `null` when there are none - the
+   * reference power a "typical enemy of this chapter" has.
    */
   typicalClassPower: number | null;
   /**
-   * Total exp a unit fighting every counted enemy at that enemy's own level,
-   * class power and promotion status would earn. Level cancels at parity, so
-   * this is the designer's offered exp: enemy count x class power x flags.
+   * Total exp a unit of the stated {@link ExpCurveOptions.actorLevel} and
+   * {@link ExpCurveOptions.actorClassPower} earns by killing every counted
+   * enemy in this chapter. Each enemy contributes its own exp, so the total
+   * moves with the enemies' levels, powers and boss/thief/mummy flags.
    */
-  totalExpAtParity: number;
-  /** {@link totalExpAtParity} in level-ups (`/ 100`). */
-  expectedLevelsAtParity: number;
+  totalExp: number;
+  /** {@link totalExp} in level-ups (`/ 100`). */
+  expectedLevels: number;
 }
 
 export interface ExpCurveMeta {
@@ -355,15 +369,50 @@ const EXP_CURVE_ASSUMPTIONS: readonly string[] = [
   "Enemy attribution inherits the unitStats reach walk: a load block every " +
     "chapter can reach is budgeted in every such chapter.",
   "Level-underflowed enemies (easy/normal penalty pushes a level below 0; " +
-    "the game wraps them to maxed enemies) are budgeted at level 0 - at " +
-    "parity the level terms cancel, so only the coefficient branch would " +
-    "otherwise see the broken input.",
+    "the game wraps them to maxed enemies) are evaluated at level 0, the " +
+    "lowest level the formula accepts.",
+  "The attacker is one class power, so a promoted attacker's 'class bonus B' " +
+    "term (`20 * power(base class)`) is not modelled - it needs the base/" +
+    "promoted pair, not a single power. A promoted attacker therefore " +
+    "understates its own power level, which raises the exp it is credited " +
+    "with.",
+  "Every counted enemy is assumed killed by the stated attacker: weapon " +
+    "availability, hit rate and the attacker's own survival are not modelled. " +
+    "The budget is an upper bound on the chapter's exp for that attacker.",
 ];
 
 export interface ExpCurveOptions {
   /** Restrict to one difficulty; default emits all three. */
   difficulty?: Difficulty;
+  /**
+   * Level of the hypothetical attacker the budget is measured for. The
+   * enemy's own level is the target side's; this is the actor's, and the two
+   * being different is what makes `roundExp` a measurement rather than a
+   * constant. Defaults to {@link STANDARD_ACTOR_LEVEL}.
+   */
+  actorLevel?: number;
+  /**
+   * `classPower` of the attacker's class. Defaults to
+   * {@link STANDARD_ACTOR_CLASS_POWER}, which is the modal value across this
+   * ROM's classes (103 of 127).
+   */
+  actorClassPower?: number;
+  /** Whether the attacker's class is promoted (`expLevel` +20). */
+  actorPromoted?: boolean;
 }
+
+/**
+ * Default attacker level. Unpromoted classes cap at 20 and promotion resets to
+ * 1, so 20 is the highest level the default attacker can be before promoting -
+ * the conservative end of the range in which a chapter is fought.
+ */
+const STANDARD_ACTOR_LEVEL = 20;
+
+/**
+ * Default attacker class power: the modal `+26` across classes, so the default
+ * is the common class rather than a special one.
+ */
+const STANDARD_ACTOR_CLASS_POWER = 3;
 
 /** Modal class power of the counted enemies; `null` when empty. */
 function typicalClassPowerOf(powers: readonly number[]): number | null {
@@ -393,6 +442,22 @@ export function computeExpCurve(data: ExpCurveInput, opts: ExpCurveOptions = {})
   const game = data.game;
   const difficulties = opts.difficulty === undefined ? DIFFICULTIES : [opts.difficulty];
 
+  // The attacker is stated by the caller, not mirrored from the target: the
+  // whole point of the budget is that the two sides differ. `linkedClassPower`
+  // is left at 0 - the caller supplies one class power rather than a
+  // base/promoted pair, so the promoted "class bonus B" term is not modelled;
+  // it is listed in the assumptions.
+  const actor: CombatantProfile = {
+    level: opts.actorLevel ?? STANDARD_ACTOR_LEVEL,
+    classPower: opts.actorClassPower ?? STANDARD_ACTOR_CLASS_POWER,
+    promoted: opts.actorPromoted ?? false,
+    linkedClassPower: 0,
+    boss: false,
+    thief: false,
+    mummy: false,
+    noExp: false,
+  };
+
   // (mapIndex, difficulty) -> counted enemy rows, with the class resolved once
   // here rather than looked up again at consumption.
   const byChapter = new Map<string, { row: UnitStatRow; cls: ClassRecord }[]>();
@@ -414,19 +479,20 @@ export function computeExpCurve(data: ExpCurveInput, opts: ExpCurveOptions = {})
     if (!step.playable) continue;
     for (const difficulty of difficulties) {
       const enemies = byChapter.get(`${step.mapIndex}|${difficulty}`) ?? [];
-      let totalExpAtParity = 0;
+      let totalExp = 0;
       let initialEnemyCount = 0;
       const powers: number[] = [];
       for (const { row, cls } of enemies) {
-        // A level that underflowed below 0 wraps to a maxed enemy in the
-        // game (see extract/unitStats.ts); no formula input survives that.
-        // Clamp to 0 so the parity computation stays symmetric - the level
-        // terms cancel, which is the only reading the budget can defend.
+        // A level that underflowed below 0 wraps to a maxed enemy in the game
+        // (see extract/unitStats.ts), so no formula input survives that
+        // reading. Clamp to 0: the lowest level the formula can be evaluated
+        // at, which is the reading that neither invents a level nor discards
+        // the enemy.
         const level = row.levelUnderflow ? 0 : row.level;
-        // Parity: the hypothetical attacker mirrors this enemy exactly, so
-        // boss/thief/mummy flags only ever apply to the target side.
+        // The target side is the enemy as the extract resolved it; boss/thief/
+        // mummy flags only ever apply to the target.
         const enemy = combatantOf(cls, level, row.promoted, classById, game);
-        totalExpAtParity += battleExp(enemy, enemy, game, difficulty);
+        totalExp += battleExp(actor, enemy, game, difficulty);
         powers.push(cls.classPower);
         if (row.source === "placement") initialEnemyCount++;
       }
@@ -438,8 +504,8 @@ export function computeExpCurve(data: ExpCurveInput, opts: ExpCurveOptions = {})
         initialEnemyCount,
         eventLoadEnemyCount: enemies.length - initialEnemyCount,
         typicalClassPower: typicalClassPowerOf(powers),
-        totalExpAtParity,
-        expectedLevelsAtParity: totalExpAtParity / EXP_PER_LEVEL,
+        totalExp,
+        expectedLevels: totalExp / EXP_PER_LEVEL,
       });
     }
   }

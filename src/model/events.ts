@@ -79,6 +79,31 @@ export interface TurnWindow {
   phase: TurnPhase | null;
 }
 
+/** The turn window a `TURN` record is active over. */
+export interface TurnWindow {
+  /** 開始ターン (`+8`). */
+  start: number;
+  /** 終了ターン (`+9`). */
+  end: number;
+  /** ターン前指定 (`+10`), or `null` for an unrecognised byte. */
+  phase: TurnPhase | null;
+}
+
+/**
+ * The character pair a `TALK` record fires on. Upstream names the two bytes
+ * `from_unit` / `to_unit` (`EventCondForm.MakeTalkUnitPointer`) and draws a unit
+ * face from each, so the same names are kept here.
+ *
+ * A conversation is **two** records, A→B and B→A, sharing their `+2` flag; that
+ * flag is the identity of one conversation, not of one row.
+ */
+export interface TalkPair {
+  /** 話す人 (`+8`)：发起方。`0` = 任何人皆可发起，不是单位表 id。 */
+  from: number;
+  /** 話される人 (`+9`)：被搭话方。 */
+  to: number;
+}
+
 /** One condition-slot entry of one chapter, linked to its script. */
 export interface ChapterEventSlot {
   mapIndex: number;
@@ -94,7 +119,17 @@ export interface ChapterEventSlot {
    * so both bytes are kept verbatim.
    */
   turn: TurnWindow | null;
-  /** `TURN` only: 達成フラグ (`+2`), the flag set once the event has run. */
+  /**
+   * `TALK` only; `null` otherwise. The character pair whose adjacency makes the
+   * talk command available (`EventCondForm` draws a unit face from each id).
+   */
+  talk: TalkPair | null;
+  /**
+   * `TURN` / `TALK` only: the flag word at `+2`, which both record shapes carry
+   * (`EventCondForm.InitN02` / `InitTalk` label it `W2`). For `TURN` it is set
+   * once the event has run (達成フラグ); for `TALK` both directions of one
+   * conversation share it, so it identifies the conversation.
+   */
   condFlag: number | null;
 }
 

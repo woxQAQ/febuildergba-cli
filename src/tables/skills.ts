@@ -90,9 +90,7 @@ export interface SkillReadOptions {
  * Empty entries are excluded because class 0's reserved slot is a real row that
  * no assignment table indexes.
  */
-export function idCardinality(
-  rows: readonly { id: number; isEmpty: boolean }[],
-): number {
+export function idCardinality(rows: readonly { id: number; isEmpty: boolean }[]): number {
   let max = -1;
   for (const row of rows) {
     if (row.isEmpty) continue;

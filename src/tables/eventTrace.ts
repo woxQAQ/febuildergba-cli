@@ -17,7 +17,9 @@
  *   - Slot iteration follows `EventCondForm.MakeUnitPointer`: TURN/TALK/OBJECT/
  *     ALWAYS walk small records with a script pointer at +4, TUTORIAL a pointer
  *     array, START_EVENT/END_EVENT point straight at a script; the rest
- *     (PLAYER_UNIT / ENEMY_UNIT / TRAP / FREEMAP_*) are not scripts.
+ *     (PLAYER_UNIT / ENEMY_UNIT / TRAP / FREEMAP_*) are not scripts. TURN and
+ *     TALK records carry more than a script pointer, and both are kept: TURN's
+ *     turn window, TALK's character pair.
  *   - `POINTER_UNIT` blocks use the same `readPlacements` reader as the initial
  *     placement blocks (same record format).
  */
@@ -42,6 +44,7 @@ import type {
   TracedArgument,
   TracedInstruction,
   ChapterEventSlot,
+  TalkPair,
   TracedBlockUnit,
   EventTrace,
   TurnPhase,
@@ -251,8 +254,11 @@ export function extractEventTrace(
       slotKind: string,
       position: number,
       scriptAddr: number,
-      /** `TURN` records only: their turn window and flag. */
-      extra: { turn: TurnWindow; condFlag: number } | null = null,
+      /**
+       * The fields a record shape adds beyond its script pointer: `TURN`'s turn
+       * window and `TALK`'s character pair, on the record shapes that carry them.
+       */
+      extra: { turn?: TurnWindow; talk?: TalkPair; condFlag?: number } | null = null,
     ): void => {
       trace.chapterSlots.push({
         mapIndex: chapter.index,
@@ -260,8 +266,9 @@ export function extractEventTrace(
         slotKind,
         position,
         scriptId: scriptIdOf(scriptAddr),
-        turn: extra === null ? null : extra.turn,
-        condFlag: extra === null ? null : extra.condFlag,
+        turn: extra?.turn ?? null,
+        talk: extra?.talk ?? null,
+        condFlag: extra?.condFlag ?? null,
       });
     };
 
@@ -295,12 +302,24 @@ export function extractEventTrace(
           break;
         }
         case "TALK": {
+          // 16-byte records (`eventcond_talk_size`). `+0` is the condition kind
+          // (`EventCondForm`'s `TALK_L_0_COMBO`: `0x3` talk command, `0x4`
+          // talk-command ASM) and doubles as the terminator; `+2` the flag, `+4`
+          // the script, `+8`/`+9` the character pair whose adjacency offers the
+          // command (`from_unit` / `to_unit` upstream). A talk is stored twice,
+          // once per direction, sharing the flag; `from` `0` means "any unit may
+          // initiate", which is why one flag can carry several records. The kind
+          // byte is not persisted: this ROM carries only `0x3`, and nothing
+          // consumes the ASM variant (`+12`/`+14`, unused here).
           for (let a = addr, pos = 0; ; a += map.talkCondSize, pos++) {
             if (!rom.isSafeOffset(a + map.talkCondSize)) break;
             if (rom.u8(a) === 0) break;
             const event = rom.p32(a + 4);
             if (rom.isSafeOffset(event)) {
-              link(slot.index, slot.kind, pos, event);
+              link(slot.index, slot.kind, pos, event, {
+                talk: { from: rom.u8(a + 8), to: rom.u8(a + 9) },
+                condFlag: rom.u16(a + 2),
+              });
             }
           }
           break;

@@ -31,6 +31,16 @@ TURN / TALK 步长来自布局，FE7 TURN 另有 12 字节短记录；OBJECT / A
 以上对应 `EventCondForm.MakeUnitPointer`（`tables/eventTrace.ts` 的模块
 注释）。
 
+TURN 与 TALK 记录不止一个脚本指针，两者的其余字段都原样保留：TURN 的
+回合窗口（`+8/+9/+10`），TALK 的角色对（`+8` 話す人 / `+9` 話される人，
+即 `EventCondForm.MakeTalkUnitPointer` 的 `from_unit` / `to_unit`）。一次
+对话在 ROM 里是**两条**记录（A→B 与 B→A），靠 `+2` 的同一个 flag 配对：
+`cond_flag` 是「一次对话」的标识，不是「一行」的标识。`+8` 为 0 表示
+「任何人皆可发起」（多行共 flag，各对应一个候选发起者），0 不是单位表 id，
+所以 `talk_unit_from` 不带外键。`+0` 是条件种类（`0x3` 話す条件 /
+`0x4` 話す条件ASM）并兼任终止判定，没有入库：本 ROM 只有 `0x3`，ASM 变体
+（`+12`/`+14`）也没有消费者。
+
 脚本按起始地址唯一化后**线性解码一次**，遇到退出码（参考实现的
 `isExitCode`）、连续 10 条以上 UNKNOWN、或 4000 条上限就停。停下来的原因
 写进 `event_scripts.stop_reason` —— UNKNOWN 指令的宽度是猜的

@@ -129,11 +129,7 @@ interface CeilingContext {
   targets: ReadonlyMap<number, ClassRecord>;
 }
 
-function growBy(
-  stats: Record<GrownStat, number>,
-  levels: number,
-  ctx: CeilingContext,
-): void {
+function growBy(stats: Record<GrownStat, number>, levels: number, ctx: CeilingContext): void {
   for (const s of GROWN_STATS) stats[s] += (ctx.growths[s] * levels) / 100;
 }
 
@@ -247,8 +243,7 @@ export function projectUnits(data: ProjectionInput): UnitProjection[] {
   }
 
   projections.sort(
-    (a, b) =>
-      (a.joinPosition ?? Infinity) - (b.joinPosition ?? Infinity) || a.unitId - b.unitId,
+    (a, b) => (a.joinPosition ?? Infinity) - (b.joinPosition ?? Infinity) || a.unitId - b.unitId,
   );
   return projections;
 }

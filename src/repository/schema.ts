@@ -871,11 +871,23 @@ export const chapterEventSlots = sqliteTable(
     /** `TURN` only: 終了ターン (`+9`). `0` means "no end", i.e. a single turn. */
     turnEnd: integer("turn_end"),
     /**
-     * `TURN` only: ターン前指定 (`+10`), which side's turn fires the event.
+     /** `TURN` only: ターン前指定 (`+10`), which side's turn fires the event.
      * `EventCondForm.DrawEventListTurn` recognises exactly 0x00 / 0x40 / 0x80.
      */
     turnPhase: text("turn_phase", { enum: ["player", "ally", "enemy"] }),
-    /** `TURN` only: 達成フラグ (`+2`), set once the event has run. */
+    /**
+     * `TALK` only: 話す人 (`+8`), the unit the talk command is issued from, `NULL`
+     * for other slot kinds. `0` is the wildcard "any unit" - it has no row in
+     * `units`, so this column carries no foreign key.
+     */
+    talkUnitFrom: integer("talk_unit_from"),
+    /** `TALK` only: 話される人 (`+9`), the unit talked to. */
+    talkUnitTo: integer("talk_unit_to"),
+    /**
+     * `TURN` / `TALK` only: the flag word at `+2` (`EventCondForm` labels it `W2`
+     * in both forms). `TURN` sets it once the event has run (達成フラグ); a `TALK`
+     * conversation lists both directions as two records sharing one flag.
+     */
     condFlag: integer("cond_flag"),
   },
   (t) => [
