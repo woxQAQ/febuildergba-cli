@@ -53,17 +53,17 @@ Repository 区分两件事：
 即依赖顺序，悬空引用会让提取失败而不是静默存 null。少数列是哨兵而非引用
 （如 `units.affinity_id` 的 0、`force_sortie.map_index` 的 0xFF），没有父行，
 按设计不带外键，见 schema.ts 模块注释。读取顺序一律走显式键，不依赖
-rowid——无 INTEGER PRIMARY KEY 别名表的 rowid 稳定性 SQLite 不保证，而
+rowid。无 INTEGER PRIMARY KEY 别名表的 rowid 稳定性 SQLite 不保证，而
 schema 守卫看不见这种变化。
 
 布局缺失有两种，刻意不互换（`data/layouts.ts` 模块注释）：
-字段省略 = 每游戏常量尚未转录——游戏有这张表，移植没有，提取发诊断并把相关
+字段省略 = 每游戏常量尚未转录，游戏有这张表，移植没有，提取发诊断并把相关
 表留空；`null` = 游戏确实没有该表（FE6 的 `support`/`forceSortie`，各有证据），
 空表即事实，不发诊断。“空表是合法空集合”只在后一种情况下成立。
 
 写入顺序只声明一次：`repository/write.ts` 底部的 `TABLE_WRITERS` 数组，
 由 `repository/pipeline.ts` 的 `assertWritePipeline` 在每次开事务前对照
-schema 校验三件事——填了未登记的表、登记了没人填的表、外键目标写在引用者
+schema 校验三件事：填了未登记的表、登记了没人填的表、外键目标写在引用者
 之后。它取代了过去“调用序列 + TABLES 数组 + 注释”三处各写一遍的顺序。
 
 `prepareAnalysis` 建立一次分析会话，按实际请求的证据检查 availability。
@@ -99,7 +99,7 @@ CLI 决定 stderr 格式，service 和 repository 不直接打印。
 2. `src/tables/foo.ts`：提取器本体。ROM 侧唯一需要理解游戏格式的地方。
 3. `src/model/snapshotRecords.ts`：记录类型；`src/model/snapshot.ts`：快照字段。
    快照是纯数据契约，ROM buffer、文本解码器、布局配置都不过界。
-4. `src/extract/service.ts`：`parse()` 里按依赖顺序调用一次，并决定可用性——表缺失
+4. `src/extract/service.ts`：`parse()` 里按依赖顺序调用一次，并决定可用性。表缺失
    是发诊断（未转录）还是静默（游戏没有），不要发明第三种约定。提取顺序目前仍是
    语句序而非机器校验：提取器输入是真实的数据流（units 需要 class bases，shops 需要
    items，playOrder 需要 transitions），顺序错误由写入侧的外键强制兜底。
@@ -111,7 +111,7 @@ CLI 决定 stderr 格式，service 和 repository 不直接打印。
 7. 仅当被分析命令消费：`src/repository/read.ts`（`TABLES_READ` + handle 方法）、
    `src/analysis/data.ts`（输入接口）、`src/analysis/service.ts`（转发与门禁）。
 
-加一张表不碰：CLI 与命令层（除非同时加命令——那是 `commands/registry.ts` 一行的事）、
+加一张表不碰：CLI 与命令层（除非同时加命令，那是 `commands/registry.ts` 一行的事）、
 `src/analysis/` 的计算模块（除非消费它）。
 
 ## 验证

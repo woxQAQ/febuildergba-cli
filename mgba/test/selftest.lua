@@ -1,5 +1,5 @@
 --[[
- mgba/test/selftest.lua — 脱离 mGBA 验证 fe-aodian.lua
+ mgba/test/selftest.lua：脱离 mGBA 验证 fe-aodian.lua
 
  用 fengari（Lua 5.3）执行。跑法：
      node mgba/test/run.mjs
@@ -483,7 +483,7 @@ end
 print("\n[9] 战斗模型 (GenerateCurrentRoundData @0x0802B3EC，见 docs/battle-math.md §3.17)")
 
 -- 下面所有期望值都来自 mgba/test/battle_golden.py 的**独立 Python 实现**，
--- 不是本脚本算出来的 —— 两边独立，对上了才算数。
+-- 不是本脚本算出来的。两边独立，对上了才算数。
 
 local function mkUnit(t)
   return {
@@ -579,7 +579,7 @@ do
   end
   do
     -- 职业 0x4A：必中判定 + 贯穿判定各多一个。
-    -- 注意未命中时只有「必中1 + 命中2 = 3」—— 贯穿判定在未命中时不会执行。
+    -- 注意未命中时只有「必中1 + 命中2 = 3」，贯穿判定在未命中时不会执行。
     local skillA = mkUnit{hp=24,atk=11,def=0,as=12,hit=40,crit=4,level=5,classId=0x4A}
     local hit, _, n = oneStrike(skillA, 0x0000)
     check("职业 0x4A 未命中 -> 烧 3 个（必中1+命中2，贯穿不执行）", n == 3 and not hit,
@@ -742,7 +742,7 @@ do
   renderNow()
 
   -- mGBA 每次 clear/print 都会重传文本纹理。之前每 4 帧无条件重画同一份内容，
-  -- 就是 15Hz 的纹理重传 —— 面板看起来一直在闪。这里守住「不变就不画」。
+  -- 就是 15Hz 的纹理重传，面板看起来一直在闪。这里守住「不变就不画」。
   local n0 = BUFCLEARS
   renderNow()
   eq("状态不变时不重画缓冲", BUFCLEARS, n0)

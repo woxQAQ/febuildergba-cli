@@ -1,5 +1,5 @@
 /**
- * 生成 mgba/units.lua —— 给 mGBA 凹点助手用的「角色 id -> 名字」表。
+ * 生成 mgba/units.lua：给 mGBA 凹点助手用的「角色 id -> 名字」表。
  *
  * 用法：node scripts/emit-mgba-units.ts [db 路径]（默认 out/dream-of-five.db）
  *

@@ -43,7 +43,7 @@ TURN 与 TALK 记录不止一个脚本指针，两者的其余字段都原样保
 
 脚本按起始地址唯一化后**线性解码一次**，遇到退出码（参考实现的
 `isExitCode`）、连续 10 条以上 UNKNOWN、或 4000 条上限就停。停下来的原因
-写进 `event_scripts.stop_reason` —— UNKNOWN 指令的宽度是猜的
+写进 `event_scripts.stop_reason`：UNKNOWN 指令的宽度是猜的
 （`UNKNOWN_SIZE`），所以「在哪停、为什么停」是数据，不是日志。
 
 事件语义固定来自 `event_<game>.en.txt`；翻译只能覆盖描述及参数显示名字。
@@ -83,7 +83,7 @@ bits 3-7    level         - L_3_UNITGROW_LV
 解码实现是 `parseUnitGrowAssign` / `unitSideOf`。
 
 因此「红单位和蓝单位」的唯一区别就是这两位，记录其余部分完全相同。
-`removed`（消灭）不是一个阵营，而是「地图载入时删除」——hack 移除名册单位
+`removed`（消灭）不是一个阵营，而是「地图载入时删除」，hack 移除名册单位
 的手段。
 
 ### 3.20 坐标与「走到哪」
@@ -103,7 +103,7 @@ FE8 把坐标打包进一个 u16：`x = bits 0-5`、`y = bits 6-11`、`ext = bit
 ### 3.21 初始物品
 
 `+12..15` 是四个初始物品槽，`0` 为空（`EventUnitForm.Designer.cs` 的
-`B12..B15` 标注为 所持品1..4）。**敌人的装备只存在于这里**——部署块存的是
+`B12..B15` 标注为 所持品1..4）。**敌人的装备只存在于这里**，部署块存的是
 玩家/军师侧单位。槽位 0 不是「已装备槽」：GBA FE 在战斗时从可用武器里
 选，所以「攻击力」是 join `items` 之后再挑，没有单一的「装了什么」。
 
@@ -117,7 +117,7 @@ FE8 把坐标打包进一个 u16：`x = bits 0-5`、`y = bits 6-11`、`ext = bit
 
 `classifyUnitArg`（`tables/eventScript.ts`）从指令的模式串和参数位置判定这次
 加载的性质：`recruit`（LOAD1 一类，进玩家军）／`load` / `cutscene` /
-`other`。「到达」不等于「触发」——带旗标或回合条件的脚本可能永不执行，所有
+`other`。「到达」不等于「触发」。带旗标或回合条件的脚本可能永不执行，所有
 基于到达的派生（`recruits`、`gains`、`joins`、`expcurve` 的增援计数）都带
 着这条缺口，各自的模块注释里写明。
 
