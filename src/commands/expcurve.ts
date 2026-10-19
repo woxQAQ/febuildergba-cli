@@ -6,6 +6,7 @@
  */
 
 import { expCurveOf } from "../analysis/service.ts";
+import { DIFFICULTIES, type Difficulty } from "../model/stats.ts";
 import { UsageError } from "./types.ts";
 import { defineDbCommand } from "./types.ts";
 
@@ -27,6 +28,21 @@ function intFlag(value: string, flag: string): number {
   return n;
 }
 
+/**
+ * A flag value that must be a difficulty name. Parsed here so the command, not
+ * `ResolvedFlags`, owns the narrow type - the same reason `--lang` is checked
+ * in the arg layer and `--range` is not: only a command that can fail on the
+ * value knows what its valid set is.
+ */
+function difficultyFlag(value: string): Difficulty {
+  if (!DIFFICULTIES.includes(value as Difficulty)) {
+    throw new UsageError(
+      `--difficulty expects one of ${DIFFICULTIES.join(", ")}, got "${value}"`,
+    );
+  }
+  return value as Difficulty;
+}
+
 export const expcurve = defineDbCommand({
   name: "expcurve",
   input: "db",
@@ -38,13 +54,19 @@ export const expcurve = defineDbCommand({
     "killing all of them (`totalExp`, and as level-ups in " +
     "`expectedLevels`). The attacker defaults to Lv20 with class power 3 (the " +
     "modal value across classes); pass `--actor-level`, `--actor-class-power` " +
-    "or `--actor-promoted` to measure a different one. The formula constants " +
+    "or `--actor-promoted` to measure a different one. Every chapter is " +
+    "budgeted for all three difficulties, because the enemy level adjustment " +
+    "shifts the budget by up to a factor of two; `--difficulty` keeps one. " +
+    "The formula constants " +
     "and their sources are in src/analysis/expcurve.ts; the " +
     "`meta.assumptions` block lists what is modelled rather than read - " +
     "including that every counted enemy is assumed killed, and that a " +
     "promoted attacker's class-bonus-B term is not modelled.",
   run: async ({ extract, flags }) => {
     const result = await expCurveOf(extract, {
+      ...(flags.difficulty === undefined
+        ? {}
+        : { difficulty: difficultyFlag(flags.difficulty) }),
       ...(flags.actorLevel === undefined
         ? {}
         : { actorLevel: intFlag(flags.actorLevel, "actor-level") }),

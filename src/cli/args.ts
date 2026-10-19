@@ -3,6 +3,7 @@ import { parseArgs } from "node:util";
 import { FLAGS, flagsFor, type FlagSpec } from "./flags.ts";
 import { findCommand } from "../commands/registry.ts";
 import { isKnownLanguage, LANGUAGE_NAMES } from "../config/data.ts";
+import { DIFFICULTIES, type Difficulty } from "../model/stats.ts";
 import type { AnyCommand, ResolvedFlags } from "../commands/types.ts";
 
 export interface ParsedArgv {
@@ -121,8 +122,14 @@ export function parseArgv(argv: readonly string[]): ParsedArgv {
   const lang = str("lang");
   const actorLevel = str("actor-level");
   const actorClassPower = str("actor-class-power");
+  const difficulty = str("difficulty");
   if (lang !== undefined && !isKnownLanguage(lang)) {
     throw new Error(`--lang expects one of ${LANGUAGE_NAMES.join(", ")}, got "${lang}"`);
+  }
+  if (difficulty !== undefined && !DIFFICULTIES.includes(difficulty as Difficulty)) {
+    throw new Error(
+      `--difficulty expects one of ${DIFFICULTIES.join(", ")}, got "${difficulty}"`,
+    );
   }
 
   return {
@@ -138,6 +145,7 @@ export function parseArgv(argv: readonly string[]): ParsedArgv {
       ...(actorLevel === undefined ? {} : { actorLevel }),
       ...(actorClassPower === undefined ? {} : { actorClassPower }),
       ...(values["actor-promoted"] === true ? { actorPromoted: true } : {}),
+      ...(difficulty === undefined ? {} : { difficulty }),
     },
   };
 }

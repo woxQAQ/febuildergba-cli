@@ -3,18 +3,23 @@
  * initial placement blocks and from unit blocks reachable through chapter
  * event scripts. This is the shared input of every "when does this unit show
  * up" derivation - the `joins` command, `availability.ts`, `projection.ts` -
- * so the two non-obvious collection rules live here exactly once:
+ * so the non-obvious collection rules live here exactly once.
  *
- *   - **A class override filters the record out.** A placement whose class id
- *     is neither 0 nor the unit's own class is a stand-in (a boss cameo, a
- *     disguised NPC), not the unit itself. Event loads carry no such filter:
- *     their class id is what the unit spawns as, which says nothing about
- *     identity.
- *   - **Empty unit slots are dropped from placements** (`isEmpty`: no name,
- *     class or level), so padded placement records do not invent appearances.
- *     Event loads are kept verbatim: a reachable unit block is already a
- *     deliberate load, and the old `unit_joins` view reported them without a
- *     unit-table join - filtering here would lose parity for no gain.
+ *   - **Placeholder slots are dropped.** A placement record with a non-zero
+ *     unit id but class 0, level 0 and no items carries no unit: `readPlacements`
+ *     stops only on `unitId == 0`, so a hack that pads a block with
+ *     "clear the field" records (Vision Quest's map 48 pads six units twice,
+ *     once per difficulty block) yields them as real rows. They reach no play
+ *     order position and would otherwise win the join ranking by being
+ *     unrankable. `{@link isPlaceholderPlacement}` is that test.
+ *   - **A class override keeps the record, and is reported.** A placement whose
+ *     class id is neither 0 nor the unit's own class reads as a stand-in - a
+ *     boss cameo, a disguised NPC - but a hack also uses it for a real entry
+ *     (Vision Quest joins Tien 20 as a Myrmidon, class 19, not as the Monk class
+ *     68 they are in the unit table). Dropping those records loses the join
+ *     entirely, so the record is kept and {@link UnitAppearance.placedClassId}
+ *     carries the override for a consumer that cares. Event loads carry no
+ *     filter: their class id is what the unit spawns as.
  *   - **Debug maps are dropped whole** (`data.debugMaps`, detected in
  *     `model/debugMap.ts`): a jump-chapter menu or unit test bench is real
  *     data, but its player-side load blocks are not army entries - dream-of-five's
@@ -39,11 +44,51 @@ export interface UnitAppearance {
   source: "placement" | "recruit" | "load" | "cutscene";
   /** Class override of the record; 0 means the unit's own class. */
   placedClassId: number;
+  /**
+   * Whether the unit is a real character (`has_support_data`), as opposed to a
+   * generic template slot. {@link isPlayerArmyAppearance} needs it to tell a
+   * recruited ally from an `Enemy` or `Soldier` row a hack loads with `LOAD1`.
+   */
+  character: boolean;
 }
 
-/** A player-side placement or recruit load puts the unit in the player's army. */
-export function isPlayerArmyAppearance(a: Pick<UnitAppearance, "side" | "source">): boolean {
-  return a.side === "player" && (a.source === "placement" || a.source === "recruit");
+/**
+ * A placement record that names a unit but describes nothing: class 0, level 0
+ * and no starting items. `readPlacements` emits every record up to the first
+ * `unitId == 0`, so a hack that pads a block with these yields them as rows.
+ * The class id alone is not enough - 0 legitimately means "the unit's own
+ * class" - so the three fields are read together.
+ */
+export function isPlaceholderPlacement(p: {
+  classId: number;
+  level: number;
+  items: readonly number[];
+}): boolean {
+  return p.classId === 0 && p.level === 0 && p.items.every((i) => i === 0);
+}
+
+/**
+ * A placement or recruit load that puts the unit in the player's army.
+ *
+ * `player` is the obvious case. `ally` is included when the load is classified
+ * `recruit` **and the unit is a real character** (`character`): `LOAD1` means
+ * "join the party" (`classifyUnitArg`, which reads the `402C` lead byte) while
+ * the record's `side` is the allegiance at spawn time, and a unit recruited out
+ * of a blue (friendly) army spawns as `ally` first. Without the character test
+ * every generic template slot a hack loads with `LOAD1` reads as a joiner: on
+ * dream-of-five this predicate would add 52 units, most of them `has_support_data
+ * = 0` rows named `Enemy`, `Freelance` or `Warden`.
+ *
+ * Recruit loads on the `enemy` side are never included: a hack reuses `LOAD1`
+ * as a generic loader, and on Vision Quest 116 enemy-side units carry one while
+ * only 11 of them ever appear on the player side.
+ */
+export function isPlayerArmyAppearance(
+  a: Pick<UnitAppearance, "side" | "source" | "character">,
+): boolean {
+  if (a.source === "placement") return a.side === "player";
+  if (a.source === "recruit") return a.side === "player" || (a.side === "ally" && a.character);
+  return false;
 }
 
 /**
@@ -70,13 +115,15 @@ export function collectAppearances(data: AppearancesInput): UnitAppearance[] {
       for (const p of block) {
         const unit = unitById.get(p.unitId);
         if (unit === undefined) continue;
-        if (p.classId !== 0 && p.classId !== unit.classId) continue;
+        // A placeholder names a unit but carries no class, level or items.
+        if (isPlaceholderPlacement(p)) continue;
         push({
           unitId: p.unitId,
           mapIndex: chapter.index,
           side: p.side,
           source: "placement",
           placedClassId: p.classId,
+          character: unit.hasSupportData,
         });
       }
     }
@@ -90,6 +137,7 @@ export function collectAppearances(data: AppearancesInput): UnitAppearance[] {
         side: u.side,
         source: site.kind,
         placedClassId: u.classId,
+        character: unitById.get(u.unitId)?.hasSupportData ?? false,
       });
     }
   }

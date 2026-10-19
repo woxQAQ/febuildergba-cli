@@ -26,6 +26,7 @@ export type CommandName =
   | "gains"
   | "joins"
   | "availability"
+  | "niches"
   | "expcurve"
   | "projection";
 
@@ -46,6 +47,8 @@ export interface ResolvedFlags {
   actorClassPower?: string;
   /** `expcurve`: whether that attacker is promoted. */
   actorPromoted?: boolean;
+  /** `expcurve`: which difficulty's enemy levels to budget for. */
+  difficulty?: string;
 }
 
 /**

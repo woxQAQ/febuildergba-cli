@@ -62,6 +62,17 @@
  *   - **Removal persistence.** `removed` is per-chapter evidence; whether the
  *     unit ever returns is inferred only from later appearances, so a silent
  *     permanent leave shows as one `removed` chapter followed by `available`.
+ *   - **Off-route joiners have no window.** `derived_play_order` is one
+ *     linearisation of a possibly branching route, so a unit can join on a
+ *     map that sequence does not cover. Such a unit joins (and
+ *     `joinMapIndex` says where), but `availableCount` / `totalAfterJoin` /
+ *     `gaps` describe the main line only, so they are absent rather than 0 -
+ *     `0` would read as "never joins". Measured on the four fixtures: 13 of 58
+ *     joiners on dream-of-five and 16 of 48 on dragonherald, none on Vision
+ *     Quest or The Drowned King, where 21 of dragonherald's sit on one
+ *     off-order map. Among the fixtures it is between a sixth and a third of
+ *     the pool, so an answer that discounts a unit by window length has to
+ *     check for it before dividing.
  *
  * The trace is read back from the db (`data.trace`), not re-walked:
  * `extract` persists the raw event layer and the loader rebuilds the same
@@ -100,10 +111,18 @@ export interface UnitAvailability {
   chapters: ReadonlyMap<number, { mapIndex: number; status: ChapterStatus }>;
   /**
    * Post-join chapters where the unit can be fielded (`available` +
-   * `forced`) out of the post-join total. Both 0 for a unit that never joins.
+   * `forced`) out of the post-join total.
+   *
+   * `null` when no main-line window exists to count: the unit never joins,
+   * or its join chapter is off the play order. Both cases have zero post-join
+   * main-line chapters, and reporting `0` for the second would claim a fact
+   * the data does not carry - that unit is in the army, just not on the route
+   * this sequence describes. Check {@link UnitAvailability.joinMapIndex} to
+   * tell the two apart.
    */
-  availableCount: number;
-  totalAfterJoin: number;
+  availableCount: number | null;
+  /** Total post-join chapters; `null` under the same rule as above. */
+  totalAfterJoin: number | null;
   /** Post-join non-deployable stretches, merged into segments. */
   gaps: readonly { fromPosition: number; toPosition: number; reason: ChapterStatus }[];
 }
@@ -193,6 +212,12 @@ export function computeAvailability(data: AvailabilityInput): UnitAvailability[]
     let totalAfterJoin = 0;
     const gaps: { fromPosition: number; toPosition: number; reason: ChapterStatus }[] = [];
 
+    // A window exists only for a unit that joins on the play order. The loop
+    // below would leave both counts at 0 for any other joiner, and 0 reads as
+    // "never joins" while the unit did join - off the route. So the absent case
+    // is stated here rather than left to be inferred from a zero.
+    const windowed = joinPosition !== null;
+
     for (const step of playable) {
       const here = byMap.get(step.mapIndex) ?? [];
       let status: ChapterStatus;
@@ -206,7 +231,7 @@ export function computeAvailability(data: AvailabilityInput): UnitAvailability[]
 
       if (step.order >= joinRank) {
         totalAfterJoin++;
-        if (status === "available" || status === "forced") {
+        if (windowed && (status === "available" || status === "forced")) {
           availableCount++;
         } else {
           const last = gaps[gaps.length - 1];
@@ -227,9 +252,10 @@ export function computeAvailability(data: AvailabilityInput): UnitAvailability[]
       joinPosition,
       joinMapIndex,
       chapters,
-      availableCount,
-      totalAfterJoin,
-      gaps,
+      // Absent rather than 0 for an off-route joiner - see the field docs.
+      availableCount: windowed ? availableCount : null,
+      totalAfterJoin: windowed ? totalAfterJoin : null,
+      gaps: windowed ? gaps : [],
     });
   }
   return results;

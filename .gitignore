@@ -9,6 +9,5 @@ out/
 
 # agent session memory
 .workbuddy/
-
-.agents/skills
+.workbuddy-ai/
 skills-lock.json

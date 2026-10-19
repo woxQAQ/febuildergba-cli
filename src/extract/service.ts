@@ -256,12 +256,34 @@ function parse(
     // Class base stats turn a unit's per-unit deltas into the stats it
     // actually starts with (`startingStat = class base + unit base`).
     classBases: new Map(classes.map((c) => [c.id, c.bases])),
-    promotedClassIds: buildPromotionGraph(classes).promoted,
+    // Both promotion sources, for the same reason `analysis/projection.ts`
+    // merges them: `+5` and the CC branch table each describe promotions the
+    // other omits, so either alone mislabels a hack's promoted classes.
+    promotedClassIds: buildPromotionGraph(classes, classBranch?.entries ?? []).promoted,
   });
   const supports = readSupports(buffer, units, buildUnitNameMap(units));
   const supportBonuses = layout.support
     ? readSupportBonuses(buffer, layout.support.attributePointer)
     : [];
+  // A repeated affinity id means this is not an affinity table: the reader's
+  // only terminator is a zero id, so a table without one (or one that another
+  // table was pointed at) reads to the cap. The rows are still stored - they
+  // are what the ROM holds - but a consumer must not read them as a bonus
+  // curve. `repository/write.ts` keeps the first record per id.
+  const repeatedAffinities = [
+    ...new Set(
+      supportBonuses
+        .map((b) => b.affinity)
+        .filter((id, i, all) => all.indexOf(id) !== i),
+    ),
+  ];
+  if (repeatedAffinities.length > 0) {
+    warn(
+      `support-bonus table repeats affinity id(s) ${repeatedAffinities.join(", ")} ` +
+        `(${supportBonuses.length} records read at support_attribute_pointer): ` +
+        "the table has no zero terminator, so read it as raw bytes, not as a bonus curve",
+    );
+  }
   // Affinity names straight from the ROM's text table, via the text ids the
   // game's own `GetAffinityName` uses. Falls back per-entry to the hardcoded
   // table when a text id does not decode.

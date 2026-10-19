@@ -84,6 +84,16 @@ export const FLAGS: readonly FlagSpec[] = [
     commands: ["expcurve"],
   },
   {
+    name: "difficulty",
+    type: "string",
+    arg: "<easy|normal|hard>",
+    summary:
+      "Budget for one difficulty's enemy levels; default emits all three. Hard " +
+      "boosts enemy levels by the chapter's `hard_boost`, normal and easy cut " +
+      "them by `normal_penalty` / `easy_penalty`",
+    commands: ["expcurve"],
+  },
+  {
     name: "help",
     type: "boolean",
     short: "h",

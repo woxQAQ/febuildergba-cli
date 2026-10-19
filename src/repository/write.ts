@@ -350,15 +350,26 @@ async function insertAffinities(db: ExtractDb, rom: ExtractionSnapshot): Promise
     .map((id) => ({ id, name: rom.affinityNames.get(id) ?? null }));
   await insertInChunks(affinityRows, (chunk) => db.insert(t.affinities).values(chunk));
 
-  const bonusRows: (typeof t.supportBonuses.$inferInsert)[] = rom.supportBonuses.map((b) => ({
-    affinityId: b.affinity,
-    atkHalf: b.bonuses.atk,
-    defHalf: b.bonuses.def,
-    hitHalf: b.bonuses.hit,
-    avoidHalf: b.bonuses.avoid,
-    critHalf: b.bonuses.crit,
-    critAvoidHalf: b.bonuses.critAvoid,
-  }));
+  const bonusRows: (typeof t.supportBonuses.$inferInsert)[] = [];
+  const seenAffinity = new Set<number>();
+  for (const b of rom.supportBonuses) {
+    // `affinity_id` is the table's primary key, and the reader has no way to
+    // tell an affinity table from whatever else a hack left in that slot: it
+    // stops only on a zero id, so a table with no terminator reads to the cap
+    // and repeats ids (`theDrownedKing` reads 1,2,3,4,5,6,7,1,1,1,11,12,13,14).
+    // The first record wins; `parse()` already reported the repetition.
+    if (seenAffinity.has(b.affinity)) continue;
+    seenAffinity.add(b.affinity);
+    bonusRows.push({
+      affinityId: b.affinity,
+      atkHalf: b.bonuses.atk,
+      defHalf: b.bonuses.def,
+      hitHalf: b.bonuses.hit,
+      avoidHalf: b.bonuses.avoid,
+      critHalf: b.bonuses.crit,
+      critAvoidHalf: b.bonuses.critAvoid,
+    });
+  }
   await insertInChunks(bonusRows, (chunk) => db.insert(t.supportBonuses).values(chunk));
 }
 

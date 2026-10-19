@@ -10,6 +10,7 @@ import { recruits } from "./recruits.ts";
 import { gains } from "./gains.ts";
 import { joins } from "./joins.ts";
 import { availability } from "./availability.ts";
+import { niches } from "./niches.ts";
 import { expcurve } from "./expcurve.ts";
 import { projection } from "./projection.ts";
 
@@ -36,6 +37,7 @@ const REGISTRY: Readonly<Record<CommandName, AnyCommand>> = {
   gains,
   joins,
   availability,
+  niches,
   expcurve,
   projection,
 };

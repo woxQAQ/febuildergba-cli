@@ -17,7 +17,10 @@ export const availability = defineDbCommand({
     "One row per unit seen anywhere: its join chapter (play-order position, " +
     "null when off every known path), a per-chapter status " +
     "(not_joined/available/forced/npc/removed), the deployable count after " +
-    "joining, and merged gap segments. The status rules are heuristic - " +
+    "joining, and merged gap segments. The counts and gaps are null for a unit " +
+    "whose join chapter is off the play order: such a unit joins but has no " +
+    "main-line window to count against, so 0 would read as never joining. " +
+    "The status rules are heuristic - " +
     "absence from a chapter's placement block is the normal case, not a " +
     "leave; see src/analysis/availability.ts for the rules and blind spots.",
   run: async ({ extract }) => {

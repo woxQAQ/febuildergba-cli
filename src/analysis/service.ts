@@ -49,6 +49,7 @@ export function prepareAnalysis(repository: ExtractHandle, path: string): Analys
     scripts: () => repository.scripts(),
     forceSortie: () => repository.forceSortie(),
     supportPartners: () => repository.supportPartners(),
+    classBranches: () => repository.classBranches(),
     debugMaps: async () => {
       // The exclusion is a fact about the ROM, but a silent one changes every
       // join ranking, so say it once per session.
@@ -144,6 +145,7 @@ export async function projectionOf(x: AnalysisSource): Promise<UnitProjection[]>
   return projectUnits({
     game: await x.game(),
     classes: await x.classes(),
+    classBranches: await x.classBranches(),
     unitStats: await x.unitStats(),
     playOrder: await x.playOrder(),
     units: await unitsOf(x),

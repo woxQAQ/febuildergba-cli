@@ -30,6 +30,7 @@ import type { SQLiteTable } from "drizzle-orm/sqlite-core";
 
 import type {
   ChapterRecord,
+  ClassBranchRow,
   ClassRecord,
   UnitRecord,
   ForceSortieRow,
@@ -79,6 +80,7 @@ const TABLES_READ: readonly SQLiteTable[] = [
   t.derivedUnitStats,
   t.forceSortie,
   t.supportPartners,
+  t.classBranches,
 ];
 
 /**
@@ -178,6 +180,11 @@ export interface ExtractHandle {
   forceSortie(): Promise<ForceSortieRow[]>;
   /** `support_partners` rows, in extract (directed-record) order. */
   supportPartners(): Promise<SupportPartnerRow[]>;
+  /**
+   * `class_branches` rows: the CC menu's two promotion targets per class,
+   * zeros included. Empty when the game has no such table (FE6/FE7).
+   */
+  classBranches(): Promise<ClassBranchRow[]>;
   /** Decoding outcomes, without deciding whether an analysis can proceed. */
   scripts(): Promise<TracedScript[]>;
   /**
@@ -302,6 +309,17 @@ export function openExtract(path: string): ExtractHandle {
         sortOrder: c.sortOrder,
         classPower: c.classPower,
         abilityFlags: c.abilityFlags,
+        weaponLevels: [
+          c.wlSword,
+          c.wlLance,
+          c.wlAxe,
+          c.wlBow,
+          c.wlStaff,
+          c.wlAnima,
+          c.wlLight,
+          c.wlDark,
+        ] as [number, number, number, number, number, number, number, number],
+        specialAction: c.specialAction,
         bases: {
           hp: c.baseHp,
           str: c.baseStr,
@@ -418,7 +436,13 @@ export function openExtract(path: string): ExtractHandle {
             blocks = { normal: [], hard: [] };
             placementsByChapter.set(p.mapIndex, blocks);
           }
-          blocks[p.mode].push({ unitId: p.unitId, classId: p.classId, side: p.side });
+          blocks[p.mode].push({
+            unitId: p.unitId,
+            classId: p.classId,
+            side: p.side,
+            level: p.level,
+            items: p.items,
+          });
         }
         return chapterRows.map((c) => {
           const blocks = placementsByChapter.get(c.mapIndex) ?? { normal: [], hard: [] };
@@ -499,6 +523,18 @@ export function openExtract(path: string): ExtractHandle {
           .orderBy(t.supportPartners.unitId, t.supportPartners.partnerId)
           .all(),
       ),
+
+    classBranches: () =>
+      // Class-id order: the promotion graph keys on the base class, and a
+      // dense table over class ids reads back in the order it was written.
+      once("classBranches", async () => {
+        const rows = await db
+          .select()
+          .from(t.classBranches)
+          .orderBy(t.classBranches.classId)
+          .all();
+        return rows.map((r) => ({ classId: r.classId, branch1: r.branch1, branch2: r.branch2 }));
+      }),
 
     trace: () =>
       once("trace", async (): Promise<EventGraph> => {

@@ -6,6 +6,7 @@ import type {
   ChapterRecord,
   ForceSortieRow,
   PlayOrderRows,
+  ClassBranchRow,
 } from "../model/records.ts";
 import type { EventGraph } from "../model/events.ts";
 import type { UnitStatRow, UnitStartingStats } from "../model/stats.ts";
@@ -47,9 +48,14 @@ export interface ExpCurveInput {
   playOrder: PlayOrderRows;
 }
 
-/**
- * `analysis/projection.ts` - expected stats. A superset of {@link ExpCurveInput}
+/** `analysis/projection.ts` - expected stats. A superset of {@link ExpCurveInput}
  * (the projection consumes the curve) plus the roster it projects and the
- * appearances it ranks joins by.
- */
-export interface ProjectionInput extends ExpCurveInput, AppearancesInput {}
+ * appearances it ranks joins by. */
+export interface ProjectionInput extends ExpCurveInput, AppearancesInput {
+  /**
+   * The CC branch table. The promotion graph needs both this and the class
+   * record's `+5` link: on a hack either may describe promotions the other
+   * does not (see `model/promotion.ts`).
+   */
+  classBranches: readonly ClassBranchRow[];
+}
