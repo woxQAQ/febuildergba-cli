@@ -29,7 +29,6 @@ export type CommandName =
   | "niches"
   | "expcurve"
   | "projection";
-
 /**
  * Flags resolved from the command line, after the command's own flag set has
  * been applied.
@@ -49,6 +48,8 @@ export interface ResolvedFlags {
   actorPromoted?: boolean;
   /** `expcurve`: which difficulty's enemy levels to budget for. */
   difficulty?: string;
+  /** `availability`: include the per-chapter status list (off by default). */
+  full?: boolean;
 }
 
 /**

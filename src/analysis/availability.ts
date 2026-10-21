@@ -67,10 +67,11 @@
  *     map that sequence does not cover. Such a unit joins (and
  *     `joinMapIndex` says where), but `availableCount` / `totalAfterJoin` /
  *     `gaps` describe the main line only, so they are absent rather than 0 -
- *     `0` would read as "never joins". Measured on the four fixtures: 13 of 58
+ *     `0` would read as "never joins", and an empty `gaps` would read as "no
+ *     missed chapter". Measured on the four fixtures: 13 of 58
  *     joiners on dream-of-five and 16 of 48 on dragonherald, none on Vision
- *     Quest or The Drowned King, where 21 of dragonherald's sit on one
- *     off-order map. Among the fixtures it is between a sixth and a third of
+ *     Quest or The Drowned King, where 14 of dragonherald's sit on one
+ *     off-order map (map 60, which the transition graph cannot reach at all). Among the fixtures it is between a sixth and a third of
  *     the pool, so an answer that discounts a unit by window length has to
  *     check for it before dividing.
  *
@@ -105,7 +106,11 @@ export interface UnitAvailability {
    *   {@link UnitAvailability.joinMapIndex} to tell the two apart.
    */
   joinPosition: number | null;
-  /** Map-setting index of the join chapter; `null` = never joins. */
+  /**
+   * Map-setting index of the join chapter. `null` when no join is recorded, which
+   * {@link UnitAvailability.joinUnresolved} separates into "never joins" and
+   * "cannot be decided from the tables".
+   */
   joinMapIndex: number | null;
   /** Status per playable chapter, keyed by play-order position, ascending. */
   chapters: ReadonlyMap<number, { mapIndex: number; status: ChapterStatus }>;
@@ -123,8 +128,34 @@ export interface UnitAvailability {
   availableCount: number | null;
   /** Total post-join chapters; `null` under the same rule as above. */
   totalAfterJoin: number | null;
-  /** Post-join non-deployable stretches, merged into segments. */
-  gaps: readonly { fromPosition: number; toPosition: number; reason: ChapterStatus }[];
+  /**
+   * Post-join non-deployable stretches, merged into segments.
+   *
+   * `null` under the same rule as {@link availableCount}: an empty array would
+   * be indistinguishable from "joined on the main line and never missed a
+   * chapter", which is the opposite of what an off-order joiner's window is.
+   */
+  gaps: readonly { fromPosition: number; toPosition: number; reason: ChapterStatus }[] | null;
+  /**
+   * Set when the unit may join and the static rules cannot settle it. `null`
+   * means the join verdict is final: {@link joinMapIndex} is either a real
+   * join or a confirmed never-join.
+   *
+   * A unit carrying `recruit-from-enemy` is one whose only join-like evidence
+   * is an enemy-side `LOAD1`: vanilla FE's "talk and they defect", which a hack
+   * may also use to spawn a boss the player later recruits.
+   *
+   * `load-only` covers the other half of the same question: the unit does appear
+   * on the player's side already, but only through `LOAD2`/`LOAD3`, so no record
+   * adds it to the party. The scripts hand it over later, and the tables cannot
+   * say when. Reports of this kind are the ones that read as "has support data,
+   * has a portrait, but `joinMapIndex` is null".
+   *
+   * A candidate carries no window: `availableCount`, `totalAfterJoin` and
+   * `gaps` stay `null`. It is a question for the answer to raise, not a
+   * joiner the ranking may use.
+   */
+  joinUnresolved: "recruit-from-enemy" | "load-only" | null;
 }
 
 /** One witnessed appearance of a unit in one chapter. */
@@ -196,6 +227,24 @@ export function computeAvailability(data: AvailabilityInput): UnitAvailability[]
     }
     const joinPosition = joinMapIndex === null ? null : (positionOf.get(joinMapIndex) ?? null);
 
+    // Rule 1 cannot settle every unit. An enemy-side `LOAD1` is how vanilla FE
+    // expresses "talk to this enemy and they defect", and hacks also use the
+    // same opcode to spawn a boss the player later recruits. Both readings agree
+    // the unit is meant to become playable, so the join chapter is named as
+    // unresolved instead of being folded into "never joins".
+    //
+    // The roster gate matters: generic enemy templates carry the same opcode (on
+    // Vision Quest 96 such rows, only a handful of them real characters), and
+    // `has_support_data` is this extract's existing marker for "a real player
+    // character". Without it the candidate list is every spawner row in the ROM.
+    let joinUnresolved: UnitAvailability["joinUnresolved"] = null;
+    if (joinMapIndex === null && unitById.get(unitId)?.hasSupportData === true) {
+      const onPlayerSide = apps.some((a) => a.side === "player" || a.side === "ally");
+      const enemyRecruit = apps.some((a) => a.source === "recruit" && a.side === "enemy");
+      if (enemyRecruit && !onPlayerSide) joinUnresolved = "recruit-from-enemy";
+      else if (onPlayerSide) joinUnresolved = "load-only";
+    }
+
     const byMap = new Map<number, Appearance[]>();
     for (const a of apps) {
       const list = byMap.get(a.mapIndex);
@@ -255,7 +304,8 @@ export function computeAvailability(data: AvailabilityInput): UnitAvailability[]
       // Absent rather than 0 for an off-route joiner - see the field docs.
       availableCount: windowed ? availableCount : null,
       totalAfterJoin: windowed ? totalAfterJoin : null,
-      gaps: windowed ? gaps : [],
+      gaps: windowed ? gaps : null,
+      joinUnresolved,
     });
   }
   return results;

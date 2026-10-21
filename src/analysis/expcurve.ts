@@ -321,6 +321,19 @@ export interface ChapterExpBudget {
 
 export interface ExpCurveMeta {
   game: GameVersion;
+  /**
+   * The attacker the budget was measured for, echoed as resolved (defaults
+   * applied). The numbers in `budgets` move by a factor of two across this
+   * vector - `--actor-level` more than any other - so a consumer that quotes a
+   * `totalExp` has to be able to read back what produced it.
+   */
+  actor: {
+    level: number;
+    classPower: number;
+    promoted: boolean;
+  };
+  /** Difficulties present in `budgets`, in ascending order. */
+  difficulties: readonly Difficulty[];
   /** Where every formula constant comes from; see the module doc. */
   sources: readonly string[];
   /**
@@ -512,6 +525,12 @@ export function computeExpCurve(data: ExpCurveInput, opts: ExpCurveOptions = {})
 
   return {
     budgets,
-    meta: { game, sources: EXP_CURVE_SOURCES, assumptions: EXP_CURVE_ASSUMPTIONS },
+    meta: {
+      game,
+      actor: { level: actor.level, classPower: actor.classPower, promoted: actor.promoted },
+      difficulties,
+      sources: EXP_CURVE_SOURCES,
+      assumptions: EXP_CURVE_ASSUMPTIONS,
+    },
   };
 }

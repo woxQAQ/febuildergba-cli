@@ -113,18 +113,24 @@ const MAX_LEVEL = 20;
 // ------------------------------------------------------------------- joins
 
 /**
- * unit id -> earliest play-order position at which it joins the player's army.
- * Off every known story path there is no chapter slot to rank the unit by, so
- * the unit is absent here and reads as `null` downstream.
+ * unit id -> earliest play-order position at which it joins the player's army,
+ * or `null` when it joins only on a map the play order does not cover. Absent
+ * means the unit never joins at all.
  */
-function buildJoinPositions(data: ProjectionInput): Map<number, number> {
-  const best = new Map<number, number>();
+function buildJoinPositions(data: ProjectionInput): Map<number, number | null> {
+  const best = new Map<number, number | null>();
   for (const a of collectAppearances(data)) {
     if (!isPlayerArmyAppearance(a)) continue;
     const position = data.playOrder.position.get(a.mapIndex);
-    if (position === undefined) continue;
+    // A join on a map the play order does not cover still means the unit joins:
+    // keep it with a `null` position so callers can tell "joins off-route" from
+    // "never joins".
+    if (position === undefined) {
+      if (!best.has(a.unitId)) best.set(a.unitId, null);
+      continue;
+    }
     const current = best.get(a.unitId);
-    if (current === undefined || position < current) best.set(a.unitId, position);
+    if (current === null || current === undefined || position < current) best.set(a.unitId, position);
   }
   return best;
 }
@@ -234,18 +240,31 @@ function maxedStats(
 // -------------------------------------------------------------------- public
 
 /**
- * Every roster unit's read facts and ceiling, ordered by join position (earliest
- * first, never-joining last, unit id as tie-break) - the order a "who do I
- * train" reader scans in.
+ * Every unit worth projecting - the roster (`hasSupportData`) plus any unit that
+ * joins the player's army - ordered by join position (earliest first,
+ * never-joining last, unit id as tie-break), the order a "who do I train"
+ * reader scans in.
+ *
+ * The two predicates are unioned rather than intersected because neither contains
+ * the other on real hacks: a roster unit can never join (The Drowned King: 10 of
+ * 62), and a joiner can sit outside the roster (dragonherald: 14 of 48).
  */
 export function projectUnits(data: ProjectionInput): UnitProjection[] {
   const classById = new Map(data.classes.map((c) => [c.id, c]));
   const graph = buildPromotionGraph(data.classes, data.classBranches);
-  const joins = buildJoinPositions(data);
+  const joinOf = buildJoinPositions(data);
 
   const projections: UnitProjection[] = [];
   for (const unit of data.units) {
-    if (unit.isEmpty || !unit.hasSupportData) continue;
+    if (unit.isEmpty) continue;
+    // The pool is "roster **or** joins somewhere", not the roster alone. A hack
+    // can put a playable unit outside the support table (dragonherald: 14 of
+    // its 48 joiners), and those units are exactly the ones a line-up has to
+    // weigh - dropping them left the highest-growth unit in that ROM with no
+    // projection row at all. Off-order joiners are included for the same
+    // reason: they join, they just have no main-line position.
+    const joinPosition = joinOf.get(unit.id);
+    if (!unit.hasSupportData && joinPosition === undefined) continue;
 
     const cls = classById.get(unit.classId);
 
@@ -292,7 +311,7 @@ export function projectUnits(data: ProjectionInput): UnitProjection[] {
     projections.push({
       unitId: unit.id,
       name: unit.name,
-      joinPosition: joins.get(unit.id) ?? null,
+      joinPosition: joinPosition ?? null,
       classLine,
       level: unit.level,
       promotedAtJoin: !hasPromotion && unit.isPromotedClass,

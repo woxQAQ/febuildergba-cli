@@ -136,10 +136,10 @@ export async function expCurveOf(
 }
 
 /**
- * `projection`: the roster's read facts and stat ceilings. It reads `units` and
- * `trace` (the join ranking) where `expcurve` does not, but not `unitStats`: the
- * chapter-by-chapter expectation that consumed it was removed - see
- * `analysis/projection.ts` for why.
+ * `projection`: every unit worth weighing - roster plus joiners - with its read
+ * facts and stat ceilings. It reads `units` and `trace` (the join ranking) where
+ * `expcurve` does not, but not `unitStats`: the chapter-by-chapter expectation
+ * that consumed it was removed - see `analysis/projection.ts` for why.
  */
 export async function projectionOf(x: AnalysisSource): Promise<UnitProjection[]> {
   return projectUnits({

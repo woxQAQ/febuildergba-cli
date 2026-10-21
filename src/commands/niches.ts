@@ -41,7 +41,11 @@ export const niches = defineDbCommand({
     "many non-empty classes offer it, and how many player-army units can reach " +
     "it along the promotion graph. A niche reachable by one or two joiners is " +
     "the reason to train them; a niche reachable by ten is not a reason to " +
-    "train anyone. Reachability follows `buildPromotionGraph` - the CC branch " +
+    "train anyone. Rows are ordered scarce-first: `joinerCount` ascending, then " +
+    "`classCount` ascending (so one joiner into one class - a structural " +
+    "monopoly - leads), then the key; `joinerCount` 0 sorts last because no " +
+    "recommendation can fill it. Reachability follows `buildPromotionGraph` - " +
+    "the CC branch " +
     "table plus the class record's link - and the units counted are the ones " +
     "`availability` reports as joiners (`joinMapIndex` non-null), the same set " +
     "the `joins` command's `join` rows describe.",
@@ -107,10 +111,19 @@ export const niches = defineDbCommand({
       })
       // Scarce-but-reachable first: a niche no joiner can reach cannot be part of
       // a recommendation, and a niche ten joiners reach is not a reason to train.
+      // `classCount` breaks the tie before the niche string: one joiner into one
+      // class is a structural monopoly, while one joiner into twenty-nine classes
+      // (the weaponless enemy classes) is the least scarce capability there is.
+      // Sorting by name first put those two in arbitrary order.
       .sort((a, b) => {
         const aDead = a.joinerCount === 0 ? 1 : 0;
         const bDead = b.joinerCount === 0 ? 1 : 0;
-        return aDead - bDead || a.joinerCount - b.joinerCount || a.niche.localeCompare(b.niche);
+        return (
+          aDead - bDead ||
+          a.joinerCount - b.joinerCount ||
+          a.classCount - b.classCount ||
+          a.niche.localeCompare(b.niche)
+        );
       });
   },
 });

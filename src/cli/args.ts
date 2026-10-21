@@ -146,6 +146,7 @@ export function parseArgv(argv: readonly string[]): ParsedArgv {
       ...(actorClassPower === undefined ? {} : { actorClassPower }),
       ...(values["actor-promoted"] === true ? { actorPromoted: true } : {}),
       ...(difficulty === undefined ? {} : { difficulty }),
+      ...(values.full === true ? { full: true } : {}),
     },
   };
 }

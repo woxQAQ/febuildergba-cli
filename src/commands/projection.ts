@@ -10,10 +10,11 @@ import { defineDbCommand } from "./types.ts";
 export const projection = defineDbCommand({
   name: "projection",
   input: "db",
-  summary: "Show each roster unit's starting stats and fully-trained ceiling",
+  summary: "Show each unit worth weighing and its fully-trained ceiling",
   description:
-    "For every roster unit (support-data bearing, the same predicate the " +
-    "`roster` command uses): the class line, the unit table's join level, the " +
+    "For every unit worth weighing - the roster (support-data bearing, the same " +
+    "predicate the `roster` command uses) plus any unit that joins the player's " +
+    "army - the class line, the unit table's join level, the " +
     "starting stats (`class base + unit delta`, exact), and the fully-trained " +
     "ceiling (`maxed`) - every growth succeeded to Lv20, promotion bonuses " +
     "applied, stats truncated by each class's cap along the way. Two facts " +

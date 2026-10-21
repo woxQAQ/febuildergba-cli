@@ -94,6 +94,15 @@ export const FLAGS: readonly FlagSpec[] = [
     commands: ["expcurve"],
   },
   {
+    name: "full",
+    type: "boolean",
+    summary:
+      "Include the per-chapter status list. Off by default because it is most " +
+      "of the payload; ask for it only when a question is about particular " +
+      "chapters rather than a join position or a window length",
+    commands: ["availability"],
+  },
+  {
     name: "help",
     type: "boolean",
     short: "h",
