@@ -1,36 +1,7 @@
 import { buildPromotionGraph } from "../model/promotion.ts";
 import { availabilityOf } from "../analysis/service.ts";
-import type { ClassRecord } from "../model/records.ts";
+import { classProfile } from "../analysis/classProfile.ts";
 import { defineDbCommand } from "./types.ts";
-
-/** ROM weapon-slot order, used to render a niche key. */
-const WEAPON_SLOTS = ["sword", "lance", "axe", "bow", "staff", "anima", "light", "dark"] as const;
-
-/**
- * The niche a class occupies: which weapon families it can use, how it moves,
- * and whether it carries a special action. Two classes with the same profile
- * offer the same capability even when their ids differ, because the class table
- * carries duplicate entries.
- */
-function nicheOf(c: ClassRecord, mobility: string): string {
-  const weapons = WEAPON_SLOTS.filter((_, i) => (c.weaponLevels[i] as number) > 0);
-  const arms = weapons.length === 0 ? "none" : weapons.join("+");
-  const special = c.specialAction === null ? "" : `@${c.specialAction}`;
-  return `${arms}|${mobility}${special}`;
-}
-
-/**
- * Mobility classification of one class. Duplicated from the `roles` command on
- * purpose: that command owns the rule for its own output, and this one needs a
- * single label to build a niche key from.
- */
-function mobilityOf(c: ClassRecord): string {
-  if (c.mount === "wyvern" || c.mount === "pegasus") return "flying";
-  if (c.mount === "horse") return "mounted";
-  if (c.mount === "armour") return "armour";
-  if (c.flying || c.terrainBonusImmune) return "flying";
-  return "normal";
-}
 
 export const niches = defineDbCommand({
   name: "niches",
@@ -39,12 +10,12 @@ export const niches = defineDbCommand({
   description:
     "One row per niche: its weapon families, mobility and special action, how "
     + "many non-empty classes offer it, and how many player-army units can reach "
-    + "it along the promotion graph. A niche reachable by one or two joiners is "
-    + "the reason to train them; a niche reachable by ten is not a reason to "
-    + "train anyone. Rows are ordered scarce-first: `joinerCount` ascending, then "
-    + "`classCount` ascending (so one joiner into one class - a structural "
-    + "monopoly - leads), then the key; `joinerCount` 0 sorts last because no "
-    + "recommendation can fill it. Reachability follows `buildPromotionGraph` - "
+    + "it within four promotion steps. This is a global reachability index, not a "
+    + "training priority or a resource-feasible lineup: off-route joiners and "
+    + "mutually exclusive branches are included. `classCount` counts table entries, "
+    + "including duplicate profiles, not independent player choices. Rows sort by "
+    + "`joinerCount`, then `classCount`, then key, with zero joiners last. "
+    + "Reachability follows `buildPromotionGraph` - "
     + "the CC branch "
     + "table plus the class record's link - and the units counted are the ones "
     + "`availability` reports as joiners (`joinMapIndex` non-null), the same set "
@@ -64,7 +35,7 @@ export const niches = defineDbCommand({
 
     const classesByNiche = new Map<string, number[]>();
     for (const c of classes) {
-      const key = nicheOf(c, mobilityOf(c));
+      const key = classProfile(c).niche;
       classesByNiche.set(key, [...(classesByNiche.get(key) ?? []), c.id]);
     }
 
@@ -91,7 +62,7 @@ export const niches = defineDbCommand({
       for (const classId of reached) {
         const c = classById.get(classId);
         if (c === undefined) continue;
-        const key = nicheOf(c, mobilityOf(c));
+        const key = classProfile(c).niche;
         const set = reach.get(key) ?? new Set<number>();
         set.add(unitId);
         reach.set(key, set);

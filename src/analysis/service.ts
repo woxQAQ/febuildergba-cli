@@ -16,6 +16,8 @@ import type { AnalysisUnit } from "./data.ts";
 import type { ExtractHandle } from "../repository/read.ts";
 import { combineStartingStats } from "../model/stats.ts";
 import { eventDecodeWarning } from "../model/events.ts";
+import { collectAppearances } from "./appearances.ts";
+import { candidateFacts, type CandidateFacts } from "./candidates.ts";
 
 /** A lazy analysis session: only the evidence actually requested is checked. */
 export type AnalysisSource = Omit<ExtractHandle, "close"> & {
@@ -59,7 +61,7 @@ export function prepareAnalysis(repository: ExtractHandle, path: string): Analys
         debugMapsWarned = true;
         const list = records.map((r) => `map ${r.mapIndex} (${r.reason})`).join("; ");
         diagnostics.push(
-          `excluded ${records.length} debug map(s) from joins/availability/projection: ${list}`,
+          `excluded ${records.length} debug map(s) from joins/availability/candidates: ${list}`,
         );
       }
       return records;
@@ -136,10 +138,8 @@ export async function expCurveOf(
 }
 
 /**
- * `projection`: every unit worth weighing - roster plus joiners - with its read
- * facts and stat ceilings. It reads `units` and `trace` (the join ranking) where
- * `expcurve` does not, but not `unitStats`: the chapter-by-chapter expectation
- * that consumed it was removed - see `analysis/projection.ts` for why.
+ * Unit-table baselines and branch projections consumed by candidates.
+ * Entry evidence ranks joins; actual saved-game training is not reconstructed.
  */
 export async function projectionOf(x: AnalysisSource): Promise<UnitProjection[]> {
   return projectUnits({
@@ -152,5 +152,25 @@ export async function projectionOf(x: AnalysisSource): Promise<UnitProjection[]>
     chapters: await x.chapters(),
     trace: await x.trace(),
     debugMaps: new Set((await x.debugMaps()).map((r) => r.mapIndex)),
+  });
+}
+
+/** Assemble existing analyses for a complete, strategy-free candidate audit. */
+export async function candidatesOf(x: AnalysisSource): Promise<CandidateFacts> {
+  const appearances = {
+    units: await unitsOf(x),
+    chapters: await x.chapters(),
+    trace: await x.trace(),
+    debugMaps: new Set((await x.debugMaps()).map((row) => row.mapIndex)),
+  };
+  return candidateFacts({
+    ...appearances,
+    classes: await x.classes(),
+    classBranches: await x.classBranches(),
+    playOrder: await x.playOrder(),
+    availability: await availabilityOf(x),
+    projections: await projectionOf(x),
+    joins: await joinsOf(x),
+    appearances: collectAppearances(appearances),
   });
 }

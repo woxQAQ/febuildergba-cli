@@ -44,6 +44,10 @@ export interface UnitAppearance {
   source: "placement" | "recruit" | "load" | "cutscene";
   /** Class override of the record; 0 means the unit's own class. */
   placedClassId: number;
+  /** Raw placement/load level, retained to audit the unit-table baseline. */
+  placedLevel: number;
+  /** Entry autolevel can change stats even when class and level match the table. */
+  placedAutolevel: number;
   /**
    * Whether the unit is a real character (`has_support_data`), as opposed to a
    * generic template slot. {@link isPlayerArmyAppearance} needs it to tell a
@@ -104,7 +108,7 @@ export function collectAppearances(data: AppearancesInput): UnitAppearance[] {
 
   const push = (a: UnitAppearance): void => {
     if (data.debugMaps.has(a.mapIndex)) return;
-    const key = `${a.unitId}|${a.mapIndex}|${a.side}|${a.source}|${a.placedClassId}`;
+    const key = `${a.unitId}|${a.mapIndex}|${a.side}|${a.source}|${a.placedClassId}|${a.placedLevel}|${a.placedAutolevel}`;
     if (seen.has(key)) return;
     seen.add(key);
     out.push(a);
@@ -123,6 +127,8 @@ export function collectAppearances(data: AppearancesInput): UnitAppearance[] {
           side: p.side,
           source: "placement",
           placedClassId: p.classId,
+          placedLevel: p.level,
+          placedAutolevel: p.autolevel,
           character: unit.hasSupportData,
         });
       }
@@ -137,6 +143,8 @@ export function collectAppearances(data: AppearancesInput): UnitAppearance[] {
         side: u.side,
         source: site.kind,
         placedClassId: u.classId,
+        placedLevel: u.level,
+        placedAutolevel: u.autolevel,
         character: unitById.get(u.unitId)?.hasSupportData ?? false,
       });
     }

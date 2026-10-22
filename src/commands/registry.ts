@@ -2,8 +2,6 @@ import type { AnyCommand, CommandName } from "./types.ts";
 
 import { extract } from "./extract.ts";
 import { text } from "./text.ts";
-import { roster } from "./roster.ts";
-import { roles } from "./roles.ts";
 import { supports } from "./supports.ts";
 import { transitions } from "./transitions.ts";
 import { recruits } from "./recruits.ts";
@@ -12,7 +10,7 @@ import { joins } from "./joins.ts";
 import { availability } from "./availability.ts";
 import { niches } from "./niches.ts";
 import { expcurve } from "./expcurve.ts";
-import { projection } from "./projection.ts";
+import { candidates } from "./candidates.ts";
 
 /**
  * Every command, keyed by the word the user types.
@@ -29,17 +27,15 @@ import { projection } from "./projection.ts";
 const REGISTRY: Readonly<Record<CommandName, AnyCommand>> = {
   extract,
   text,
-  roster,
-  roles,
   supports,
   transitions,
   recruits,
   gains,
   joins,
   availability,
+  candidates,
   niches,
   expcurve,
-  projection,
 };
 
 /** Every command, in the order the usage table lists them. */

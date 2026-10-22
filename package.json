@@ -11,6 +11,7 @@
     "extract": "node src/index.ts extract",
     "typecheck": "tsc --noEmit",
     "check": "node scripts/check-upstream.ts",
+    "check:fixtures": "node scripts/check-fixtures.ts",
     "check:update": "node scripts/check-upstream.ts --update",
     "format": "oxfmt",
     "lint": "oxlint",

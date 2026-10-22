@@ -85,7 +85,8 @@ export function usage(): string {
     "Analysis happens against the extracted database: run `extract` once, then",
     "hand the .db to the analysis commands, or query it with SQL directly:",
     "  fe-rom extract fixtures/dream-of-five.gba   # writes dream-of-five.db",
-    "  fe-rom roster dream-of-five.db",
+    "  fe-rom candidates dream-of-five.db",
+    "  fe-rom supports dream-of-five.db",
     "  sqlite3 dream-of-five.db 'SELECT id, name FROM units WHERE has_support_data'",
     "The full schema and its conventions are documented in src/repository/schema.ts.",
     "",
@@ -94,7 +95,8 @@ export function usage(): string {
     "Examples (run from the repo root):",
     "  fe-rom extract  fixtures/dream-of-five.gba",
     "  fe-rom extract  fixtures/dream-of-five.gba --out do5.db --lang zh",
-    "  fe-rom roster   dream-of-five.db",
+    "  fe-rom candidates dream-of-five.db",
+    "  fe-rom supports   dream-of-five.db",
     "  fe-rom text     fixtures/dream-of-five.gba 703 704 --range 0x210-0x218",
   ].join("\n");
 }

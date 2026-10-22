@@ -391,7 +391,9 @@ const EXP_CURVE_ASSUMPTIONS: readonly string[] = [
     + "with.",
   "Every counted enemy is assumed killed by the stated attacker: weapon "
     + "availability, hit rate and the attacker's own survival are not modelled. "
-    + "The budget is an upper bound on the chapter's exp for that attacker.",
+    + "This is an opportunity index for the counted enemy set, not a strict "
+    + "upper bound on actual play: partial events can omit enemies, conditional "
+    + "loads may not occur, and non-enemy exp sources are excluded.",
 ];
 
 export interface ExpCurveOptions {

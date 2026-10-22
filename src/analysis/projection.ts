@@ -1,59 +1,22 @@
 /**
- * Roster facts: starting stats and the fully-trained stat ceiling.
+ * Starting stats and full-training projections for roster units and joiners.
  *
- * This module answers "who is worth training" with **facts only**. An earlier
- * version also projected expected stats chapter by chapter, and summarised each
- * unit's join-time exp efficiency. Both were removed, because both were
- * arithmetic over assumptions and both were emitted in the same shape as read
- * facts:
- *   - a per-chapter level count taken from the exp curve's *parity* budget,
- *     times the unit's share of it, where the share divided by `deploy_slots`
- *     (a column this ROM leaves empty) and fell back to a constant;
- *   - a `ratio` of two such exp figures, which reads as "this unit gains a
- *     tenth of the exp" but is a quotient of numbers that each rest on the
- *     assumptions above.
- * A consumer - human or model - has no way to tell those apart from `hp: 26`,
- * so they should not be in the payload. `analysis/expcurve.ts` is the one place
- * assumptions are stated as such, in a `meta.assumptions` block; that is the
- * shape to follow rather than emitting assumed values bare.
+ * Starting stats sum class bases and unit deltas; they are not saved-game
+ * stats. A projection adds personal growth rate * level span / 100, applies
+ * caps at each phase, and includes at most one promotion with its six bonuses
+ * and a level reset to 1. Luck has neither a class cap nor a promotion bonus
+ * in this model; constitution is outside StatLine.
  *
- * What remains is deterministic:
- *   - Starting stats are `class base + unit delta` (`model/stats.ts`,
- *     `startingStats`). Both terms are read from the ROM and the sum is exact.
- *     The unit table's `level` is the join level, reported as read.
- *   - {@link UnitProjection.maxed} is the ceiling: the current level grown to
- *     20 in the base class, the class's six `promotionBonuses` landing
- *     (`tables/classes.ts` `+34..39` - the ROM has no luck bonus), the level
- *     reset to 1, and the growth running to 20 again. Growth rates are unsigned
- *     percentages stored **per unit** (`tables/units.ts` `+28..34`); FE growths
- *     belong to the person rather than the class, so one set of rates runs
- *     through the whole trajectory, promotion included. This is "every growth
- *     succeeded, exactly" - not a probability, and not a plan.
- *   - Caps (`tables/classes.ts` `+19..25`) bind stepwise: once a stat reaches
- *     its current class's cap it stays there until a promotion raises the
- *     ceiling. That mirrors the in-game rule that a capped stat stops growing,
- *     which a single final `min()` would not.
- *   - `con` never grows and is excluded everywhere (contract `StatLine`).
- *   - The promotion direction is recovered from the reverse `promotesToClassId`
- *     link plus `sortOrder`, by `buildPromotionGraph` in `model/promotion.ts` -
- *     the one implementation, shared with extraction.
+ * These deterministic calculations are not all-growths-successful upper
+ * bounds, exact expectations of capped random growth, or proof that enough
+ * exp and promotion items exist. An actual run may end above or below them.
+ * Each direct promotion target is kept separate; `maxed` chooses the smallest
+ * target class id, never a per-stat combination of mutually exclusive branches.
  *
- * Join chapter - same semantics as the `joins` command: a unit joins at the
- * earliest play-order position where it appears as a **player-side** placement
- * record or in a **player-side** unit block of a recruit-classified load
- * (`LOAD1`), collected by `analysis/appearances.ts`. Maps off every known story
- * path have no position to rank by, so a unit seen only there reads as
- * `joinPosition: null`, the same as a unit that never joins at all.
- *
- * A unit's stats at any chapter *other* than the one it joins in depend on how
- * much it was trained, which no table states - so this module does not claim to
- * know them. `startingStats` and `maxed` bracket the range instead: the floor
- * it enters with, and the ceiling it reaches if nothing is left un-grown.
- *
- * The roster is `hasSupportData && !isEmpty`: support data is the extractor's
- * existing marker for "a real player character" (enemies and NPCs have no
- * support pointer), and reusing it keeps this module consistent with the
- * support views instead of inventing a second playable predicate.
+ * Army entries reuse `isPlayerArmyAppearance`. The pool is the union of
+ * non-empty support-bearing units and recognized joiners, including off-route
+ * joiners. `joinPosition: null` alone cannot distinguish an off-route entry
+ * from no entry: consumers use availability's explicit join state.
  */
 
 import type { AnalysisUnit, ProjectionInput } from "./data.ts";
@@ -71,7 +34,7 @@ export interface StatLine {
   lck: number;
 }
 
-/** One roster unit's read facts and its ceiling. */
+/** One candidate's starting facts and branch-specific projections. */
 export interface UnitProjection {
   unitId: number;
   name: string;
@@ -82,7 +45,7 @@ export interface UnitProjection {
   joinPosition: number | null;
   /** 基础职业 → 上位职业。多条分支时全部列出,同名同类只出现一次。 */
   classLine: readonly { classId: number; name: string }[];
-  /** 单位表 level 字段:入队等级,原样读出。 */
+  /** 单位表 level 字段，原样读出；未应用入队布阵或加载覆盖。 */
   level: number;
   /** 入队即上级职业。 */
   promotedAtJoin: boolean;
@@ -92,19 +55,19 @@ export interface UnitProjection {
    * 单位表标记了已晋升且无出边，两者都不能当这个问题的答案。
    */
   promotable: boolean;
-  /** `class base + unit delta`,精确值。 */
+  /** 单位表职业的 `class base + unit delta`，不代表已验证的实际入队属性。 */
   startingStats: StatLine;
   /**
-   * 满练上限:全部成长成功、转职加成到手、按当时职业 cap 截断后的属性。
-   * 与训练计划无关 - 它是天花板,不是任何一次游玩的结果。
+   * 满练属性投影：成长率 × 等级跨度 / 100，加转职加成，按各阶段职业 cap 截断。
+   * 不是全部成长成功的上限，也不是随机封顶过程的严格期望或实际训练结果。
    *
    * 有多条转职分支时取 **class id 最小的那条**(与 {@link classLine} 的首个上位职业一致),
-   * 因为一个单位只能走一条分支。每条分支各自的上限见 {@link maxedByBranch}:
+   * 因为一个单位只能走一条分支。每条分支各自的投影见 {@link maxedByBranch}:
    * 按属性逐项取最大值会拼出一个不存在的单位。
    */
   maxed: StatLine;
   /**
-   * 每条转职分支各自的天花板。无声明的单一分支单位只有一项,与 {@link maxed} 相同。
+   * 每条直接转职分支各自的投影，最多一次转职；没有出边时为空数组。
    */
   maxedByBranch: readonly { classId: number; name: string; stats: StatLine }[];
 }
@@ -142,7 +105,7 @@ function buildJoinPositions(data: ProjectionInput): Map<number, number | null> {
   return best;
 }
 
-// ----------------------------------------------------------------- ceiling
+// -------------------------------------------------------------- projection
 
 interface CeilingContext {
   growths: Readonly<Record<GrownStat, number>>;
@@ -182,8 +145,13 @@ function spansToCap(level: number): number {
   return Math.max(0, MAX_LEVEL - level);
 }
 
+/** Level-span proxy for this projection, not exp, turns or training feasibility. */
+export function trainingLevelsForProjection(level: number, promotes: boolean): number {
+  return spansToCap(level) + (promotes ? spansToCap(1) : 0);
+}
+
 /**
- * The ceiling along one promotion target. Called once per branch so a caller
+ * The projection along one promotion target. Called once per branch so a caller
  * can see what each branch actually reaches; the reported `maxed` is the first
  * of them, because a unit walks one branch, not the per-stat maximum of several.
  */
@@ -206,12 +174,12 @@ function ceilingThrough(
 }
 
 /**
- * The fully-trained ceiling. A unit that joined promoted has no base-class leg:
+ * The full-training projection. A unit with no outgoing edge has no later leg:
  * its base is behind it and we never learn the level it left at, so the growth
  * runs once, in the class it is in.
  *
  * A class with several promotion branches (the CC menu offers two, and `+5` may
- * name a third) has one ceiling per branch. Each is computed and reported
+ * name a third) has one projection per branch. Each is computed and reported
  * separately by {@link maxedByBranch}; `maxed` is the first, which is stable
  * because the branch list is sorted by class id.
  */

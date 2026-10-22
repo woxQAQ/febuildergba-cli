@@ -22,8 +22,8 @@
  * The derivations that used to be a third layer of db views (`roster`,
  * `support_edges`, the walk-based `chapter_transitions`, `chapter_recruits`,
  * `chapter_recruit_units`, `chapter_gold`, `chapter_item_gives`, `unit_joins`,
- * `class_roles`) are CLI commands over the extract now: `roster`,
- * `supports`, `transitions`, `recruits`, `gains`, `joins`, `roles`. Nothing in
+ * `class_roles`) are exposed through `candidates`, `niches`, `supports`,
+ * `transitions`, `recruits`, `gains` and `joins` over the extract. Nothing in
  * this file is a view; `TABLES` below is every table the extract creates.
  *
  * Conventions:
@@ -327,9 +327,9 @@ export const classBranches = sqliteTable(
 );
 
 /**
- * Mobility is the `roles` command's classification over `classes.mount` - the
+ * Mobility is the shared class profile's classification over `classes.mount` - the
  * mount flags first, then the mechanical flier checks. Deliberately not a
- * column: the fallbacks in `commands/roles.ts` are an analysis convention.
+ * column: the fallbacks in `analysis/classProfile.ts` are an analysis convention.
  */
 
 /**
@@ -1069,6 +1069,7 @@ export const loadBlockUnits = sqliteTable(
  * materialized conclusions are listed separately at the end. */
 export const TABLES = [
   meta,
+  inputs,
   units,
   classes,
   classAbilityFlags,

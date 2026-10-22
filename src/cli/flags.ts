@@ -71,8 +71,8 @@ export const FLAGS: readonly FlagSpec[] = [
     type: "string",
     arg: "<n>",
     summary:
-      "Class power (class table +26) of that attacker; default 3, the modal "
-      + "value across classes",
+      "Class power (class table +26) of that attacker; fixed default 3, not "
+      + "inferred from this ROM",
     commands: ["expcurve"],
   },
   {

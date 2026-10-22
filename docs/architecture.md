@@ -120,3 +120,10 @@ CLI 决定 stderr 格式，service 和 repository 不直接打印。
 不添加单元测试。架构调整若改变存储 schema（列、表、外键、顺序契约），
 旧快照按设计不再可读：重新 extract 即可，同一 ROM 的新表内容与分析 JSON
 应保持一致。
+
+本地 `fixtures/` 有 ROM 时运行 `npm run check:fixtures`。它逐个重新提取，
+调用全部 DB 命令，核对外键、行数收据、名册与 joiner 的候选并集、
+候选唯一性、原始入队职业/等级/autolevel 变体、默认及 `--full` availability
+支援两个方向的原始点数/成长、互惠标记和非默认经验参数；首条命令失败后不解析空输出。
+完整 stdout、stderr 和汇总保存在独立的 `out/fixture-check-*` 目录。
+没有 ROM 时明确失败，不把缺少本地 fixture 当作检查通过。

@@ -452,6 +452,7 @@ export function openExtract(path: string): ExtractHandle {
             classId: p.classId,
             side: p.side,
             level: p.level,
+            autolevel: p.autolevel ? 1 : 0,
             items: p.items,
           });
         }

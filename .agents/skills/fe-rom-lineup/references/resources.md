@@ -16,7 +16,7 @@ node src/index.ts expcurve <db> --difficulty normal --actor-level 20 --actor-cla
 
 离线入队、未定入队、未入队都没有定义好的主线窗口，保持 `null`。不要拿相邻章预算代替离线入队章，也不要暗填 0 或 1。
 
-`expcurve.data.budgets` 只覆盖播放序上 `playable = 1` 的章。先固定难度和攻击方参数，再按 position 从入队章起求 `totalExp` 之和。若只统计 availability 标为 available / forced 的章，明确声明该过滤规则；目标时点在终盘前时也要截到该时点。可除以同一参数下全路线预算得到占比，分母为 0 时保持未定义。
+`expcurve.data.budgets` 只覆盖播放序上 `playable = 1` 的章。先检查目标与枝路是否能共存，固定难度和攻击方参数，再按 position 从入队章起求 `totalExp` 之和。未选定一条实际路线时，只称“线性化模型机会指标”，不称一轮可获得经验。若只统计 availability 标为 available / forced 的章，明确声明该过滤规则；目标时点在终盘前时也要截到该时点。可除以同一参数下全路线预算得到占比，分母为 0 时保持未定义。
 
 比较不同单位的机会时共用一组攻击方参数，不逐人换成各自等级后直接比较预算。需要看等级敏感性时，对同一候选集合运行另一整组参数，报告顺序是否改变。
 
@@ -48,7 +48,19 @@ ORDER BY s.id, si.position;
 SELECT map_index, item_id, flag FROM map_objects WHERE kind = 'chest';
 ```
 
-每件所需道具合并商店、宝箱与 `gains.data.items` 三类来源。查询无来源时写“已检查来源中未找到”，不证明 ROM 绝无掉落或其他获得机制；该道具不能在当前证据下参与确定分配。
+每件所需道具合并商店、宝箱、`gains.data.items` 和单位携带物。携带物可能是自带装备、可转交库存、敌掉落/可盗候选，分别保留条件；只查前三类不能说没有来源。查询无来源时写“已检查来源中未找到”，不证明 ROM 绝无其他获得机制；该道具不能在当前证据下参与确定分配。
+
+`recruits.data[].units` 已含 `items`、`autolevel`、`ext`，父层含 map/script/seq/operand position/block id，可按精确 unit/item id 筛选而不再 SQL 补背包。它包含敌军和 cutscene，`recruit` 这个词本身不证明自军取得。初始布阵另查：
+
+```sql
+SELECT p.map_index, p.mode, p.position, p.unit_id, p.side,
+       p.ext, j.key AS item_slot, j.value AS item_id
+FROM chapter_placements p, json_each(p.items) j
+WHERE j.value IN (SELECT item_id FROM item_promotions)
+ORDER BY p.map_index, p.mode, p.position, j.key;
+```
+
+FE8 的 `ext & 2` 是掉落标记线索，不确定掉哪一格、不保证 hack 未修改规则，也不等于玩家已经取得。FE6/7 的 ext 为 null，不套用 FE8 位语义。normal/hard、布阵/加载和共享脚本可能重复呈现同一背包，不能每行都计为新物品；可达来源是否独立可领取仍需核实。优先按数值 ID 行或数组精确过滤，不目测长 `group_concat` 字符串判断兼容集合。
 
 `item_promotions.class_id` 是使用道具时的源职业，不是目标职业。核对方案当时的源职业可以使用它，并且所选目标存在于模型转职图。仅凭效果码（包括 45 / 0x2d）不能宣称对所有职业通用；按当前 ROM 的兼容表判断。共用 staff effect 的多个物品会共享兼容列表，兼容行数不是道具供给数量。
 
@@ -72,7 +84,7 @@ SELECT map_index, item_id, flag FROM map_objects WHERE kind = 'chest';
 
 `items.is_weapon` 已存在，由提取器的 `type <= 7` 规则得出；hack 修改物品类型后该规则仍可能不可靠。结合 `type_name`、武器参数与效果核对异常，不因物化为列就当作游戏运行时的权威分类，`item_effectiveness` 也不能识别所有普通武器。
 
-物品要求读 `items.weapon_rank_letter` 或数值 `weapon_rank`；单位与职业的 `wl_*` 也是数值。字母阈值为 E 1..30、D 31..70、C 71..120、B 121..180、A 181..250、S >=251。职业能用某武器家族不代表单位已满足某件武器的等级要求。
+物品要求读 `items.weapon_rank_letter` 或数值 `weapon_rank`；单位与职业的 `wl_*` 也是数值。字母阈值为 E 1..30、D 31..70、C 71..120、B 121..180、A 181..250、S >=251。职业能用某武器家族不代表单位已满足某件武器的等级要求，也不证明背包里已有杖/武器。实际治疗或开箱方案需要分配具体装备、转交与耐久；同一把装备不重复分给多个位置。
 
 商店买入价为 `shop_items.effective_uses * items.unit_price`。列表的 `uses = 0` 表示满耐久，不代表免费。卖价可按半价估算，若影响结论再核对实际取整与出售限制。计划总价还要乘购买数量。
 

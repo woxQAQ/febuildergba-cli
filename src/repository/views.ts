@@ -34,7 +34,7 @@ export interface AnalysisView {
 export const ANALYSIS_VIEWS: readonly AnalysisView[] = [
   {
     name: "analysis_roster",
-    summary: "The support-data-bearing units, the pool the `roster` command lists",
+    summary: "The support-data-bearing evidence set, not a complete joiner set",
     sql: `SELECT id, name, class_id, affinity_id, level
             FROM units
            WHERE has_support_data = 1`,

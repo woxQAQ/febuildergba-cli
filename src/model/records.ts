@@ -53,6 +53,8 @@ export interface PlacementRecord {
    * `level` and `items` all zero. See `analysis/appearances.ts`.
    */
   level: number;
+  /** 0 = fixed entry, 1 = autolevel; kept numeric like event block records. */
+  autolevel: number;
   /** `+12..15`: starting items; all zero when the record names no unit. */
   items: readonly number[];
 }

@@ -55,6 +55,7 @@ Use the Sentry MCP.
 ## What to return
 
 For each relevant issue:
+
 - Issue ID and title
 - Project and organization
 - First seen / last seen timestamps

@@ -13,13 +13,16 @@ export const recruits = defineDbCommand({
     + "the raw event layer filtered to unit loads, units the block rows joined "
     + "on. The reach runs over the trace `extract` persisted "
     + "(`tables/eventTrace.ts`), read back from the db; `kind` is the load "
-    + "classification - `recruit` loads join the player's army, "
-    + "`load`/`cutscene` do not.",
+    + "classification, not proof of player control or reward receipt. Enemy-side "
+    + "`recruit` loads do not establish army entry. Inventory item ids, autolevel "
+    + "and raw `ext` flags are retained; FE8 ext bit 0x2 marks an item-drop "
+    + "candidate, not a verified dropped slot or guaranteed inventory gain.",
   run: async ({ extract }) => ({
     data: reachedLoadSites(await extract.trace()).map((site) => ({
       mapIndex: site.mapIndex,
       scriptId: site.scriptId,
       seq: site.seq,
+      position: site.position,
       kind: site.kind,
       blockId: site.blockId,
       units: site.units.map((u) => ({
@@ -28,6 +31,9 @@ export const recruits = defineDbCommand({
         classId: u.classId,
         level: u.level,
         side: u.side,
+        autolevel: u.autolevel,
+        items: u.items,
+        ext: u.ext,
         x: u.x,
         y: u.y,
       })),

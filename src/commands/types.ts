@@ -18,17 +18,15 @@ import { prepareAnalysis, type AnalysisSource } from "../analysis/service.ts";
 export type CommandName =
   | "extract"
   | "text"
-  | "roster"
-  | "roles"
   | "supports"
   | "transitions"
   | "recruits"
   | "gains"
   | "joins"
   | "availability"
+  | "candidates"
   | "niches"
-  | "expcurve"
-  | "projection";
+  | "expcurve";
 /**
  * Flags resolved from the command line, after the command's own flag set has
  * been applied.
