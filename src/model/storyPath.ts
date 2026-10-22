@@ -156,11 +156,11 @@ export function buildPlayOrder(
     startCandidates: walk.candidates.map((c) => c.mapIndex),
     startReason:
       walk.candidates[0] === undefined
-        ? "no opening map: nothing numbered 1, and no chapter-0 prologue " +
-          "leading into one, that no real numbered chapter leads into"
-        : "lowest map id among the opening candidates - a chapter numbered 1, " +
-          "or a chapter-0 prologue leading into one - that no real numbered " +
-          `chapter leads into (chose map ${walk.candidates[0].mapIndex})`,
+        ? "no opening map: nothing numbered 1, and no chapter-0 prologue "
+          + "leading into one, that no real numbered chapter leads into"
+        : "lowest map id among the opening candidates - a chapter numbered 1, "
+          + "or a chapter-0 prologue leading into one - that no real numbered "
+          + `chapter leads into (chose map ${walk.candidates[0].mapIndex})`,
   };
 }
 
@@ -213,8 +213,8 @@ function walkMainPath(
       if (reachedFromRealChapter.has(e.mapIndex)) return false;
       if (e.chapterNumber === 1) return true;
       return (
-        e.chapterNumber === 0 &&
-        steppingDestinations(e).some((d) => byMap.get(d)?.chapterNumber === 1)
+        e.chapterNumber === 0
+        && steppingDestinations(e).some((d) => byMap.get(d)?.chapterNumber === 1)
       );
     })
     .sort((a, b) => a.mapIndex - b.mapIndex);

@@ -28,8 +28,8 @@ export function resolveTable(rom: RomBuffer, layout: TableLayout): ResolvedTable
 
   if (!rom.isSafeOffset(tableOffset)) {
     throw new Error(
-      `Table pointer slot ${hex(slotOffset)} resolved to ` +
-        `${hex(tableOffset)}, which is outside the ROM.`,
+      `Table pointer slot ${hex(slotOffset)} resolved to `
+        + `${hex(tableOffset)}, which is outside the ROM.`,
     );
   }
 

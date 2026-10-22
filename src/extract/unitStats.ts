@@ -47,7 +47,7 @@ import type { Chapter, PlacedUnit, UnitClass, Unit } from "../model/snapshotReco
 import type { UnitSide } from "../model/game.ts";
 import type { EventTrace, TracedInstruction, TracedBlockUnit } from "../model/events.ts";
 import { reachableScripts } from "../model/events.ts";
-import type { Difficulty, UnitStatRow, SimStats, AppearanceSource } from "../model/stats.ts";
+import type { Difficulty, UnitStatRow, AppearanceSource } from "../model/stats.ts";
 import { DIFFICULTIES } from "../model/stats.ts";
 
 export interface UnitStatContext {

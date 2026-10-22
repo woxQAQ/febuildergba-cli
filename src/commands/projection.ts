@@ -12,14 +12,14 @@ export const projection = defineDbCommand({
   input: "db",
   summary: "Show each unit worth weighing and its fully-trained ceiling",
   description:
-    "For every unit worth weighing - the roster (support-data bearing, the same " +
-    "predicate the `roster` command uses) plus any unit that joins the player's " +
-    "army - the class line, the unit table's join level, the " +
-    "starting stats (`class base + unit delta`, exact), and the fully-trained " +
-    "ceiling (`maxed`) - every growth succeeded to Lv20, promotion bonuses " +
-    "applied, stats truncated by each class's cap along the way. Two facts " +
-    "bracket the unit: where it enters and where it tops out; a stat at any " +
-    "chapter between them depends on how much it was trained, which no table " +
-    "states.",
-  run: ({ extract }) => projectionOf(extract),
+    "For every unit worth weighing - the roster (support-data bearing, the same "
+    + "predicate the `roster` command uses) plus any unit that joins the player's "
+    + "army - the class line, the unit table's join level, the "
+    + "starting stats (`class base + unit delta`, exact), and the fully-trained "
+    + "ceiling (`maxed`) - every growth succeeded to Lv20, promotion bonuses "
+    + "applied, stats truncated by each class's cap along the way. Two facts "
+    + "bracket the unit: where it enters and where it tops out; a stat at any "
+    + "chapter between them depends on how much it was trained, which no table "
+    + "states.",
+  run: async ({ extract }) => ({ data: await projectionOf(extract) }),
 });

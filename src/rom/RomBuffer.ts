@@ -101,9 +101,9 @@ export class RomBuffer {
   /** Reference: `U.isSafetyPointer` (U.cs:2927). */
   isSafePointer(value: number): boolean {
     return (
-      value >= POINTER_BASE + SAFE_OFFSET_FLOOR &&
-      value < POINTER_END &&
-      value - POINTER_BASE < this.data.length
+      value >= POINTER_BASE + SAFE_OFFSET_FLOOR
+      && value < POINTER_END
+      && value - POINTER_BASE < this.data.length
     );
   }
 

@@ -352,46 +352,46 @@ const EXP_CURVE_SOURCES: readonly string[] = [
   "https://serenesforest.net/binding-blade/miscellaneous/calculations/ (FE6 experience)",
   "https://serenesforest.net/blazing-sword/miscellaneous/calculations/ (FE7 experience)",
   "https://serenesforest.net/the-sacred-stones/miscellaneous/calculations/ (FE8 experience)",
-  "https://github.com/FireEmblemUniverse/fireemblem8u src/bmbattle.c " +
-    "(GetUnitExpLevel/GetUnitRoundExp/GetUnitPowerLevel/GetUnitKillExpBonus/GetBattleUnitExpGain)",
+  "https://github.com/FireEmblemUniverse/fireemblem8u src/bmbattle.c "
+    + "(GetUnitExpLevel/GetUnitRoundExp/GetUnitPowerLevel/GetUnitKillExpBonus/GetBattleUnitExpGain)",
   "FEBuilderGBA InputFormRef.cs @CLASS_POWER tooltip; ClassForm.Designer.cs J_26 (class +26)",
 ];
 
 const EXP_CURVE_ASSUMPTIONS: readonly string[] = [
-  "Reinforcements count: every enemy in a reachable event load is budgeted. " +
-    "A reached script is not a fired script (conditional/turn events may never " +
-    "trigger), and a block loaded repeatedly is counted once - grindy chapters " +
-    "are undercounted.",
-  "Silencer/Assassinate multiplier excluded (SF-FE7 ~1.8, DEComp-FE8 x2): a " +
-    "random proc, not a chapter resource.",
-  "FE8 class-id special cases not modelled except the Entombed bonus: Gorgon " +
-    "Egg fixed 50 / Demon King kill 0 / Phantom attacker 0 " +
-    "(ModifyUnitSpecialExp) - vanilla class ids do not survive hacks.",
-  "FE8 mode coefficient not applied: the decomp's halving branch needs " +
-    "chapterModeIndex == 1, a save-file field no extract carries " +
-    "(SaveMenuWriteNewGame writes a literal 1 for every difficulty). The " +
-    "branch is reachable only on chapters 0-8; chapters 9+ are modelled, " +
-    "where the engine always uses the unhalved form.",
-  "FE7 mode coefficient applied on easy/normal, not hard (SF-FE7: Eliwood " +
-    "Normal, Hector Normal, Link Arena).",
-  "FE6 has no difficulty level adjustment in its map settings, so its three " +
-    "difficulty budgets are identical.",
-  "Entombed is detected by the vanilla FE8U class id 0x53; a hack that moves " +
-    "class ids loses the mummy bonus.",
+  "Reinforcements count: every enemy in a reachable event load is budgeted. "
+    + "A reached script is not a fired script (conditional/turn events may never "
+    + "trigger), and a block loaded repeatedly is counted once - grindy chapters "
+    + "are undercounted.",
+  "Silencer/Assassinate multiplier excluded (SF-FE7 ~1.8, DEComp-FE8 x2): a "
+    + "random proc, not a chapter resource.",
+  "FE8 class-id special cases not modelled except the Entombed bonus: Gorgon "
+    + "Egg fixed 50 / Demon King kill 0 / Phantom attacker 0 "
+    + "(ModifyUnitSpecialExp) - vanilla class ids do not survive hacks.",
+  "FE8 mode coefficient not applied: the decomp's halving branch needs "
+    + "chapterModeIndex == 1, a save-file field no extract carries "
+    + "(SaveMenuWriteNewGame writes a literal 1 for every difficulty). The "
+    + "branch is reachable only on chapters 0-8; chapters 9+ are modelled, "
+    + "where the engine always uses the unhalved form.",
+  "FE7 mode coefficient applied on easy/normal, not hard (SF-FE7: Eliwood "
+    + "Normal, Hector Normal, Link Arena).",
+  "FE6 has no difficulty level adjustment in its map settings, so its three "
+    + "difficulty budgets are identical.",
+  "Entombed is detected by the vanilla FE8U class id 0x53; a hack that moves "
+    + "class ids loses the mummy bonus.",
   "Staff/dance/rescue exp is not part of the budget - it is not enemy-derived.",
-  "Enemy attribution inherits the unitStats reach walk: a load block every " +
-    "chapter can reach is budgeted in every such chapter.",
-  "Level-underflowed enemies (easy/normal penalty pushes a level below 0; " +
-    "the game wraps them to maxed enemies) are evaluated at level 0, the " +
-    "lowest level the formula accepts.",
-  "The attacker is one class power, so a promoted attacker's 'class bonus B' " +
-    "term (`20 * power(base class)`) is not modelled - it needs the base/" +
-    "promoted pair, not a single power. A promoted attacker therefore " +
-    "understates its own power level, which raises the exp it is credited " +
-    "with.",
-  "Every counted enemy is assumed killed by the stated attacker: weapon " +
-    "availability, hit rate and the attacker's own survival are not modelled. " +
-    "The budget is an upper bound on the chapter's exp for that attacker.",
+  "Enemy attribution inherits the unitStats reach walk: a load block every "
+    + "chapter can reach is budgeted in every such chapter.",
+  "Level-underflowed enemies (easy/normal penalty pushes a level below 0; "
+    + "the game wraps them to maxed enemies) are evaluated at level 0, the "
+    + "lowest level the formula accepts.",
+  "The attacker is one class power, so a promoted attacker's 'class bonus B' "
+    + "term (`20 * power(base class)`) is not modelled - it needs the base/"
+    + "promoted pair, not a single power. A promoted attacker therefore "
+    + "understates its own power level, which raises the exp it is credited "
+    + "with.",
+  "Every counted enemy is assumed killed by the stated attacker: weapon "
+    + "availability, hit rate and the attacker's own survival are not modelled. "
+    + "The budget is an upper bound on the chapter's exp for that attacker.",
 ];
 
 export interface ExpCurveOptions {

@@ -35,11 +35,11 @@ export const text: Command<"rom"> = {
   input: "rom",
   summary: "Decode one or more text ids (diagnostic)",
   description:
-    "Diagnostic: decode raw text ids to see what the ROM actually holds. Ids " +
-    "go after the ROM path, `--range a-b` expands an inclusive span (max " +
-    `${MAX_TEXT_RANGE}). \`kind\` distinguishes the two storage forms hacks mix: ` +
-    "'huffman' for ordinary compressed strings and 'unhuffman' for the " +
-    "`0x08000000`-marked patch strings, some of which carry only glyph codes.",
+    "Diagnostic: decode raw text ids to see what the ROM actually holds. Ids "
+    + "go after the ROM path, `--range a-b` expands an inclusive span (max "
+    + `${MAX_TEXT_RANGE}). \`kind\` distinguishes the two storage forms hacks mix: `
+    + "'huffman' for ordinary compressed strings and 'unhuffman' for the "
+    + "`0x08000000`-marked patch strings, some of which carry only glyph codes.",
   extraArgs: " [id...]",
   run: ({ path, flags, args }) => {
     const ids = parseTextIds(args, flags.range);
@@ -48,15 +48,17 @@ export const text: Command<"rom"> = {
     }
 
     const rom = readRom(path);
-    return ids.map((id) => {
-      const decoded = decodeTextIdDetailed(rom.rom, id, rom.text);
-      return {
-        id,
-        idHex: hex(id),
-        kind: decoded.kind,
-        text: decoded.text,
-        raw: decoded.raw,
-      };
-    });
+    return {
+      data: ids.map((id) => {
+        const decoded = decodeTextIdDetailed(rom.rom, id, rom.text);
+        return {
+          id,
+          idHex: hex(id),
+          kind: decoded.kind,
+          text: decoded.text,
+          raw: decoded.raw,
+        };
+      }),
+    };
   },
 };

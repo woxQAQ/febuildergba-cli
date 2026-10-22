@@ -36,8 +36,8 @@ export const FLAGS: readonly FlagSpec[] = [
     type: "string",
     arg: "<db>",
     summary:
-      "SQLite output path; default is the ROM's file stem with .db, in the " +
-      "current directory. An existing file is replaced",
+      "SQLite output path; default is the ROM's file stem with .db, in the "
+      + "current directory. An existing file is replaced",
     commands: ["extract"],
   },
   {
@@ -45,9 +45,9 @@ export const FLAGS: readonly FlagSpec[] = [
     type: "string",
     arg: `<${LANGUAGE_NAMES.join("|")}>`,
     summary:
-      "Language for the config/data name tables (chapter conditions, class " +
-      "ability bits) baked into the db; default en, and a missing translation " +
-      'falls back to English then Japanese. "ja" is the bare upstream file',
+      "Language for the config/data name tables (chapter conditions, class "
+      + "ability bits) baked into the db; default en, and a missing translation "
+      + 'falls back to English then Japanese. "ja" is the bare upstream file',
     commands: ["extract"],
   },
   {
@@ -62,8 +62,8 @@ export const FLAGS: readonly FlagSpec[] = [
     type: "string",
     arg: "<n>",
     summary:
-      "Level of the attacker the exp budget is measured for; default 20, the " +
-      "highest unpromoted level",
+      "Level of the attacker the exp budget is measured for; default 20, the "
+      + "highest unpromoted level",
     commands: ["expcurve"],
   },
   {
@@ -71,16 +71,16 @@ export const FLAGS: readonly FlagSpec[] = [
     type: "string",
     arg: "<n>",
     summary:
-      "Class power (class table +26) of that attacker; default 3, the modal " +
-      "value across classes",
+      "Class power (class table +26) of that attacker; default 3, the modal "
+      + "value across classes",
     commands: ["expcurve"],
   },
   {
     name: "actor-promoted",
     type: "boolean",
     summary:
-      "Treat the attacker as promoted (effective level +20). Its class-bonus-B " +
-      "term is not modelled; see the command's assumptions",
+      "Treat the attacker as promoted (effective level +20). Its class-bonus-B "
+      + "term is not modelled; see the command's assumptions",
     commands: ["expcurve"],
   },
   {
@@ -88,18 +88,18 @@ export const FLAGS: readonly FlagSpec[] = [
     type: "string",
     arg: "<easy|normal|hard>",
     summary:
-      "Budget for one difficulty's enemy levels; default emits all three. Hard " +
-      "boosts enemy levels by the chapter's `hard_boost`, normal and easy cut " +
-      "them by `normal_penalty` / `easy_penalty`",
+      "Budget for one difficulty's enemy levels; default emits all three. Hard "
+      + "boosts enemy levels by the chapter's `hard_boost`, normal and easy cut "
+      + "them by `normal_penalty` / `easy_penalty`",
     commands: ["expcurve"],
   },
   {
     name: "full",
     type: "boolean",
     summary:
-      "Include the per-chapter status list. Off by default because it is most " +
-      "of the payload; ask for it only when a question is about particular " +
-      "chapters rather than a join position or a window length",
+      "Include the per-chapter status list. Off by default because it is most "
+      + "of the payload; ask for it only when a question is about particular "
+      + "chapters rather than a join position or a window length",
     commands: ["availability"],
   },
   {

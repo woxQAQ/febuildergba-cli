@@ -40,12 +40,8 @@ import type { Chapter, CondSlotInfo } from "../model/snapshotRecords.ts";
 import { readPlacements } from "./chapters.ts";
 
 import type {
-  TracedScript,
-  TracedArgument,
   TracedInstruction,
-  ChapterEventSlot,
   TalkPair,
-  TracedBlockUnit,
   EventTrace,
   TurnPhase,
   TurnWindow,
@@ -183,8 +179,8 @@ export function extractEventTrace(
           if (unitId === null) {
             const units = row.args.filter((a) => a.type === "UNIT");
             const unitArg =
-              units.find((a) => a.position > arg.position) ??
-              (units.length === 1 ? units[0] : undefined);
+              units.find((a) => a.position > arg.position)
+              ?? (units.length === 1 ? units[0] : undefined);
             unitId = unitArg?.value ?? null;
           }
           row.items.push({ position: arg.position, itemId: arg.value, unitId });

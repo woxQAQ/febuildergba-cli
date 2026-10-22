@@ -18,8 +18,8 @@ import { reachableInstructions, type TracedBlockUnit } from "../src/model/events
 
 const argv = process.argv.slice(2);
 const romPath =
-  argv.find((a) => a.endsWith(".gba")) ??
-  new URL("../fixtures/dream-of-five.gba", import.meta.url).pathname;
+  argv.find((a) => a.endsWith(".gba"))
+  ?? new URL("../fixtures/dream-of-five.gba", import.meta.url).pathname;
 const chapterFlag = argv.indexOf("--chapter");
 const onlyChapter = chapterFlag >= 0 ? Number(argv[chapterFlag + 1]) : null;
 
@@ -87,9 +87,9 @@ if (onlyChapter !== null) {
     console.log(`    ${b.hit.instruction}`);
     for (const u of b.units.slice(0, 12)) {
       console.log(
-        `    #${String(u.position).padStart(3)}  unit ${String(u.unitId).padStart(3)} class ${String(u.classId).padStart(3)} ` +
-          `lv ${String(u.level).padStart(2)} ${u.side.padEnd(7)} auto ${u.autolevel} ` +
-          `pos (${u.x},${u.y}) items [${u.items.join(",")}]`,
+        `    #${String(u.position).padStart(3)}  unit ${String(u.unitId).padStart(3)} class ${String(u.classId).padStart(3)} `
+          + `lv ${String(u.level).padStart(2)} ${u.side.padEnd(7)} auto ${u.autolevel} `
+          + `pos (${u.x},${u.y}) items [${u.items.join(",")}]`,
       );
     }
     if (b.units.length > 12) console.log(`    ... ${b.units.length - 12} more`);
@@ -149,9 +149,9 @@ for (const side of SIDE) {
   if (rows.length === 0) continue;
   const lvs = rows.map((x) => x.u.level);
   console.log(
-    `  ${side.padEnd(8)} ${String(rows.length).padStart(5)} records  ` +
-      `lv ${Math.min(...lvs)}..${Math.max(...lvs)} (mean ${(lvs.reduce((a, b) => a + b, 0) / lvs.length).toFixed(1)})  ` +
-      `classes ${new Set(rows.map((x) => x.u.classId)).size}`,
+    `  ${side.padEnd(8)} ${String(rows.length).padStart(5)} records  `
+      + `lv ${Math.min(...lvs)}..${Math.max(...lvs)} (mean ${(lvs.reduce((a, b) => a + b, 0) / lvs.length).toFixed(1)})  `
+      + `classes ${new Set(rows.map((x) => x.u.classId)).size}`,
   );
 }
 
@@ -200,8 +200,8 @@ const differ = chapters.filter(
 console.log(`  chapters where slot 11 != slot 10: ${differ.length}`);
 for (const c of differ) {
   console.log(
-    `    map${c.index} ch${c.chapterNumber} "${c.title}"  slot10 ${c.placements.length} rec, slot11 ${c.hardPlacements.length} rec ` +
-      `[${[...new Set(c.hardPlacements.map((u) => u.side))].join(",")}]`,
+    `    map${c.index} ch${c.chapterNumber} "${c.title}"  slot10 ${c.placements.length} rec, slot11 ${c.hardPlacements.length} rec `
+      + `[${[...new Set(c.hardPlacements.map((u) => u.side))].join(",")}]`,
   );
 }
 

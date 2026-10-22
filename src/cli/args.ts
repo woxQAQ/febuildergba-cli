@@ -104,8 +104,8 @@ export function parseArgv(argv: readonly string[]): ParsedArgv {
     if (extra.length > 0 && resolved.extraArgs === undefined) {
       const input = resolved.input === "db" ? "<file.db>" : "<rom.gba>";
       throw new Error(
-        `"${resolved.name}" takes no extra arguments, but got: ${extra.join(" ")}\n` +
-          `Usage: fe-rom ${resolved.name} ${input} [options]`,
+        `"${resolved.name}" takes no extra arguments, but got: ${extra.join(" ")}\n`
+          + `Usage: fe-rom ${resolved.name} ${input} [options]`,
       );
     }
   }
@@ -127,9 +127,7 @@ export function parseArgv(argv: readonly string[]): ParsedArgv {
     throw new Error(`--lang expects one of ${LANGUAGE_NAMES.join(", ")}, got "${lang}"`);
   }
   if (difficulty !== undefined && !DIFFICULTIES.includes(difficulty as Difficulty)) {
-    throw new Error(
-      `--difficulty expects one of ${DIFFICULTIES.join(", ")}, got "${difficulty}"`,
-    );
+    throw new Error(`--difficulty expects one of ${DIFFICULTIES.join(", ")}, got "${difficulty}"`);
   }
 
   return {

@@ -39,7 +39,6 @@
 
 import type { RomBuffer } from "../rom/RomBuffer.ts";
 import type {
-  SkillPointers,
   Skill,
   SkillAssignment,
   SkillLearn,

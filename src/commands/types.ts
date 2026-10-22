@@ -106,18 +106,38 @@ export interface Command<I extends CommandInput = CommandInput> {
   /** What the positional argument is: a ROM, or an extract db. */
   readonly input: I;
   /** Run the command, including opening and closing its resources. */
-  run(context: CommandContext): unknown | Promise<unknown>;
+  run(context: CommandContext): MaybePromise<CommandResult>;
 }
+
+/** Command bodies read cleaner as `async () => ({ data })` without importing a type. */
+type MaybePromise<T> = T | Promise<T>;
 
 /**
  * The registry retains each command's input kind for usage and flag selection.
  */
 export type AnyCommand = Command<"rom"> | Command<"db">;
 
+/**
+ * What a command returns: its payload, plus the run facts the envelope carries.
+ *
+ * Commands return `{ data, diagnostics }` rather than a bare payload because the
+ * diagnostics are produced during the run (reading the event layer is what
+ * flags a partial decode) and have to travel with the payload that they qualify.
+ * `data` stays `unknown` here: each command knows its own shape, and the
+ * envelope is the only thing the dispatcher touches.
+ */
+export interface CommandResult {
+  data: unknown;
+  /** Warnings raised while producing `data`. Empty when none. */
+  diagnostics?: readonly string[];
+  /** Parameters the numbers were measured under; see `cli/emit.ts`. */
+  parameters?: Readonly<Record<string, unknown>>;
+}
+
 /** Share the database lifetime without moving resource ownership to dispatch. */
 export function defineDbCommand(
   command: Omit<Command<"db">, "run"> & {
-    run(context: DbCommandContext): unknown | Promise<unknown>;
+    run(context: DbCommandContext): CommandResult | Promise<CommandResult>;
   },
 ): Command<"db"> {
   return {
@@ -126,15 +146,14 @@ export function defineDbCommand(
       const repository = openExtract(context.path);
       const extract = prepareAnalysis(repository, context.path);
       try {
-        return await command.run({ ...context, extract });
+        const result = await command.run({ ...context, extract });
+        // The session's diagnostics are read after the body ran - that is when
+        // the event layer, if the command touched it, has been checked. They
+        // travel in the envelope instead of stderr so a caller can see them
+        // without losing stderr to its own redirections.
+        return { ...result, diagnostics: extract.diagnostics() };
       } finally {
-        try {
-          for (const diagnostic of extract.diagnostics()) {
-            console.error(`warning: ${diagnostic}`);
-          }
-        } finally {
-          repository.close();
-        }
+        repository.close();
       }
     },
   };

@@ -177,10 +177,10 @@ export function readClass(ctx: ClassTableContext, index: number): UnitClass | nu
   // terrain. Unknown (unreadable pointers) is reported as false rather than
   // claiming immunity without evidence.
   const terrainBonusImmune =
-    terrainBonuses !== null &&
-    terrainBonuses.avoid.every((v) => v === 0) &&
-    terrainBonuses.def.every((v) => v === 0) &&
-    terrainBonuses.res.every((v) => v === 0);
+    terrainBonuses !== null
+    && terrainBonuses.avoid.every((v) => v === 0)
+    && terrainBonuses.def.every((v) => v === 0)
+    && terrainBonuses.res.every((v) => v === 0);
 
   return {
     id,

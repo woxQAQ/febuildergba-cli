@@ -197,11 +197,11 @@ function agree(ours: Ours, theirs: CsValue): boolean {
 
   const slot = ours.slot;
   return (
-    slot.checkPointer === theirs.checkPointer &&
-    (slot.checkBelow ?? null) === (theirs.checkBelow ?? null) &&
-    (slot.checkEqual ?? null) === (theirs.checkEqual ?? null) &&
-    slot.candidates.length === theirs.candidates.length &&
-    slot.candidates.every((c, i) => c === theirs.candidates[i])
+    slot.checkPointer === theirs.checkPointer
+    && (slot.checkBelow ?? null) === (theirs.checkBelow ?? null)
+    && (slot.checkEqual ?? null) === (theirs.checkEqual ?? null)
+    && slot.candidates.length === theirs.candidates.length
+    && slot.candidates.every((c, i) => c === theirs.candidates[i])
   );
 }
 
@@ -538,11 +538,11 @@ function main(): void {
   if (!existsSync(join(submodule, "FEBuilderGBA", "ROMFE8U.cs"))) {
     const stamp = readStamp();
     console.log(
-      "FEBuilderGBA submodule is not checked out - nothing to compare against.\n" +
-        (stamp === null
+      "FEBuilderGBA submodule is not checked out - nothing to compare against.\n"
+        + (stamp === null
           ? "No provenance stamp either: this vendored data has never been verified here."
-          : `Last verified against:\n${stamp}`) +
-        "\nRun `git submodule update --init` to enable this check.",
+          : `Last verified against:\n${stamp}`)
+        + "\nRun `git submodule update --init` to enable this check.",
     );
     return;
   }
@@ -578,8 +578,8 @@ function main(): void {
     console.log(`stamp: wrote ${STAMP_FILE} (${commit.slice(0, 12)})`);
   } else if (commit !== null && recorded !== commit) {
     console.log(
-      `stamp: upstream moved - recorded ${recorded ?? "nothing yet"}, now ${commit.slice(0, 12)}. ` +
-        "Re-run with --update once the differences above are understood.",
+      `stamp: upstream moved - recorded ${recorded ?? "nothing yet"}, now ${commit.slice(0, 12)}. `
+        + "Re-run with --update once the differences above are understood.",
     );
   } else if (commit !== null) {
     console.log(`stamp: up to date with ${commit.slice(0, 12)}`);

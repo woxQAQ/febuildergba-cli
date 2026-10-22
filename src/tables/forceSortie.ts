@@ -49,7 +49,7 @@
  * `asmmap_FE8.txt`.
  */
 
-import type { ForceSortieLayout, GameLayout } from "../data/layouts.ts";
+import type { GameLayout } from "../data/layouts.ts";
 import { RomBuffer } from "../rom/RomBuffer.ts";
 import type { ForceSortieRecord, ForceSortieTable } from "../model/snapshotRecords.ts";
 

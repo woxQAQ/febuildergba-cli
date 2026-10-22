@@ -51,6 +51,7 @@ import type { UnitStatRow } from "../model/stats.ts";
 import { openDb } from "./open.ts";
 import type { OpenDb } from "./open.ts";
 import * as t from "./schema.ts";
+import { ANALYSIS_VIEWS } from "./views.ts";
 
 /** Game ids the extractor can have written (`meta` `rom.version`). */
 const GAME_VERSIONS: readonly string[] = ["FE6J", "FE7J", "FE7U", "FE8J", "FE8U"];
@@ -64,6 +65,7 @@ const GAME_VERSIONS: readonly string[] = ["FE6J", "FE7J", "FE7U", "FE8J", "FE8U"
  */
 const TABLES_READ: readonly SQLiteTable[] = [
   t.meta,
+  t.inputs,
   t.units,
   t.classes,
   t.chapters,
@@ -144,8 +146,29 @@ function assertExtractSchema(sqlite: OpenDb["sqlite"], path: string): void {
     const shown = missing.slice(0, 3).join(", ");
     const more = missing.length > 3 ? ` and ${missing.length - 3} more` : "";
     throw new SchemaMismatchError(
-      `${path}: database predates this build (missing ${shown}${more}) - ` +
-        "re-run `fe-rom extract` to rebuild it",
+      `${path}: database predates this build (missing ${shown}${more}) - `
+        + "re-run `fe-rom extract` to rebuild it",
+    );
+  }
+
+  // Views are a smaller contract than tables: they hold no data, so a reader
+  // that does not run one is unaffected by its absence, and every consumer that
+  // does run one gets SQLite's own "no such table" naming it. Checking them
+  // here would only speed that failure up by one frame at the cost of making
+  // the guard depend on `views.ts` too. The requirement worth stating is that a
+  // db missing one is in fact stale, which the message below says.
+  const views = new Set(
+    (
+      sqlite.prepare("SELECT name FROM sqlite_master WHERE type = 'view'").all() as {
+        name: string;
+      }[]
+    ).map((r) => r.name),
+  );
+  const missingViews = ANALYSIS_VIEWS.map((v) => v.name).filter((n) => !views.has(n));
+  if (missingViews.length > 0) {
+    throw new SchemaMismatchError(
+      `${path}: database predates this build (missing view ${missingViews[0]}) - `
+        + "re-run `fe-rom extract` to rebuild it",
     );
   }
 }
@@ -259,21 +282,6 @@ export function openExtract(path: string): ExtractHandle {
       return new Map(rows.map((r) => [r.key, r.value]));
     });
 
-  /**
-   * A `meta` flag this build always writes. A missing key is a db predating
-   * the flag and a value other than "true"/"false" is a corrupt one; both fail
-   * the command rather than reading as `false`, which used to make a broken
-   * extract indistinguishable from "no chapters".
-   */
-  const metaBool = (meta: Map<string, string>, key: string): boolean => {
-    const raw = meta.get(key);
-    if (raw === undefined) {
-      throw notAnExtractDb(path, `no \`${key}\` in \`meta\`; not an extract db`);
-    }
-    if (raw === "true") return true;
-    if (raw === "false") return false;
-    throw notAnExtractDb(path, `malformed \`meta\` \`${key}\` value ${JSON.stringify(raw)}`);
-  };
   const scriptsOf = () =>
     once("scripts", async (): Promise<TracedScript[]> =>
       db.select().from(t.eventScripts).orderBy(t.eventScripts.id).all(),
@@ -305,7 +313,7 @@ export function openExtract(path: string): ExtractHandle {
         flying: c.flying,
         terrainBonusImmune: c.terrainBonusImmune,
         isEmpty: c.isEmpty,
-        promotesToClassId: c.promotesToClassId,
+        promotesToClassId: c.baseClassId,
         sortOrder: c.sortOrder,
         classPower: c.classPower,
         abilityFlags: c.abilityFlags,
@@ -339,23 +347,26 @@ export function openExtract(path: string): ExtractHandle {
           con: c.capCon,
         },
         promotionBonuses: {
-          hp: c.promoHp,
-          str: c.promoStr,
-          skl: c.promoSkl,
-          spd: c.promoSpd,
-          def: c.promoDef,
-          res: c.promoRes,
+          hp: c.promotionBonusHp,
+          str: c.promotionBonusStr,
+          skl: c.promotionBonusSkl,
+          spd: c.promotionBonusSpd,
+          def: c.promotionBonusDef,
+          res: c.promotionBonusRes,
         },
       }));
     });
 
   return {
     availability: async () => {
-      const meta = await metaOf();
-      return {
-        chapters: metaBool(meta, "chapters.available"),
-        events: metaBool(meta, "events.available"),
-      };
+      // Read from the typed table rather than the `meta` keys: the columns and
+      // the KV entries carry the same facts, and a schema mismatch fails at
+      // open, so this cannot be stale relative to `meta`.
+      const row = await db.select().from(t.inputs).get();
+      if (row === undefined) {
+        throw notAnExtractDb(path, "no row in `inputs`; not an extract db");
+      }
+      return { chapters: row.chaptersAvailable, events: row.eventsAvailable };
     },
     game: gameOf,
     classes: classesOf,
@@ -387,7 +398,7 @@ export function openExtract(path: string): ExtractHandle {
           affinityId: u.affinityId,
           level: u.level,
           isEmpty: false,
-          isPromotedClass: u.isPromotedClass,
+          isPromotedClass: u.classIsPromoted,
           hasSupportData: u.hasSupportData,
           growths: {
             hp: u.growthHp,
@@ -490,10 +501,10 @@ export function openExtract(path: string): ExtractHandle {
         }
         return parsed.map((r) => {
           if (
-            typeof r === "object" &&
-            r !== null &&
-            typeof (r as DebugMapRecord).mapIndex === "number" &&
-            typeof (r as DebugMapRecord).reason === "string"
+            typeof r === "object"
+            && r !== null
+            && typeof (r as DebugMapRecord).mapIndex === "number"
+            && typeof (r as DebugMapRecord).reason === "string"
           ) {
             return r as DebugMapRecord;
           }
@@ -528,11 +539,7 @@ export function openExtract(path: string): ExtractHandle {
       // Class-id order: the promotion graph keys on the base class, and a
       // dense table over class ids reads back in the order it was written.
       once("classBranches", async () => {
-        const rows = await db
-          .select()
-          .from(t.classBranches)
-          .orderBy(t.classBranches.classId)
-          .all();
+        const rows = await db.select().from(t.classBranches).orderBy(t.classBranches.classId).all();
         return rows.map((r) => ({ classId: r.classId, branch1: r.branch1, branch2: r.branch2 }));
       }),
 
@@ -631,8 +638,8 @@ export function openExtract(path: string): ExtractHandle {
           if (s.turnStart === null) return null;
           if (s.turnEnd === null) {
             throw new Error(
-              `${path}: event slot ${s.mapIndex}:${s.slotIndex} has turn_start ${s.turnStart} ` +
-                "with a null turn_end",
+              `${path}: event slot ${s.mapIndex}:${s.slotIndex} has turn_start ${s.turnStart} `
+                + "with a null turn_end",
             );
           }
           return { start: s.turnStart, end: s.turnEnd, phase: s.turnPhase };
@@ -645,8 +652,8 @@ export function openExtract(path: string): ExtractHandle {
           if (s.talkUnitFrom === null && s.talkUnitTo === null) return null;
           if (s.talkUnitFrom === null || s.talkUnitTo === null) {
             throw new Error(
-              `${path}: event slot ${s.mapIndex}:${s.slotIndex} has talk_unit_from ` +
-                `${s.talkUnitFrom} with talk_unit_to ${s.talkUnitTo}`,
+              `${path}: event slot ${s.mapIndex}:${s.slotIndex} has talk_unit_from `
+                + `${s.talkUnitFrom} with talk_unit_to ${s.talkUnitTo}`,
             );
           }
           return { from: s.talkUnitFrom, to: s.talkUnitTo };

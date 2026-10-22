@@ -23,6 +23,7 @@ import { createTablesSql } from "./ddl.ts";
 import type { ExtractDb, OpenDb } from "./open.ts";
 import type { TableWriter } from "./pipeline.ts";
 import { assertWritePipeline } from "./pipeline.ts";
+import { ANALYSIS_VIEWS } from "./views.ts";
 import * as t from "./schema.ts";
 
 export interface WriteReceipt {
@@ -51,8 +52,8 @@ export async function writeSnapshot(
   }[];
   if (existing.length > 0) {
     throw new Error(
-      `${handle.path}: already carries ${existing.length} table(s) (${existing[0]!.name}, ...); ` +
-        "writeSnapshot rebuilds from empty, so pass a fresh file",
+      `${handle.path}: already carries ${existing.length} table(s) (${existing[0]!.name}, ...); `
+        + "writeSnapshot rebuilds from empty, so pass a fresh file",
     );
   }
 
@@ -77,8 +78,6 @@ export async function writeSnapshot(
     for (const writer of TABLE_WRITERS) {
       await writer.write(db, rom);
     }
-    sqlite.exec("COMMIT");
-
     // Row counts measured, not tallied: the number reported is the number
     // that actually landed.
     const tables: Record<string, number> = {};
@@ -87,11 +86,18 @@ export async function writeSnapshot(
         .select({ n: sql<number>`count(*)` })
         .from(table)
         .get();
-      tables[
-        getTableConfig(table).name
-      ] = // `count(*)` always yields exactly one row.
+      tables[getTableConfig(table).name] = // `count(*)` always yields exactly one row.
         (row as { n: number }).n;
     }
+
+    // Views last, inside the same transaction: they are not data (so no row
+    // counts, no `TABLE_WRITERS` entry) but they must not exist before the
+    // tables they read, and a failed CREATE VIEW must roll the whole extract
+    // back rather than leave a db that is missing half its query surface.
+    for (const view of ANALYSIS_VIEWS) {
+      sqlite.exec(`CREATE VIEW ${view.name} AS ${view.sql}`);
+    }
+    sqlite.exec("COMMIT");
     return { tables };
   } catch (error) {
     // Guarded: a failure after COMMIT (the row-count block above is inside this
@@ -172,6 +178,15 @@ async function insertMeta(db: ExtractDb, rom: ExtractionSnapshot): Promise<void>
     // means "re-extract to get the exclusion".
     { key: "debugMaps", value: JSON.stringify(rom.debugMaps) },
   ]);
+
+  // The same two availability facts as typed columns, so a query does not have
+  // to string-compare a KV value to tell "no such table in this game" from
+  // "the table was unreadable".
+  await db.insert(t.inputs).values({
+    id: 1,
+    chaptersAvailable: rom.chaptersAvailable,
+    eventsAvailable: rom.eventsAvailable,
+  });
 }
 
 /** Empty slots (no name, class or level) are skipped; the count lands in meta. */
@@ -190,7 +205,7 @@ async function insertUnits(db: ExtractDb, rom: ExtractionSnapshot): Promise<void
       description: u.description,
       descTextId: u.descriptionTextId,
       classId: u.classId,
-      isPromotedClass: u.isPromotedClass,
+      classIsPromoted: u.isPromotedClass,
       mapFaceId: u.mapFaceId,
       portraitId: u.portraitId,
       affinityId: u.affinityId,
@@ -239,7 +254,7 @@ async function insertClasses(db: ExtractDb, rom: ExtractionSnapshot): Promise<vo
       name: c.name,
       nameTextId: c.nameTextId,
       description: c.description,
-      promotesToClassId: c.promotesToClassId,
+      baseClassId: c.promotesToClassId,
       sortOrder: c.sortOrder,
       movementRange: c.movementRange,
       movementSpeed: c.movementSpeed,
@@ -265,12 +280,12 @@ async function insertClasses(db: ExtractDb, rom: ExtractionSnapshot): Promise<vo
       enemyGrowthDef: c.enemyGrowths.def,
       enemyGrowthRes: c.enemyGrowths.res,
       enemyGrowthLck: c.enemyGrowths.lck,
-      promoHp: c.promotionBonuses.hp,
-      promoStr: c.promotionBonuses.str,
-      promoSkl: c.promotionBonuses.skl,
-      promoSpd: c.promotionBonuses.spd,
-      promoDef: c.promotionBonuses.def,
-      promoRes: c.promotionBonuses.res,
+      promotionBonusHp: c.promotionBonuses.hp,
+      promotionBonusStr: c.promotionBonuses.str,
+      promotionBonusSkl: c.promotionBonuses.skl,
+      promotionBonusSpd: c.promotionBonuses.spd,
+      promotionBonusDef: c.promotionBonuses.def,
+      promotionBonusRes: c.promotionBonuses.res,
       wlSword: c.weaponLevels.sword,
       wlLance: c.weaponLevels.lance,
       wlAxe: c.weaponLevels.axe,
@@ -438,6 +453,7 @@ async function insertItemsAndTerrain(db: ExtractDb, rom: ExtractionSnapshot): Pr
       isPromotionItem: i.isPromotionItem,
       damageBonus: i.damageBonus,
       wexp: i.wexp,
+      weaponRankLetter: i.weaponRankLetter,
       unitPrice: i.unitPrice,
       isWeapon: i.isWeapon,
     });
@@ -805,8 +821,8 @@ async function insertWorldData(db: ExtractDb, rom: ExtractionSnapshot): Promise<
         const resolved = shopIdByAddress.get(o.shopAddr);
         if (resolved === undefined) {
           throw new Error(
-            `map object (${o.x},${o.y}) of map ${co.chapterIndex} opens the shop at ` +
-              `0x${o.shopAddr.toString(16)}, which the shop scan did not collect`,
+            `map object (${o.x},${o.y}) of map ${co.chapterIndex} opens the shop at `
+              + `0x${o.shopAddr.toString(16)}, which the shop scan did not collect`,
           );
         }
         shopId = resolved;
@@ -860,7 +876,7 @@ async function insertWorldData(db: ExtractDb, rom: ExtractionSnapshot): Promise<
  * reorder inside a writer is caught there too.
  */
 export const TABLE_WRITERS: readonly TableWriter[] = [
-  { name: "meta", tables: [t.meta], write: insertMeta },
+  { name: "meta", tables: [t.meta, t.inputs], write: insertMeta },
   {
     name: "classes",
     tables: [t.classes, t.classAbilityFlags, t.classMovementCosts, t.classTerrainBonuses],

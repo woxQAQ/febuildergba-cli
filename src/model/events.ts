@@ -186,9 +186,9 @@ export function eventDecodeWarning(scripts: readonly TracedScript[]): string | n
   );
   if (incomplete.length === 0) return null;
   return (
-    `${incomplete.length}/${scripts.length} event scripts contain unknown instructions ` +
-    "or stopped without an exit; event-derived results are partial. " +
-    "Inspect event_scripts.stop_reason and unknown_instruction_count."
+    `${incomplete.length}/${scripts.length} event scripts contain unknown instructions `
+    + "or stopped without an exit; event-derived results are partial. "
+    + "Inspect event_scripts.stop_reason and unknown_instruction_count."
   );
 }
 

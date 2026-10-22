@@ -71,10 +71,37 @@ import { integer, primaryKey, real, sqliteTable, text } from "drizzle-orm/sqlite
 import { foreignKey } from "drizzle-orm/sqlite-core";
 import type { TracedArgument } from "../model/events.ts";
 
-/** Provenance and run-level facts, as key/value pairs. */
+/**
+ * Provenance and run-level facts.
+ *
+ * Key/value rather than typed columns because the keys are open-ended (every
+ * ROM-identity field, every play-order shape flag). Two exceptions earn their
+ * own boolean column: whether the chapter and event inputs were readable. Those
+ * two decide how every derived table must be read - an empty `event_*` table is
+ * a fact for a ROM without events and a failure otherwise - so a SQL consumer
+ * has to be able to branch on them without string-comparing a KV value.
+ */
 export const meta = sqliteTable("meta", {
   key: text("key").primaryKey(),
   value: text("value").notNull(),
+});
+
+/**
+ * Typed facts mirroring the two `meta` availability keys. One row, so a query
+ * reads it with `FROM inputs` instead of parsing `'true'`/`'false'` strings.
+ *
+ * "Unavailable" means the input could not be read, never "the game has no such
+ * table": a game that genuinely has none records it as unavailable and empty,
+ * which is the distinction `docs/architecture.md` calls for. A db predating this
+ * table is rejected by the read-side schema guard; re-extract.
+ */
+export const inputs = sqliteTable("inputs", {
+  /** Always 1; the row exists so the columns have a home. */
+  id: integer("id").primaryKey(),
+  /** The chapter table (map settings) was readable. */
+  chaptersAvailable: integer("chapters_available", { mode: "boolean" }).notNull(),
+  /** The event layer (condition slots + scripts) was readable. */
+  eventsAvailable: integer("events_available", { mode: "boolean" }).notNull(),
 });
 
 export const units = sqliteTable(
@@ -89,8 +116,14 @@ export const units = sqliteTable(
     description: text("description").notNull(),
     descTextId: integer("desc_text_id").notNull(),
     classId: integer("class_id").notNull(),
-    /** True when this unit's class is the promoted half of a base/promoted pair. */
-    isPromotedClass: integer("is_promoted_class", { mode: "boolean" }).notNull(),
+    /**
+     * True when this unit's class is the promoted half of a base/promoted
+     * pair. The class carries this fact; it is denormalized onto the unit row
+     * for the `units`-only queries, so the name says whose property it is
+     * (`class_is_promoted`) and points at {@link classes}. Read
+     * `classes.baseClassId` / `class_branches` for the real relationship.
+     */
+    classIsPromoted: integer("class_is_promoted", { mode: "boolean" }).notNull(),
     mapFaceId: integer("map_face_id").notNull(),
     portraitId: integer("portrait_id").notNull(),
     /** Support affinity id; 0 = none. Names join through `affinities`. */
@@ -147,11 +180,13 @@ export const classes = sqliteTable("classes", {
   nameTextId: integer("name_text_id").notNull(),
   description: text("description").notNull(),
   /**
-   * REVERSE link: the class this one is promoted FROM, despite the name.
-   * Resolve direction via `sort_order` (promoted sorts higher) - see
-   * tables/classes.ts.
+   * The class this one is promoted FROM (the ROM's raw `+5` byte). It is a
+   * **reverse** link, named for what it resolves to rather than for
+   * FEBuilderGBA's 転職先 label on that byte: a class whose base is 0 is a
+   * base class. The pair links both ways, so `sort_order` decides which end
+   * is the base; `model/promotion.ts`'s `buildPromotionGraph` resolves it.
    */
-  promotesToClassId: integer("promotes_to_class_id").notNull(),
+  baseClassId: integer("base_class_id").notNull(),
   /** Promotion tier; each base/promoted pair shares one value. */
   sortOrder: integer("sort_order").notNull(),
   movementRange: integer("movement_range").notNull(),
@@ -184,12 +219,12 @@ export const classes = sqliteTable("classes", {
   enemyGrowthLck: integer("enemy_growth_lck").notNull(),
 
   /** Stat gains applied on promotion; the ROM has no luck bonus. */
-  promoHp: integer("promo_hp").notNull(),
-  promoStr: integer("promo_str").notNull(),
-  promoSkl: integer("promo_skl").notNull(),
-  promoSpd: integer("promo_spd").notNull(),
-  promoDef: integer("promo_def").notNull(),
-  promoRes: integer("promo_res").notNull(),
+  promotionBonusHp: integer("promotion_bonus_hp").notNull(),
+  promotionBonusStr: integer("promotion_bonus_str").notNull(),
+  promotionBonusSkl: integer("promotion_bonus_skl").notNull(),
+  promotionBonusSpd: integer("promotion_bonus_spd").notNull(),
+  promotionBonusDef: integer("promotion_bonus_def").notNull(),
+  promotionBonusRes: integer("promotion_bonus_res").notNull(),
 
   wlSword: integer("wl_sword").notNull(),
   wlLance: integer("wl_lance").notNull(),
@@ -498,6 +533,12 @@ export const items = sqliteTable("items", {
   rangeMin: integer("range_min").notNull(),
   rangeMax: integer("range_max").notNull(),
   weaponRank: integer("weapon_rank").notNull(),
+  /**
+   * The rank as the letter the game shows (`E`..`S`, `-` for rank 0). Derived
+   * from {@link weaponRank} by `tables/items.ts`'s `weaponRankLetter` at write
+   * time, so a query does not have to re-implement the thresholds.
+   */
+  weaponRankLetter: text("weapon_rank_letter").notNull(),
   iconId: integer("icon_id").notNull(),
   /** `+30`: the use-effect code. See `items.ts`. */
   staffEffect: integer("staff_effect").notNull(),
@@ -509,6 +550,11 @@ export const items = sqliteTable("items", {
   wexp: integer("wexp").notNull(),
   /** Price per use; buy = uses * unit_price, sell = buy / 2. */
   unitPrice: integer("unit_price").notNull(),
+  /**
+   * Whether the item is a weapon (`type <= 7`, set by the extractor). It is a
+   * write-time decision rather than a view because the type table is the
+   * extractor's, not SQL's.
+   */
   isWeapon: integer("is_weapon", { mode: "boolean" }).notNull(),
 });
 

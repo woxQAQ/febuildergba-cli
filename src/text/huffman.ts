@@ -31,11 +31,11 @@ export interface TextContext {
 /** Codes FEBuilderGBA renders as `@XXXX` instead of a character. */
 function isEscapeCode(code: number, beforeCode: number): boolean {
   return (
-    beforeCode === 0x0010 ||
-    beforeCode === 0x0011 ||
-    beforeCode === 0x0080 ||
-    code <= 0x001f ||
-    (code >= 0x0080 && code <= 0x0f00)
+    beforeCode === 0x0010
+    || beforeCode === 0x0011
+    || beforeCode === 0x0080
+    || code <= 0x001f
+    || (code >= 0x0080 && code <= 0x0f00)
   );
 }
 
@@ -136,12 +136,12 @@ export function huffmanDecode(
       }
 
       if (
-        ctx.useSjis ||
-        beforeCode === 0x10 ||
-        beforeCode === 0x80 ||
-        (code & 0xff00) >= 0x8100 ||
-        (code & 0xff00) === 0x0000 ||
-        (code & 0xff00) === 0x1f00
+        ctx.useSjis
+        || beforeCode === 0x10
+        || beforeCode === 0x80
+        || (code & 0xff00) >= 0x8100
+        || (code & 0xff00) === 0x0000
+        || (code & 0xff00) === 0x1f00
       ) {
         appendString(out, code, beforeCode);
         beforeCode = code;
@@ -180,12 +180,12 @@ export function convertUnHuffmanPatchToPointer(pointer: number): number {
 /** `U.IsEnglishSPCode`: bytes the English builds use for single-byte glyphs. */
 function isEnglishSpCode(code: number): boolean {
   return (
-    code >= 0x81 ||
-    code === 0x1f ||
-    code === 0x7b ||
-    code === 0x7c ||
-    code === 0x7d ||
-    code === 0x7f
+    code >= 0x81
+    || code === 0x1f
+    || code === 0x7b
+    || code === 0x7c
+    || code === 0x7d
+    || code === 0x7f
   );
 }
 
@@ -348,6 +348,22 @@ export function applySpecialGlyphs(text: string): string {
   });
 }
 
+/** C0 controls and DEL, the bytes a decoded glyph stream can still carry. */
+function isControlCode(code: number): boolean {
+  return code <= 0x1f || code === 0x7f;
+}
+
+/** Drop control codes, optionally keeping line feeds so breaks survive. */
+function stripControls(text: string, keepNewline: boolean): string {
+  let out = "";
+  for (const ch of text) {
+    const code = ch.codePointAt(0) ?? 0;
+    if (isControlCode(code) && !(keepNewline && code === 0x0a)) continue;
+    out += ch;
+  }
+  return out;
+}
+
 /**
  * Strip control characters that survive decoding: a Huffman code in the
  * `(code & 0xFF00) == 0x1F00` range is emitted as a raw byte, not an `@XXXX`
@@ -355,16 +371,12 @@ export function applySpecialGlyphs(text: string): string {
  * Upstream leaves it; for display we drop it. Also collapses whitespace and trims.
  */
 export function sanitizeName(text: string): string {
-  return text
-    .replace(/[\u0000-\u001F\u007F]/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
+  return stripControls(text, false).replace(/\s+/g, " ").trim();
 }
 
 /** Like {@link sanitizeName} but keeps line breaks, for multi-line descriptions. */
 export function sanitizeText(text: string): string {
-  return text
-    .replace(/[\u0000-\u0009\u000B-\u001F\u007F]/g, "")
+  return stripControls(text, true)
     .replace(/[ \t]+/g, " ")
     .trim();
 }
@@ -375,9 +387,19 @@ export function sanitizeText(text: string): string {
  * (`MapTerrainNameForm.GetName`), so `Runes@001F` reads as `Runes`.
  */
 export function stripAllCodes(text: string): string {
-  return text
-    .replace(/@([0-9A-Fa-f]{4})/g, "")
-    .replace(/^[\s\u001f\u3000]+|[\s\u001f\u3000]+$/g, "");
+  const stripped = text.replace(/@([0-9A-Fa-f]{4})/g, "");
+  // The game pads names with U+3000 and the `@001F` glyph, which decodes to a
+  // raw U+001F rather than an escape once the code above has run.
+  const isPadding = (ch: string | undefined): boolean => {
+    if (ch === undefined) return false;
+    const code = ch.codePointAt(0) ?? 0;
+    return /\s/.test(ch) || code === 0x1f || code === 0x3000;
+  };
+  let start = 0;
+  let end = stripped.length;
+  while (start < end && isPadding(stripped[start])) start++;
+  while (end > start && isPadding(stripped[end - 1])) end--;
+  return stripped.slice(start, end);
 }
 
 /**
@@ -401,8 +423,8 @@ export function displayName(text: string): string {
 export function bytesToString(bytes: number[], useSjis: boolean): string {
   if (useSjis) {
     throw new Error(
-      "Shift-JIS text decoding is not implemented. Only Latin-1 (English) ROMs " +
-        "are supported for now.",
+      "Shift-JIS text decoding is not implemented. Only Latin-1 (English) ROMs "
+        + "are supported for now.",
     );
   }
   return Buffer.from(bytes).toString("latin1");

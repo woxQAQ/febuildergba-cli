@@ -7,7 +7,28 @@ import { RomNotFoundError } from "./extract/service.ts";
 import { UsageError } from "./commands/types.ts";
 import { parseArgv } from "./cli/args.ts";
 import { commandHelp, suggestions, usage } from "./cli/help.ts";
-import { emit } from "./cli/emit.ts";
+import { emit, type CommandMeta } from "./cli/emit.ts";
+import { openExtract } from "./repository/read.ts";
+
+/**
+ * The db's game version, for the envelope's `meta`.
+ *
+ * A second open, deliberately: the dispatcher must not own the db lifetime that
+ * a command manages, and this read is one indexed row. A db that cannot be read
+ * at all is left to the command, which will report it with its own message.
+ */
+async function gameOfPath(path: string): Promise<string | undefined> {
+  try {
+    const repository = openExtract(path);
+    try {
+      return await repository.game();
+    } finally {
+      repository.close();
+    }
+  } catch {
+    return undefined;
+  }
+}
 
 /** Invalid invocation: exit 2, with usage unless already included. */
 function fail(message: string, showUsage = true): void {
@@ -50,7 +71,19 @@ async function run(): Promise<void> {
   }
 
   try {
-    emit(await resolved.run({ path, flags, args }));
+    const result = await resolved.run({ path, flags, args });
+    // The envelope is assembled here rather than by each command: the command
+    // word and the input path are dispatch facts, and putting them here is what
+    // keeps every payload in the same shape.
+    const game = resolved.input === "db" ? await gameOfPath(path) : undefined;
+    const meta: CommandMeta = {
+      command: resolved.name,
+      path,
+      ...(game === undefined ? {} : { game }),
+      diagnostics: result.diagnostics ?? [],
+      ...(result.parameters === undefined ? {} : { parameters: result.parameters }),
+    };
+    emit(result.data, meta);
   } catch (error) {
     if (error instanceof UsageError) {
       fail(error.message);

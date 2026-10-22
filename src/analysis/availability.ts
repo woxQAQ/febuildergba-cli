@@ -97,13 +97,34 @@ export type ChapterStatus =
   /** Removed by an event (a 消滅 record deletes the unit on map load). */
   | "removed";
 
+/**
+ * How a unit's army entry resolved, as one value instead of a combination of
+ * nullable fields. The three cases have different consequences downstream, and
+ * reading them off {@link UnitAvailability.joinMapIndex} plus
+ * {@link UnitAvailability.joinPosition} is the step every consumer got wrong.
+ */
+export type JoinState =
+  /** Joins, on a map the play order covers: the window is defined. */
+  | "on_route"
+  /** Joins, but on a map the play order does not cover: the window is `null`. */
+  | "off_route"
+  /** May join, but the static rules cannot settle it; no window either. */
+  | "unresolved"
+  /** No join record: never joins, and is not a candidate. */
+  | "never";
+
 export interface UnitAvailability {
   unitId: number;
   name: string;
   /**
-   * 1-based play-order position of the join chapter. `null` when the unit
-   *   never joins **or** joined on a map off every known path - check
-   *   {@link UnitAvailability.joinMapIndex} to tell the two apart.
+   * The resolved army entry, the field to branch on. Derived from the three
+   * below, and consistent with them by construction.
+   */
+  joinState: JoinState;
+  /**
+   * 1-based play-order position of the join chapter. `null` when the unit does
+   * not join on the play order - {@link UnitAvailability.joinState} says which
+   * of the three reasons applies.
    */
   joinPosition: number | null;
   /**
@@ -128,6 +149,14 @@ export interface UnitAvailability {
   availableCount: number | null;
   /** Total post-join chapters; `null` under the same rule as above. */
   totalAfterJoin: number | null;
+  /**
+   * {@link availableCount} / {@link totalAfterJoin}, the window length as one
+   * number. `null` wherever those are (`joinState` is `unresolved` or `never`,
+   * or the join is off the route). Present so a ranking does not divide two
+   * nullable fields itself: `null` then means "no window", and `NaN` cannot
+   * appear.
+   */
+  windowRatio: number | null;
   /**
    * Post-join non-deployable stretches, merged into segments.
    *
@@ -218,8 +247,8 @@ export function computeAvailability(data: AvailabilityInput): UnitAvailability[]
       if (!isPlayerArmyAppearance(a)) continue;
       const rank = positionOf.get(a.mapIndex) ?? Number.POSITIVE_INFINITY;
       if (
-        rank < joinRank ||
-        (rank === joinRank && (joinMapIndex === null || a.mapIndex < joinMapIndex))
+        rank < joinRank
+        || (rank === joinRank && (joinMapIndex === null || a.mapIndex < joinMapIndex))
       ) {
         joinRank = rank;
         joinMapIndex = a.mapIndex;
@@ -296,17 +325,29 @@ export function computeAvailability(data: AvailabilityInput): UnitAvailability[]
     results.push({
       unitId,
       name:
-        unitById.get(unitId)?.name ??
-        `Unit 0x${unitId.toString(16).toUpperCase().padStart(2, "0")}`,
+        unitById.get(unitId)?.name
+        ?? `Unit 0x${unitId.toString(16).toUpperCase().padStart(2, "0")}`,
+      joinState: joinStateOf(joinMapIndex, joinPosition, joinUnresolved),
       joinPosition,
       joinMapIndex,
       chapters,
       // Absent rather than 0 for an off-route joiner - see the field docs.
       availableCount: windowed ? availableCount : null,
       totalAfterJoin: windowed ? totalAfterJoin : null,
+      windowRatio: windowed && totalAfterJoin > 0 ? availableCount / totalAfterJoin : null,
       gaps: windowed ? gaps : null,
       joinUnresolved,
     });
   }
   return results;
+}
+
+/** The one place the three nullable fields are collapsed into a verdict. */
+function joinStateOf(
+  joinMapIndex: number | null,
+  joinPosition: number | null,
+  joinUnresolved: UnitAvailability["joinUnresolved"],
+): JoinState {
+  if (joinMapIndex === null) return joinUnresolved === null ? "never" : "unresolved";
+  return joinPosition === null ? "off_route" : "on_route";
 }

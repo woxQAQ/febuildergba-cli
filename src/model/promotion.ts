@@ -73,7 +73,9 @@ export function buildPromotionGraph<T extends PromotionClass>(
   };
 
   /** Base ids the branch table names, so `+5` cannot claim them as a target. */
-  const branchBases = new Set(branches.filter((b) => b.branch1 !== 0 || b.branch2 !== 0).map((b) => b.classId));
+  const branchBases = new Set(
+    branches.filter((b) => b.branch1 !== 0 || b.branch2 !== 0).map((b) => b.classId),
+  );
 
   // The CC branch table: the class names its own children directly.
   for (const b of branches) {

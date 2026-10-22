@@ -164,10 +164,10 @@ function makeScriptHas(
     if (POINTER_ARG_TYPES.has(arg.type)) return "POINTER_OTHER";
     if (arg.type === "MAPCHAPTER") return "MAP";
     if (
-      arg.type === "TEXT" ||
-      arg.type === "CONVERSATION_TEXT" ||
-      arg.type === "SYSTEM_TEXT" ||
-      arg.type === "ONELINE_TEXT"
+      arg.type === "TEXT"
+      || arg.type === "CONVERSATION_TEXT"
+      || arg.type === "SYSTEM_TEXT"
+      || arg.type === "ONELINE_TEXT"
     ) {
       return "TEXT";
     }

@@ -85,8 +85,8 @@ export function detectDebugMaps(edges: readonly ChapterEdges[]): DebugMapRecord[
     out.push({
       mapIndex: e.mapIndex,
       reason:
-        "unnumbered, untitled map whose END_EVENT loops only to itself and " +
-        "that no chapter leads into",
+        "unnumbered, untitled map whose END_EVENT loops only to itself and "
+        + "that no chapter leads into",
     });
   }
   return out;

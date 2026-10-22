@@ -173,7 +173,7 @@ mGBA 每往文本缓冲写一次（`clear` / `print`），就会把整块文本�
 | `gBattleActor` / `gBattleTarget` | `0x0203A4EC` / `0x0203A56C` | 步长 `0x80`。前 `0x48` 字节就是 RAM Unit                                                              |
 | 战斗标志位                       | `[0x0203A608]`              | 先解引用一次拿到指针，再读 u32。bit14 = 必中                                                          |
 | `GenerateCurrentRoundData`       | `0x0802B3EC`                | 一次「出手」的掷骰顺序（见 §3.17）                                                                    |
-| `RollRNIfBattleStarted`          | `0x0802A52C`                | 非模拟态下**无条件**转发给 `Roll1RN`，概率为 0 也烧 1 个                                            |
+| `RollRNIfBattleStarted`          | `0x0802A52C`                | 非模拟态下**无条件**转发给 `Roll1RN`，概率为 0 也烧 1 个                                              |
 | `BattleCheckDoubling`            | `0x0802AF90`                | `\|攻速差\| >= 4` 才追击                                                                              |
 | `BattleCheckBrave`               | `0x0802B094`                | 勇者武器 = 武器属性（`+0x4C`）位 `0x20`                                                               |
 

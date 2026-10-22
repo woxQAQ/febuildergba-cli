@@ -86,6 +86,12 @@ export interface UnitProjection {
   level: number;
   /** 入队即上级职业。 */
   promotedAtJoin: boolean;
+  /**
+   * 入队后还有没有转职可走，即当前职业是否有出边。这是判断「还能不能转」的直接
+   * 字段：`classLine` 的项数描述的是入队前走过的路，`promotedAtJoin` 只说明
+   * 单位表标记了已晋升且无出边，两者都不能当这个问题的答案。
+   */
+  promotable: boolean;
   /** `class base + unit delta`,精确值。 */
   startingStats: StatLine;
   /**
@@ -130,7 +136,8 @@ function buildJoinPositions(data: ProjectionInput): Map<number, number | null> {
       continue;
     }
     const current = best.get(a.unitId);
-    if (current === null || current === undefined || position < current) best.set(a.unitId, position);
+    if (current === null || current === undefined || position < current)
+      best.set(a.unitId, position);
   }
   return best;
 }
@@ -315,6 +322,7 @@ export function projectUnits(data: ProjectionInput): UnitProjection[] {
       classLine,
       level: unit.level,
       promotedAtJoin: !hasPromotion && unit.isPromotedClass,
+      promotable: hasPromotion,
       startingStats,
       maxed: ceiling.maxed,
       maxedByBranch: ceiling.byBranch,

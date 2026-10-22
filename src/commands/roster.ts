@@ -6,12 +6,12 @@ export const roster = defineDbCommand({
   input: "db",
   summary: "List the units that carry support data",
   description:
-    "Every unit with a support-data pointer, in unit-table order. Replaces the " +
-    "former `roster` db view (`SELECT * FROM units WHERE has_support_data = 1`); " +
-    "like that view, empty unit slots are excluded - the extract never persists " +
-    "them either.",
-  run: async ({ extract }) => {
-    return (await unitsOf(extract))
+    "Every unit with a support-data pointer, in unit-table order. Replaces the "
+    + "former `roster` db view (`SELECT * FROM units WHERE has_support_data = 1`); "
+    + "like that view, empty unit slots are excluded - the extract never persists "
+    + "them either.",
+  run: async ({ extract }) => ({
+    data: (await unitsOf(extract))
       .filter((u) => !u.isEmpty && u.hasSupportData)
       .map((u) => ({
         id: u.id,
@@ -20,6 +20,6 @@ export const roster = defineDbCommand({
         className: u.className,
         affinityId: u.affinityId,
         level: u.level,
-      }));
-  },
+      })),
+  }),
 });

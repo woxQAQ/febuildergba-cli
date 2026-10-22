@@ -597,8 +597,8 @@ const FE6J: GameLayout = {
   displayName: "FE6J (The Binding Blade, Japan)",
   supported: false,
   unsupportedReason:
-    "FE6 uses a different unit record (48 bytes) and class record (72 bytes), " +
-    "and has no support data. See UnitFE6Form.cs / ClassFE6Form.cs.",
+    "FE6 uses a different unit record (48 bytes) and class record (72 bytes), "
+    + "and has no support data. See UnitFE6Form.cs / ClassFE6Form.cs.",
   unit: { slot: { kind: "fixed", slot: 0x17680 }, recordSize: 48, maxCount: 226 },
   unitClass: { slot: { kind: "fixed", slot: 0x176e0 }, recordSize: 72, maxCount: 0x100 },
   text: {

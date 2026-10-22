@@ -36,9 +36,7 @@ function intFlag(value: string, flag: string): number {
  */
 function difficultyFlag(value: string): Difficulty {
   if (!DIFFICULTIES.includes(value as Difficulty)) {
-    throw new UsageError(
-      `--difficulty expects one of ${DIFFICULTIES.join(", ")}, got "${value}"`,
-    );
+    throw new UsageError(`--difficulty expects one of ${DIFFICULTIES.join(", ")}, got "${value}"`);
   }
   return value as Difficulty;
 }
@@ -48,25 +46,23 @@ export const expcurve = defineDbCommand({
   input: "db",
   summary: "Show the exp each chapter's enemies give a stated attacker",
   description:
-    "One row per playable chapter per difficulty: the counted enemies (initial " +
-    "placements vs event loads/reinforcements), their modal class power, and " +
-    "the total exp an attacker of the stated level and class power earns by " +
-    "killing all of them (`totalExp`, and as level-ups in " +
-    "`expectedLevels`). The attacker defaults to Lv20 with class power 3 (the " +
-    "modal value across classes); pass `--actor-level`, `--actor-class-power` " +
-    "or `--actor-promoted` to measure a different one. Every chapter is " +
-    "budgeted for all three difficulties, because the enemy level adjustment " +
-    "shifts the budget by up to a factor of two; `--difficulty` keeps one. " +
-    "The formula constants " +
-    "and their sources are in src/analysis/expcurve.ts; the " +
-    "`meta.assumptions` block lists what is modelled rather than read - " +
-    "including that every counted enemy is assumed killed, and that a " +
-    "promoted attacker's class-bonus-B term is not modelled.",
+    "One row per playable chapter per difficulty: the counted enemies (initial "
+    + "placements vs event loads/reinforcements), their modal class power, and "
+    + "the total exp an attacker of the stated level and class power earns by "
+    + "killing all of them (`totalExp`, and as level-ups in "
+    + "`expectedLevels`). The attacker defaults to Lv20 with class power 3 (the "
+    + "modal value across classes); pass `--actor-level`, `--actor-class-power` "
+    + "or `--actor-promoted` to measure a different one. Every chapter is "
+    + "budgeted for all three difficulties, because the enemy level adjustment "
+    + "shifts the budget by up to a factor of two; `--difficulty` keeps one. "
+    + "The formula constants "
+    + "and their sources are in src/analysis/expcurve.ts; the "
+    + "`meta.assumptions` block lists what is modelled rather than read - "
+    + "including that every counted enemy is assumed killed, and that a "
+    + "promoted attacker's class-bonus-B term is not modelled.",
   run: async ({ extract, flags }) => {
     const result = await expCurveOf(extract, {
-      ...(flags.difficulty === undefined
-        ? {}
-        : { difficulty: difficultyFlag(flags.difficulty) }),
+      ...(flags.difficulty === undefined ? {} : { difficulty: difficultyFlag(flags.difficulty) }),
       ...(flags.actorLevel === undefined
         ? {}
         : { actorLevel: intFlag(flags.actorLevel, "actor-level") }),
@@ -76,11 +72,21 @@ export const expcurve = defineDbCommand({
       ...(flags.actorPromoted === undefined ? {} : { actorPromoted: flags.actorPromoted }),
     });
     return {
-      meta: result.meta,
-      budgets: result.budgets.map((b) => ({
-        ...b,
-        expectedLevels: round2(b.expectedLevels),
-      })),
+      data: {
+        budgets: result.budgets.map((b) => ({
+          ...b,
+          expectedLevels: round2(b.expectedLevels),
+        })),
+      },
+      // The modelling parameters belong in the envelope's `meta`: they are what
+      // makes a quoted `totalExp` traceable to the run that produced it. The
+      // formula's own sources and assumptions ride along as `parameters`.
+      parameters: {
+        actor: result.meta.actor,
+        difficulties: result.meta.difficulties,
+        sources: result.meta.sources,
+        assumptions: result.meta.assumptions,
+      },
     };
   },
 });

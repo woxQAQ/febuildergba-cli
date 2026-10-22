@@ -152,13 +152,13 @@ export function readUnit(ctx: UnitTableContext, index: number): Unit | null {
     startingStats: combineStartingStats(stats, ctx.classBases?.get(classId)),
     growths,
     growthTotal:
-      growths.hp +
-      growths.str +
-      growths.skl +
-      growths.spd +
-      growths.def +
-      growths.res +
-      growths.lck,
+      growths.hp
+      + growths.str
+      + growths.skl
+      + growths.spd
+      + growths.def
+      + growths.res
+      + growths.lck,
     weaponLevels: readWeaponLevels(rom, addr + UNIT_OFFSET.weaponLevels),
     abilityFlags: [
       rom.u8(addr + UNIT_OFFSET.abilityFlags + 0),

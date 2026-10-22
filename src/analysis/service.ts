@@ -29,8 +29,8 @@ export function prepareAnalysis(repository: ExtractHandle, path: string): Analys
   const requireAvailable = async (kind: "chapters" | "events"): Promise<void> => {
     if (!(await repository.availability())[kind]) {
       throw new Error(
-        `${path}: ${kind} data is unavailable, not empty - ` +
-          "re-run extract with the canonical data resources and a readable chapter table",
+        `${path}: ${kind} data is unavailable, not empty - `
+          + "re-run extract with the canonical data resources and a readable chapter table",
       );
     }
   };

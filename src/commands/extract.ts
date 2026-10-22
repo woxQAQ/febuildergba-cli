@@ -30,23 +30,23 @@ export const extract: Command<"rom"> = {
   input: "rom",
   summary: "Parse the whole ROM once into a SQLite database for SQL analysis",
   description:
-    "Parses every table the ROM carries - units, classes, supports, chapters " +
-    "and their event-script walks, items, shops and map objects - and writes " +
-    "it all to one SQLite database. Analysis then reads the db instead of the " +
-    "ROM: the analysis commands take the .db as their input (`fe-rom roster " +
-    "dream-of-five.db`, `fe-rom joins dream-of-five.db`, ...), and ad-hoc " +
-    "questions are SQL - filtering is a WHERE clause, joining is a JOIN, and " +
-    "neither costs a re-parse.\n\n" +
-    "The schema stores facts, not presentations: names join by id, prices " +
-    "are `uses * unit_price`; per-question derivations such as the roster of " +
-    "support-bearing units are commands of their own. See src/repository/schema.ts " +
-    "for the full table list and conventions.\n\n" +
-    "An existing output file is replaced atomically: the extract is built " +
-    "into a scratch file next to the output and renamed over it, so a failed " +
-    "run leaves the previous database intact. The schema has no migrations - " +
-    "an extract is a rebuildable artifact, not state.\n\n" +
-    "Note: this uses Node's built-in node:sqlite, which prints an " +
-    "ExperimentalWarning on stderr. It is harmless.",
+    "Parses every table the ROM carries - units, classes, supports, chapters "
+    + "and their event-script walks, items, shops and map objects - and writes "
+    + "it all to one SQLite database. Analysis then reads the db instead of the "
+    + "ROM: the analysis commands take the .db as their input (`fe-rom roster "
+    + "dream-of-five.db`, `fe-rom joins dream-of-five.db`, ...), and ad-hoc "
+    + "questions are SQL - filtering is a WHERE clause, joining is a JOIN, and "
+    + "neither costs a re-parse.\n\n"
+    + "The schema stores facts, not presentations: names join by id, prices "
+    + "are `uses * unit_price`; per-question derivations such as the roster of "
+    + "support-bearing units are commands of their own. See src/repository/schema.ts "
+    + "for the full table list and conventions.\n\n"
+    + "An existing output file is replaced atomically: the extract is built "
+    + "into a scratch file next to the output and renamed over it, so a failed "
+    + "run leaves the previous database intact. The schema has no migrations - "
+    + "an extract is a rebuildable artifact, not state.\n\n"
+    + "Note: this uses Node's built-in node:sqlite, which prints an "
+    + "ExperimentalWarning on stderr. It is harmless.",
   run: async ({ path, flags }) => {
     const out = flags.out ?? defaultOutPath(path);
 
@@ -59,15 +59,19 @@ export const extract: Command<"rom"> = {
 
     const started = performance.now();
     let result;
+    const diagnostics: string[] = [];
     try {
       const handle = openDb(tmp);
       try {
-        const snapshot = extractData(path, {
-          ...(flags.lang === undefined ? {} : { language: flags.lang }),
-        });
-        for (const diagnostic of snapshot.diagnostics) {
-          console.error(`warning: ${diagnostic}`);
-        }
+        const snapshot = extractData(
+          path,
+          flags.lang === undefined ? {} : { language: flags.lang },
+        );
+        // The partial-decode warning used to go to stderr only, where a caller
+        // that redirected stderr lost it and a caller that read stdout could not
+        // see it. It travels in the envelope now; the human-facing progress line
+        // below stays on stderr.
+        diagnostics.push(...snapshot.diagnostics);
         result = await writeSnapshot(handle, snapshot);
       } finally {
         handle.close();
@@ -81,10 +85,13 @@ export const extract: Command<"rom"> = {
 
     const rows = Object.values(result.tables).reduce((a, n) => a + n, 0);
     console.error(
-      `extracted ${rows} rows across ${Object.keys(result.tables).length} tables ` +
-        `into ${out} (${elapsed.toFixed(0)}ms)`,
+      `extracted ${rows} rows across ${Object.keys(result.tables).length} tables `
+        + `into ${out} (${elapsed.toFixed(0)}ms)`,
     );
 
-    return { db: out, elapsedMs: Math.round(elapsed), tables: result.tables };
+    return {
+      data: { db: out, elapsedMs: Math.round(elapsed), tables: result.tables },
+      diagnostics,
+    };
   },
 };

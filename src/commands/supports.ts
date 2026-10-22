@@ -7,11 +7,11 @@ export const supports = defineDbCommand({
   input: "db",
   summary: "List support pairs, deduplicated from the asymmetric partner lists",
   description:
-    "One row per support pair. Replaces the former `support_edges` db view: " +
-    "the pair is normalized a < b, `initial`/`growth` come from the a-side " +
-    "record when it exists (otherwise the b-side), `reciprocal` marks whether " +
-    "both directions declare the pair, and the reverse numbers are exposed so " +
-    "a mismatch is visible rather than a parse error.",
+    "One row per support pair. Replaces the former `support_edges` db view: "
+    + "the pair is normalized a < b, `initial`/`growth` come from the a-side "
+    + "record when it exists (otherwise the b-side), `reciprocal` marks whether "
+    + "both directions declare the pair, and the reverse numbers are exposed so "
+    + "a mismatch is visible rather than a parse error.",
   run: async ({ extract }) => {
     const names = buildUnitNameMap(await unitsOf(extract));
     const supportPartners = await extract.supportPartners();
@@ -24,23 +24,25 @@ export const supports = defineDbCommand({
       pairs.add(`${Math.min(p.unitId, p.partnerId)}:${Math.max(p.unitId, p.partnerId)}`);
     }
 
-    return [...pairs]
-      .map((key) => {
-        const [a, b] = key.split(":").map(Number) as [number, number];
-        const forward = directed.get(`${a}>${b}`);
-        const reverse = directed.get(`${b}>${a}`);
-        return {
-          a,
-          b,
-          aName: unitNameOrId(names, a),
-          bName: unitNameOrId(names, b),
-          initial: forward?.initial ?? reverse?.initial ?? null,
-          growth: forward?.growth ?? reverse?.growth ?? null,
-          reciprocal: reverse !== undefined,
-          reverseInitial: reverse?.initial ?? null,
-          reverseGrowth: reverse?.growth ?? null,
-        };
-      })
-      .sort((x, y) => x.a - y.a || x.b - y.b);
+    return {
+      data: [...pairs]
+        .map((key) => {
+          const [a, b] = key.split(":").map(Number) as [number, number];
+          const forward = directed.get(`${a}>${b}`);
+          const reverse = directed.get(`${b}>${a}`);
+          return {
+            a,
+            b,
+            aName: unitNameOrId(names, a),
+            bName: unitNameOrId(names, b),
+            initial: forward?.initial ?? reverse?.initial ?? null,
+            growth: forward?.growth ?? reverse?.growth ?? null,
+            reciprocal: reverse !== undefined,
+            reverseInitial: reverse?.initial ?? null,
+            reverseGrowth: reverse?.growth ?? null,
+          };
+        })
+        .sort((x, y) => x.a - y.a || x.b - y.b),
+    };
   },
 });

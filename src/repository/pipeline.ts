@@ -93,9 +93,9 @@ export function assertWritePipeline(
         if (written.has(target) || ownSoFar.has(target)) continue;
         const laterAt = own.indexOf(target);
         throw new Error(
-          `write pipeline: writer "${writer.name}" writes "${name}" (position ${index}) ` +
-            `before its foreign target "${target}"` +
-            (laterAt === -1
+          `write pipeline: writer "${writer.name}" writes "${name}" (position ${index}) `
+            + `before its foreign target "${target}"`
+            + (laterAt === -1
               ? ", which no earlier writer fills"
               : `, which this writer fills later (position ${laterAt})`),
         );

@@ -23,14 +23,14 @@ export const roles = defineDbCommand({
   input: "db",
   summary: "Classify every class's mobility (flying/mounted/armour/normal)",
   description:
-    "One row per non-empty class with its mobility role. Replaces the former " +
-    "`class_roles` db view; the classification rule is unchanged: mount icon " +
-    "flags first (wyvern/pegasus -> flying, horse -> mounted, armour -> " +
-    "armour), then the mechanical flier checks on the movement-cost and " +
-    "terrain-bonus tables.",
-  run: async ({ extract }) => {
-    return (await extract.classes())
+    "One row per non-empty class with its mobility role. Replaces the former "
+    + "`class_roles` db view; the classification rule is unchanged: mount icon "
+    + "flags first (wyvern/pegasus -> flying, horse -> mounted, armour -> "
+    + "armour), then the mechanical flier checks on the movement-cost and "
+    + "terrain-bonus tables.",
+  run: async ({ extract }) => ({
+    data: (await extract.classes())
       .filter((c) => !c.isEmpty)
-      .map((c) => ({ classId: c.id, name: c.name, mount: c.mount, mobility: mobilityOf(c) }));
-  },
+      .map((c) => ({ classId: c.id, name: c.name, mount: c.mount, mobility: mobilityOf(c) })),
+  }),
 });

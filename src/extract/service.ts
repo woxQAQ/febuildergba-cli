@@ -94,9 +94,9 @@ function identify(path: string): { rom: LoadedRom; bare: Omit<LoadedRom, "text">
   if (!identity.version) {
     // `detectVersion` already explains why (too small, or an unknown code).
     throw new UnsupportedRomError(
-      `${identity.notes.join(" ")} ` +
-        "Supported game codes: AFEJ01 (FE6J), AE7J01 (FE7J), AE7E01 (FE7U), " +
-        "BE8J01 (FE8J), BE8E01 (FE8U).",
+      `${identity.notes.join(" ")} `
+        + "Supported game codes: AFEJ01 (FE6J), AE7J01 (FE7J), AE7E01 (FE7U), "
+        + "BE8J01 (FE8J), BE8E01 (FE8U).",
     );
   }
 
@@ -107,9 +107,9 @@ function identify(path: string): { rom: LoadedRom; bare: Omit<LoadedRom, "text">
   if (!identity.sizeOk) {
     const min = MIN_ROM_SIZES[identity.version];
     throw new UnsupportedRomError(
-      `ROM is ${identity.size} bytes but ${identity.version} needs at least ` +
-        `${min} (0x${min.toString(16).toUpperCase()}). The file is truncated or ` +
-        "was patched onto a trimmed base; no table in it can be read safely.",
+      `ROM is ${identity.size} bytes but ${identity.version} needs at least `
+        + `${min} (0x${min.toString(16).toUpperCase()}). The file is truncated or `
+        + "was patched onto a trimmed base; no table in it can be read safely.",
     );
   }
 
@@ -215,11 +215,11 @@ function parse(
   const configDir = findConfigDataDir(options.configDir);
   if (configDir === null) {
     warn(
-      "config/data not found - the vendored data directory is missing, so " +
-        "class ability names, the event-script opcode table and the " +
-        "chapter-condition names are all unavailable and an extract leaves " +
-        "the related tables empty. Library callers can pass configDir to " +
-        "supply a tree.",
+      "config/data not found - the vendored data directory is missing, so "
+        + "class ability names, the event-script opcode table and the "
+        + "chapter-condition names are all unavailable and an extract leaves "
+        + "the related tables empty. Library callers can pass configDir to "
+        + "supply a tree.",
     );
   }
 
@@ -242,9 +242,9 @@ function parse(
     // The game has the table (FE8); an empty `class_branches` must not read
     // as "nothing promotes" - the same stance the untranscribed warning takes.
     warn(
-      `CCBranch table unreadable for ${identity.version}: the slot at ` +
-        `0x${layout.classBranch.slot.toString(16)} holds no usable pointer, ` +
-        "so class_branches stays empty although the game has the table",
+      `CCBranch table unreadable for ${identity.version}: the slot at `
+        + `0x${layout.classBranch.slot.toString(16)} holds no usable pointer, `
+        + "so class_branches stays empty although the game has the table",
     );
   }
 
@@ -271,17 +271,13 @@ function parse(
   // are what the ROM holds - but a consumer must not read them as a bonus
   // curve. `repository/write.ts` keeps the first record per id.
   const repeatedAffinities = [
-    ...new Set(
-      supportBonuses
-        .map((b) => b.affinity)
-        .filter((id, i, all) => all.indexOf(id) !== i),
-    ),
+    ...new Set(supportBonuses.map((b) => b.affinity).filter((id, i, all) => all.indexOf(id) !== i)),
   ];
   if (repeatedAffinities.length > 0) {
     warn(
-      `support-bonus table repeats affinity id(s) ${repeatedAffinities.join(", ")} ` +
-        `(${supportBonuses.length} records read at support_attribute_pointer): ` +
-        "the table has no zero terminator, so read it as raw bytes, not as a bonus curve",
+      `support-bonus table repeats affinity id(s) ${repeatedAffinities.join(", ")} `
+        + `(${supportBonuses.length} records read at support_attribute_pointer): `
+        + "the table has no zero terminator, so read it as raw bytes, not as a bonus curve",
     );
   }
   // Affinity names straight from the ROM's text table, via the text ids the
@@ -336,8 +332,8 @@ function parse(
   );
   if (untranscribed.length > 0) {
     warn(
-      `${untranscribed.join("/")} layout not transcribed for ${identity.version}; ` +
-        "the related tables stay empty - the ROM has the data, the constants are not ported yet",
+      `${untranscribed.join("/")} layout not transcribed for ${identity.version}; `
+        + "the related tables stay empty - the ROM has the data, the constants are not ported yet",
     );
   }
 

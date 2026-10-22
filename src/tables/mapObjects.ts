@@ -86,7 +86,6 @@ export function readChapterObjects(
 
     const type = rom.u16(addr);
     const flag = rom.u16(addr + 2);
-    const payload = rom.u32(addr + 4);
     const objectType = rom.u8(addr + 10);
     const kind = OBJECT_TRIGGER_TYPES[type] ?? `type${hex(type)}`;
 
@@ -108,8 +107,8 @@ export function readChapterObjects(
       flag,
       objectType,
       objectTypeName:
-        OBJECT_TYPE_NAMES[objectType] ??
-        (isChest && objectType === chestType ? "chest" : hex(objectType)),
+        OBJECT_TYPE_NAMES[objectType]
+        ?? (isChest && objectType === chestType ? "chest" : hex(objectType)),
       x: rom.u8(addr + 8),
       y: rom.u8(addr + 9),
       itemId,

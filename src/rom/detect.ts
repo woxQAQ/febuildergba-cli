@@ -91,8 +91,8 @@ export function detectVersion(rom: RomBuffer): RomIdentity {
       sizeOk: false,
       size: rom.length,
       notes: [
-        `File is only ${rom.length} bytes; a GBA ROM header needs at least ` +
-          `${MIN_HEADER_SIZE} (${hex(MIN_HEADER_SIZE)}).`,
+        `File is only ${rom.length} bytes; a GBA ROM header needs at least `
+          + `${MIN_HEADER_SIZE} (${hex(MIN_HEADER_SIZE)}).`,
       ],
       // Nothing to probe yet, and `none` is the honest answer for a file we
       // cannot even trust a version from.
