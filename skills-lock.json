@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "skills": {
+    "architect": {
+      "source": "backnotprop/pstack",
+      "sourceType": "github",
+      "skillPath": "skills/architect/SKILL.md",
+      "computedHash": "ff100f5de1c7aeb6f067180a284323547f2bdef18f7682c34854eb142eecf12a"
+    },
+    "arena": {
+      "source": "backnotprop/pstack",
+      "sourceType": "github",
+      "skillPath": "skills/arena/SKILL.md",
+      "computedHash": "0dad5894eb9250ca8a9d03591b7f7c6d2aeb1d0cc840d61b6a8ca99a209453cb"
+    },
+    "benchmark-checklist": {
+      "source": "backnotprop/pstack",
+      "sourceType": "github",
+      "skillPath": "skills/benchmark-checklist/SKILL.md",
+      "computedHash": "4ed522cb6ea05fedac17edcc92b48462ddd7032595ef5c19eb25ede6654e1a48"
+    },
+    "blast-radius": {
+      "source": "backnotprop/pstack",
+      "sourceType": "github",
+      "skillPath": "skills/blast-radius/SKILL.md",
+      "computedHash": "e59c40c6882599243a2988e8001e968d0e92ae982273ed3369eec58c4b956d30"
+    },
+    "correct": {
+      "source": "backnotprop/pstack",
+      "sourceType": "github",
+      "skillPath": "skills/correct/SKILL.md",
+      "computedHash": "b7e0850f6e5370007dd560aca2a728b49891208b8782da67212b49638105827e"
+    },
+    "how": {
+      "source": "backnotprop/pstack",
+      "sourceType": "github",
+      "skillPath": "skills/how/SKILL.md",
+      "computedHash": "c57eb504d823e8f92567a6102ed06fa2ba6a71a3e1d549399fc8e505a97257a9"
+    },
+    "interrogate": {
+      "source": "backnotprop/pstack",
+      "sourceType": "github",
+      "skillPath": "skills/interrogate/SKILL.md",
+      "computedHash": "721b503231bc5fbbee9e02d1ca3e8bbf11ca17696a6b4feb98556732e536ed8a"
+    },
+    "unslop": {
+      "source": "backnotprop/pstack",
+      "sourceType": "github",
+      "skillPath": "skills/unslop/SKILL.md",
+      "computedHash": "eca0ad9fa3a3867c83f3aaf3a058e247a569c8976a68ca423a569b93eb86de5d"
+    },
+    "why": {
+      "source": "backnotprop/pstack",
+      "sourceType": "github",
+      "skillPath": "skills/why/SKILL.md",
+      "computedHash": "cb17951d059c299bd83faa1bc3f78bcd2f06365d03a4932192409736c97707d3"
+    }
+  }
+}
