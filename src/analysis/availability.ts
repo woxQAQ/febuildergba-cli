@@ -84,6 +84,7 @@ import type { AnalysisUnit, AvailabilityInput } from "./data.ts";
 import { collectAppearances, isPlayerArmyAppearance } from "./appearances.ts";
 import type { UnitAppearance } from "./appearances.ts";
 import type { ForceSortieRow } from "../model/records.ts";
+import { inChapterWindow, type ChapterWindow } from "../model/chapterWindow.ts";
 
 export type ChapterStatus =
   /** Not yet in the army. */
@@ -230,11 +231,16 @@ function forceSortieIndex(records: readonly ForceSortieRow[]): Map<number, Set<n
  * load), sorted by unit id. Units with no recorded appearance at all are
  * omitted - there is nothing to say about them.
  */
-export function computeAvailability(data: AvailabilityInput): UnitAvailability[] {
+export function computeAvailability(
+  data: AvailabilityInput,
+  window?: ChapterWindow,
+): UnitAvailability[] {
   const appearances = appearancesByUnit(data);
   const forced = forceSortieIndex(data.forceSortie);
 
-  const playable = data.playOrder.steps.filter((s) => s.playable);
+  const playable = data.playOrder.steps.filter(
+    (s) => s.playable && inChapterWindow(s.order, window),
+  );
   const positionOf = data.playOrder.position;
   const unitById = new Map<number, AnalysisUnit>(data.units.map((u) => [u.id, u]));
 

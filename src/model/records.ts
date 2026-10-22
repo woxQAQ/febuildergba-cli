@@ -1,6 +1,6 @@
 import type { MountKind, UnitSide } from "./game.ts";
 import type { ClassBases, UnitGrowths, UnitStats } from "./stats.ts";
-import type { PlayOrderStep } from "./storyPath.ts";
+import type { PlayOrderStep, PathBranch } from "./storyPath.ts";
 
 /** Persisted unit facts; starting stats are calculated from class bases by analysis. */
 export interface UnitRecord {
@@ -28,6 +28,8 @@ export interface ClassRecord {
   sortOrder: number;
   classPower: number;
   abilityFlags: [number, number, number, number];
+  /** Per-game decoded identifiers, including capabilities outside specialAction. */
+  abilityFlagIds: readonly string[];
   /**
    * Weapon levels in ROM order (sword, lance, axe, bow, staff, anima, light,
    * dark). The numbers are ranks, not letters: `tables/items.ts`'s
@@ -62,7 +64,10 @@ export interface PlacementRecord {
 export interface ChapterRecord {
   /** Map-setting row index, not the chapter number. */
   index: number;
+  chapterNumber: number;
+  title: string;
   deploySlots: number;
+  deploySlotsHard: number;
   placements: PlacementRecord[];
   hardPlacements: PlacementRecord[];
 }
@@ -95,4 +100,6 @@ export interface ClassBranchRow {
 export interface PlayOrderRows {
   readonly steps: readonly PlayOrderStep[];
   readonly position: ReadonlyMap<number, number>;
+  readonly branches: readonly PathBranch[];
+  readonly closedLoop: readonly number[];
 }

@@ -123,6 +123,8 @@ export function parseArgv(argv: readonly string[]): ParsedArgv {
   const actorLevel = str("actor-level");
   const actorClassPower = str("actor-class-power");
   const difficulty = str("difficulty");
+  const fromPosition = str("from-position");
+  const beforePosition = str("before-position");
   if (lang !== undefined && !isKnownLanguage(lang)) {
     throw new Error(`--lang expects one of ${LANGUAGE_NAMES.join(", ")}, got "${lang}"`);
   }
@@ -145,6 +147,8 @@ export function parseArgv(argv: readonly string[]): ParsedArgv {
       ...(values["actor-promoted"] === true ? { actorPromoted: true } : {}),
       ...(difficulty === undefined ? {} : { difficulty }),
       ...(values.full === true ? { full: true } : {}),
+      ...(fromPosition === undefined ? {} : { fromPosition }),
+      ...(beforePosition === undefined ? {} : { beforePosition }),
     },
   };
 }

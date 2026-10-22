@@ -46,8 +46,8 @@ Repository 区分两件事：
 - schema 不匹配：库早于当前构建（缺表或缺列），打开时拒绝并要求重建；
 - 章节或事件输入不可用：返回提取时保存的 availability，不将空表解释为合法空集合。
 
-产物没有 revision 计数器：库是可全量重建的，schema 守卫（缺表/缺列即拒）
-已经覆盖「旧库」这一种过期形态，解码规则变化直接体现为列或表的变化。
+产物没有 revision 计数器：库是可全量重建的，缺表/缺列或必需元数据时拒绝读取，
+要求按当前存储契约重新提取，不维护迁移或静默补值。
 外键在写入连接上以 `PRAGMA foreign_keys = ON` 显式开启并断言生效（SQLite
 自身默认按连接关闭；node:sqlite 恰好开启，但不依赖这个驱动选择），插入顺序
 即依赖顺序，悬空引用会让提取失败而不是静默存 null。少数列是哨兵而非引用
@@ -68,11 +68,28 @@ schema 校验三件事：填了未登记的表、登记了没人填的表、外�
 
 `prepareAnalysis` 建立一次分析会话，按实际请求的证据检查 availability。
 事件不完整时保留结果，并在 `diagnostics()` 中报告限制；不可用时拒绝相关分析。
-不读取事件的命令不会加载事件层或得到无关的 partial 提示。
+提取诊断另存于 `meta` 的 `extract.diagnostics`，DB 命令在共享生命周期内读取它，
+与会话诊断合并去重后输出。这样单独取得 DB 也不丢失异常加成表等质量证据；
+不读取事件的命令不会为此加载事件层，但仍能看到快照保留的 partial 警告。
+缺少诊断元数据的旧库要求重建，不把未知质量当无警告。
 Repository 的原始读取方法仍可用于检查缺失输入的产物，本身不执行这项分析策略。
 
 提取 service 通过 snapshot 返回诊断；分析会话通过 `diagnostics()` 返回诊断。
 CLI 决定 stderr 格式，service 和 repository 不直接打印。
+
+## 章节区间与候选事实
+
+`candidates`、`availability`、`expcurve` 共用 `--from-position` /
+`--before-position`，定义完整模型播放序上的左闭右开区间。
+命令层验证参数并回显 `meta.parameters.window`，分析层用同一个区间谓词筛章。
+availability 在原始全集上识别入队，再只对区间内的可玩章计算状态、计数与 gap；
+经验预算只保留区间内的章。空区间合法，零分母的比例保留 null。
+
+区间不改 unit ID、joinState、原始入队点、投影或完整播放序，也不裁决互斥路线。
+目标进场前使用 `--before-position <目标位置>`，单查目标章使用 `[目标, 目标+1)`，
+避免把本战经验当作已经完成的训练。`candidates.data.playOrder` 汇合已有章节编号、
+标题、normal/hard 部署数和 branches/closedLoop，不另推断真实终章。
+职业 profile 的 `abilityFlagIds` 保留已存储的本游戏 flag；粗分类与技能规则仍有边界。
 
 ## 注释语言
 
@@ -127,3 +144,7 @@ CLI 决定 stderr 格式，service 和 repository 不直接打印。
 支援两个方向的原始点数/成长、互惠标记和非默认经验参数；首条命令失败后不解析空输出。
 完整 stdout、stderr 和汇总保存在独立的 `out/fixture-check-*` 目录。
 没有 ROM 时明确失败，不把缺少本地 fixture 当作检查通过。
+
+同一工作流还交叉核对原始章节/分支/职业 flags、提取诊断的持久化与传播、
+区间结果与全量结果的独立裁剪、空区间及非法参数；缺少或损坏质量元数据的真实
+快照副本必须失败且 stdout 为空。不添加单元测试。

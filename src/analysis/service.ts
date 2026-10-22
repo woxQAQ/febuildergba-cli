@@ -18,6 +18,7 @@ import { combineStartingStats } from "../model/stats.ts";
 import { eventDecodeWarning } from "../model/events.ts";
 import { collectAppearances } from "./appearances.ts";
 import { candidateFacts, type CandidateFacts } from "./candidates.ts";
+import type { ChapterWindow } from "../model/chapterWindow.ts";
 
 /** A lazy analysis session: only the evidence actually requested is checked. */
 export type AnalysisSource = Omit<ExtractHandle, "close"> & {
@@ -45,6 +46,7 @@ export function prepareAnalysis(repository: ExtractHandle, path: string): Analys
 
   return {
     availability: () => repository.availability(),
+    extractionDiagnostics: () => repository.extractionDiagnostics(),
     game: () => repository.game(),
     units: () => repository.units(),
     classes: () => repository.classes(),
@@ -110,15 +112,21 @@ export async function joinsOf(x: AnalysisSource): Promise<UnitJoin[]> {
 }
 
 /** `availability`: units, chapters, the play order, force-sortie and the trace. */
-export async function availabilityOf(x: AnalysisSource): Promise<UnitAvailability[]> {
-  return computeAvailability({
-    units: await unitsOf(x),
-    chapters: await x.chapters(),
-    playOrder: await x.playOrder(),
-    forceSortie: await x.forceSortie(),
-    trace: await x.trace(),
-    debugMaps: new Set((await x.debugMaps()).map((r) => r.mapIndex)),
-  });
+export async function availabilityOf(
+  x: AnalysisSource,
+  window?: ChapterWindow,
+): Promise<UnitAvailability[]> {
+  return computeAvailability(
+    {
+      units: await unitsOf(x),
+      chapters: await x.chapters(),
+      playOrder: await x.playOrder(),
+      forceSortie: await x.forceSortie(),
+      trace: await x.trace(),
+      debugMaps: new Set((await x.debugMaps()).map((r) => r.mapIndex)),
+    },
+    window,
+  );
 }
 
 /** `expcurve`: the stat rows the budget counts, plus classes, game and order. */
@@ -156,7 +164,10 @@ export async function projectionOf(x: AnalysisSource): Promise<UnitProjection[]>
 }
 
 /** Assemble existing analyses for a complete, strategy-free candidate audit. */
-export async function candidatesOf(x: AnalysisSource): Promise<CandidateFacts> {
+export async function candidatesOf(
+  x: AnalysisSource,
+  window?: ChapterWindow,
+): Promise<CandidateFacts> {
   const appearances = {
     units: await unitsOf(x),
     chapters: await x.chapters(),
@@ -168,7 +179,7 @@ export async function candidatesOf(x: AnalysisSource): Promise<CandidateFacts> {
     classes: await x.classes(),
     classBranches: await x.classBranches(),
     playOrder: await x.playOrder(),
-    availability: await availabilityOf(x),
+    availability: await availabilityOf(x, window),
     projections: await projectionOf(x),
     joins: await joinsOf(x),
     appearances: collectAppearances(appearances),

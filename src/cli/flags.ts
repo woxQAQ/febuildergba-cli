@@ -103,6 +103,25 @@ export const FLAGS: readonly FlagSpec[] = [
     commands: ["availability"],
   },
   {
+    name: "from-position",
+    type: "string",
+    arg: "<n>",
+    summary:
+      "Inclusive model play-order position; default 1. Filters chapter counts "
+      + "and budgets, never the candidate IDs or join evidence",
+    commands: ["candidates", "availability", "expcurve"],
+  },
+  {
+    name: "before-position",
+    type: "string",
+    arg: "<n>",
+    summary:
+      "Exclusive model play-order position; default one past the last step. "
+      + "Use the target's position to exclude its own battle experience. "
+      + "Does not select an executable story route",
+    commands: ["candidates", "availability", "expcurve"],
+  },
+  {
     name: "help",
     type: "boolean",
     short: "h",

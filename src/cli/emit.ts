@@ -25,10 +25,9 @@ export interface CommandMeta {
   /** The extract's game version, when the command reads a db. */
   game?: string;
   /**
-   * This run's diagnostics: the input-quality warnings that made the payload
-   * partial (currently the event-decode one) and the analysis-level exclusions
-   * (debug maps). Empty means nothing was flagged *by this run* - a command that
-   * never reads the event layer cannot see an event warning.
+   * Snapshot extraction warnings plus checks triggered by this analysis.
+   * Reading stored warnings does not load the event layer. Empty is not a
+   * completeness certificate: unimplemented checks cannot produce warnings.
    */
   diagnostics: readonly string[];
   /**

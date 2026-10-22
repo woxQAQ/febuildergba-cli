@@ -45,7 +45,7 @@ import type {
   TracedInstruction,
   TracedScript,
 } from "../model/events.ts";
-import type { PlayOrderStep } from "../model/storyPath.ts";
+import type { PlayOrderStep, PathBranch } from "../model/storyPath.ts";
 import type { DebugMapRecord } from "../model/debugMap.ts";
 import type { UnitStatRow } from "../model/stats.ts";
 import { openDb } from "./open.ts";
@@ -68,6 +68,7 @@ const TABLES_READ: readonly SQLiteTable[] = [
   t.inputs,
   t.units,
   t.classes,
+  t.classAbilityFlags,
   t.chapters,
   t.chapterPlacements,
   t.chapterEventSlots,
@@ -182,6 +183,8 @@ function assertExtractSchema(sqlite: OpenDb["sqlite"], path: string): void {
 export interface ExtractHandle {
   /** Availability flags written by extraction, without interpreting empty rows. */
   availability(): Promise<{ chapters: boolean; events: boolean }>;
+  /** Snapshot-quality warnings retained even when the original extract output is gone. */
+  extractionDiagnostics(): Promise<readonly string[]>;
   /** The ROM's game id (`meta` `rom.version`), for the per-version formula branches. */
   game(): Promise<GameVersion>;
   /** Unit-table order. Empty slots are not persisted; stats remain signed deltas. */
@@ -282,6 +285,27 @@ export function openExtract(path: string): ExtractHandle {
       return new Map(rows.map((r) => [r.key, r.value]));
     });
 
+  const metaArray = (key: string): Promise<unknown[]> =>
+    once(key, async () => {
+      const raw = (await metaOf()).get(key);
+      if (raw === undefined) {
+        throw new SchemaMismatchError(
+          `${path}: database predates this build (missing meta ${key}) - `
+            + "re-run `fe-rom extract` to rebuild it",
+        );
+      }
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(raw);
+      } catch (error) {
+        throw notAnExtractDb(path, `malformed \`meta\` \`${key}\` (not JSON)`, error);
+      }
+      if (!Array.isArray(parsed)) {
+        throw notAnExtractDb(path, `malformed \`meta\` \`${key}\` (not an array)`);
+      }
+      return parsed;
+    });
+
   const scriptsOf = () =>
     once("scripts", async (): Promise<TracedScript[]> =>
       db.select().from(t.eventScripts).orderBy(t.eventScripts.id).all(),
@@ -306,6 +330,17 @@ export function openExtract(path: string): ExtractHandle {
   const classesOf = () =>
     once("classes", async (): Promise<ClassRecord[]> => {
       const rows = await classRowsOf();
+      const flagRows = await db
+        .select()
+        .from(t.classAbilityFlags)
+        .orderBy(t.classAbilityFlags.classId, t.classAbilityFlags.flag)
+        .all();
+      const flagsByClass = new Map<number, string[]>();
+      for (const row of flagRows) {
+        const flags = flagsByClass.get(row.classId) ?? [];
+        flags.push(row.flag);
+        flagsByClass.set(row.classId, flags);
+      }
       return rows.map((c) => ({
         id: c.id,
         name: c.name,
@@ -317,6 +352,7 @@ export function openExtract(path: string): ExtractHandle {
         sortOrder: c.sortOrder,
         classPower: c.classPower,
         abilityFlags: c.abilityFlags,
+        abilityFlagIds: flagsByClass.get(c.id) ?? [],
         weaponLevels: [
           c.wlSword,
           c.wlLance,
@@ -367,6 +403,13 @@ export function openExtract(path: string): ExtractHandle {
         throw notAnExtractDb(path, "no row in `inputs`; not an extract db");
       }
       return { chapters: row.chaptersAvailable, events: row.eventsAvailable };
+    },
+    extractionDiagnostics: async () => {
+      const entries = await metaArray("extract.diagnostics");
+      if (!entries.every((entry): entry is string => typeof entry === "string")) {
+        throw notAnExtractDb(path, "malformed `meta` `extract.diagnostics` entry");
+      }
+      return entries;
     },
     game: gameOf,
     classes: classesOf,
@@ -460,7 +503,10 @@ export function openExtract(path: string): ExtractHandle {
           const blocks = placementsByChapter.get(c.mapIndex) ?? { normal: [], hard: [] };
           return {
             index: c.mapIndex,
+            chapterNumber: c.chapterNumber,
+            title: c.title,
             deploySlots: c.deploySlots,
+            deploySlotsHard: c.deploySlotsHard,
             placements: blocks.normal,
             hardPlacements: blocks.hard,
           };
@@ -480,7 +526,33 @@ export function openExtract(path: string): ExtractHandle {
           role: r.role,
           playable: r.playable,
         }));
-        return { steps, position: new Map(steps.map((s) => [s.mapIndex, s.order])) };
+        const branches = await metaArray("playOrder.branches");
+        const closedLoop = await metaArray("playOrder.closedLoop");
+        const mapIds = (value: unknown): value is number[] =>
+          Array.isArray(value) && value.every((id) => Number.isSafeInteger(id) && id >= 0);
+        if (
+          !branches.every(
+            (entry): entry is PathBranch =>
+              typeof entry === "object"
+              && entry !== null
+              && "mapIndex" in entry
+              && Number.isSafeInteger(entry.mapIndex)
+              && Number(entry.mapIndex) >= 0
+              && "to" in entry
+              && mapIds(entry.to)
+              && "viaLoma" in entry
+              && mapIds(entry.viaLoma),
+          )
+          || !mapIds(closedLoop)
+        ) {
+          throw notAnExtractDb(path, "malformed `meta` play-order branches or closedLoop");
+        }
+        return {
+          steps,
+          position: new Map(steps.map((s) => [s.mapIndex, s.order])),
+          branches,
+          closedLoop,
+        };
       }),
 
     debugMaps: () =>

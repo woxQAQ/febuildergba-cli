@@ -4,7 +4,7 @@ import type { UnitProjection } from "./projection.ts";
 import { trainingLevelsForProjection } from "./projection.ts";
 import type { UnitJoin } from "./joins.ts";
 import type { UnitAppearance } from "./appearances.ts";
-import type { ClassRecord, PlayOrderRows } from "../model/records.ts";
+import type { ChapterRecord, ClassRecord, PlayOrderRows } from "../model/records.ts";
 import { isPlayerArmyAppearance } from "./appearances.ts";
 import { buildPromotionGraph } from "../model/promotion.ts";
 import type { ClassBranchRow } from "../model/records.ts";
@@ -12,6 +12,7 @@ import { classProfile } from "./classProfile.ts";
 
 interface CandidatesInput {
   units: readonly AnalysisUnit[];
+  chapters: readonly ChapterRecord[];
   classes: readonly ClassRecord[];
   classBranches: readonly ClassBranchRow[];
   availability: readonly UnitAvailability[];
@@ -123,6 +124,17 @@ export function candidateFacts(input: CandidatesInput) {
       })),
     };
   });
+  const chapterByMap = new Map(input.chapters.map((chapter) => [chapter.index, chapter]));
+  const steps = input.playOrder.steps.map((step) => {
+    const chapter = chapterByMap.get(step.mapIndex);
+    return {
+      ...step,
+      chapterNumber: chapter?.chapterNumber ?? null,
+      title: chapter?.title ?? null,
+      deploySlots: chapter?.deploySlots ?? null,
+      deploySlotsHard: chapter?.deploySlotsHard ?? null,
+    };
+  });
   return {
     audit: {
       rosterIds,
@@ -140,9 +152,11 @@ export function candidateFacts(input: CandidatesInput) {
         .map((unit) => unit.unitId),
     },
     playOrder: {
-      steps: input.playOrder.steps,
-      last: input.playOrder.steps.at(-1) ?? null,
-      lastPlayable: input.playOrder.steps.findLast((step) => step.playable) ?? null,
+      steps,
+      last: steps.at(-1) ?? null,
+      lastPlayable: steps.findLast((step) => step.playable) ?? null,
+      branches: input.playOrder.branches,
+      closedLoop: input.playOrder.closedLoop,
     },
     units,
   };

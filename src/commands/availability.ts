@@ -12,6 +12,7 @@
 
 import { availabilityOf } from "../analysis/service.ts";
 import { defineDbCommand } from "./types.ts";
+import { chapterWindow } from "./chapterWindow.ts";
 
 export const availability = defineDbCommand({
   name: "availability",
@@ -30,33 +31,40 @@ export const availability = defineDbCommand({
     + "means the unit has no recorded join: `joinUnresolved` says whether that is "
     + "an unresolved entry or simply no recognized evidence, not proof that "
     + "the unit can never join in the game. "
+    + "`--from-position` / `--before-position` restrict counts, gaps and chapter "
+    + "statuses to a half-open interval without changing joins or unit IDs. "
+    + "A future on-route joiner has zero chapters and a null ratio in that interval. "
     + "`--full` adds the per-chapter status list "
     + "(not_joined/available/forced/npc/removed); it is omitted by default because "
     + "it is most of the payload. "
     + "The status rules are heuristic - "
     + "absence from a chapter's placement block is the normal case, not a "
     + "leave; see src/analysis/availability.ts for the rules and blind spots.",
-  run: async ({ extract, flags }) => ({
-    data: (await availabilityOf(extract)).map((u) => ({
-      unitId: u.unitId,
-      name: u.name,
-      joinState: u.joinState,
-      joinPosition: u.joinPosition,
-      joinMapIndex: u.joinMapIndex,
-      availableCount: u.availableCount,
-      totalAfterJoin: u.totalAfterJoin,
-      windowRatio: u.windowRatio,
-      gaps: u.gaps,
-      joinUnresolved: u.joinUnresolved,
-      ...(flags.full === true
-        ? {
-            chapters: [...u.chapters.entries()].map(([position, c]) => ({
-              position,
-              mapIndex: c.mapIndex,
-              status: c.status,
-            })),
-          }
-        : {}),
-    })),
-  }),
+  run: async ({ extract, flags }) => {
+    const window = chapterWindow(flags, await extract.playOrder());
+    return {
+      ...(window === undefined ? {} : { parameters: { window } }),
+      data: (await availabilityOf(extract, window)).map((u) => ({
+        unitId: u.unitId,
+        name: u.name,
+        joinState: u.joinState,
+        joinPosition: u.joinPosition,
+        joinMapIndex: u.joinMapIndex,
+        availableCount: u.availableCount,
+        totalAfterJoin: u.totalAfterJoin,
+        windowRatio: u.windowRatio,
+        gaps: u.gaps,
+        joinUnresolved: u.joinUnresolved,
+        ...(flags.full === true
+          ? {
+              chapters: [...u.chapters.entries()].map(([position, c]) => ({
+                position,
+                mapIndex: c.mapIndex,
+                status: c.status,
+              })),
+            }
+          : {}),
+      })),
+    };
+  },
 });

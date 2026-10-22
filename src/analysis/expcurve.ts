@@ -96,6 +96,7 @@ import type { GameVersion } from "../model/game.ts";
 import type { ClassRecord } from "../model/records.ts";
 import type { Difficulty, UnitStatRow } from "../model/stats.ts";
 import { DIFFICULTIES } from "../model/stats.ts";
+import { inChapterWindow, type ChapterWindow } from "../model/chapterWindow.ts";
 
 // ----------------------------------------------------------------- constants
 // Every value cited; see the module doc for the source abbreviations.
@@ -376,8 +377,10 @@ const EXP_CURVE_ASSUMPTIONS: readonly string[] = [
     + "Normal, Hector Normal, Link Arena).",
   "FE6 has no difficulty level adjustment in its map settings, so its three "
     + "difficulty budgets are identical.",
-  "Entombed is detected by the vanilla FE8U class id 0x53; a hack that moves "
-    + "class ids loses the mummy bonus.",
+  "Entombed is detected by the vanilla FE8U class id 0x53, not by name or "
+    + "verified ROM code. Moving Entombed loses its bonus; reusing 0x53 for "
+    + "another class can apply the bonus to that class. The hack may retain "
+    + "the id check or patch it; this model does not determine which.",
   "Staff/dance/rescue exp is not part of the budget - it is not enemy-derived.",
   "Enemy attribution inherits the unitStats reach walk: a load block every "
     + "chapter can reach is budgeted in every such chapter.",
@@ -399,6 +402,8 @@ const EXP_CURVE_ASSUMPTIONS: readonly string[] = [
 export interface ExpCurveOptions {
   /** Restrict to one difficulty; default emits all three. */
   difficulty?: Difficulty;
+  /** Restrict chapter budgets without changing full-order positions. */
+  window?: ChapterWindow;
   /**
    * Level of the hypothetical attacker the budget is measured for. The
    * enemy's own level is the target side's; this is the actor's, and the two
@@ -491,7 +496,7 @@ export function computeExpCurve(data: ExpCurveInput, opts: ExpCurveOptions = {})
 
   const budgets: ChapterExpBudget[] = [];
   for (const step of data.playOrder.steps) {
-    if (!step.playable) continue;
+    if (!step.playable || !inChapterWindow(step.order, opts.window)) continue;
     for (const difficulty of difficulties) {
       const enemies = byChapter.get(`${step.mapIndex}|${difficulty}`) ?? [];
       let totalExp = 0;

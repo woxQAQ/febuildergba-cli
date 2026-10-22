@@ -48,6 +48,10 @@ export interface ResolvedFlags {
   difficulty?: string;
   /** `availability`: include the per-chapter status list (off by default). */
   full?: boolean;
+  /** Inclusive lower bound in the unfiltered model play order. */
+  fromPosition?: string;
+  /** Exclusive upper bound; use the target position for a pre-battle window. */
+  beforePosition?: string;
 }
 
 /**
@@ -144,12 +148,15 @@ export function defineDbCommand(
       const repository = openExtract(context.path);
       const extract = prepareAnalysis(repository, context.path);
       try {
+        const storedDiagnostics = await extract.extractionDiagnostics();
         const result = await command.run({ ...context, extract });
-        // The session's diagnostics are read after the body ran - that is when
-        // the event layer, if the command touched it, has been checked. They
-        // travel in the envelope instead of stderr so a caller can see them
-        // without losing stderr to its own redirections.
-        return { ...result, diagnostics: extract.diagnostics() };
+        // Snapshot warnings qualify stored facts even when this command never
+        // reads events. Session checks add demand-specific warnings; dedupe the
+        // event warning that extraction and analysis can both produce.
+        return {
+          ...result,
+          diagnostics: [...new Set([...storedDiagnostics, ...extract.diagnostics()])],
+        };
       } finally {
         repository.close();
       }

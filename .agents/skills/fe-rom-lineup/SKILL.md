@@ -18,6 +18,8 @@ description: Recommend whom to train or field, or compare units and classes, fro
 
 用户没有指定时，把“练谁”按培养任务处理。难度、路线、目标章节、名单人数 N 与能力需求按用户给定；缺失且会改变结论时询问，或明确声明采用的分析范围。N 可参考有效的 `chapters.deploy_slots` / `deploy_slots_hard` 与 `force_sortie`；字段为空或不可解释时不编造名额。
 
+培养/轮换混合名单先为每个位置声明用途：长期培养、成熟即战轮换或无需练满的功能位。同定位的培养位使用下文终点排序；成熟轮换位优先当前/可信起始能力、免转职与较少追加训练。不要把两种排序混用成一张总榜，也不要为了凑 N 人给每人默认安排满练。
+
 `candidates` 的 `tableStartingStats` 是单位表职业 base + 个人 delta，没有应用入队布阵/加载覆盖。先核对入队职业、等级与 autolevel；匹配时才作为入队基线比较，冲突时只称单位表情景，不作已验证入队数值排名。它也不是存档当前属性。死亡策略影响判断立场，不会自动改变数据库里的数字。
 
 按需读取参考文件：
@@ -41,9 +43,9 @@ node src/index.ts availability <db> --full
 node src/index.ts niches <db>
 ```
 
-成功输出统一为 `{ data, meta }`。数组取 `data`；诊断取 `meta.diagnostics`；`expcurve` 的预算取 `data.budgets`，参数、来源与假设取 `meta.parameters`。保留完整 JSON，不通过截断输出丢掉 metadata。执行失败时先读退出码和 stderr，不把失败当空集。
+成功输出统一为 `{ data, meta }`。数组取 `data`；诊断取 `meta.diagnostics`（DB 命令合并快照保存的提取警告与本次分析检查，去重）；`expcurve` 的预算取 `data.budgets`，参数、来源与假设取 `meta.parameters`。保留完整 JSON，控制台只展示按 ID/字段筛选的摘要；不要先打印全池 plans 或巨型 recruits 再反复翻页。执行失败时先读退出码和 stderr，不把失败当空集。
 
-报告本次触发的 partial 诊断原文及其中的 N/M；没有读取事件层或命令失败时写“未取得”，不填 `0/0`，也不能由空诊断断言提取完整。partial 可能漏掉未知指令后的事实，可达事件又可能并未触发，因此不能统称为上界或下界。
+报告实际取得的 partial 诊断原文及其中的 N/M，包括从快照继承的诊断；诊断未取得或命令失败时明确说明，不填 `0/0`，也不能由空诊断断言提取完整。继承警告不表示本次重新读取或验证了该数据层。partial 可能漏掉未知指令后的事实，可达事件又可能并未触发，因此不能统称为上界或下界。
 
 ## 3. 固定候选 ID 集合
 
@@ -62,7 +64,19 @@ node src/index.ts niches <db>
 
 逐个检查 `baselineIssues` 和 `joinEvidence`。`class-override` / `level-override` 表示最早入队地图上存在与单位表不同的记录，包括同章互相冲突的来源；`entry-autolevel` 表示至少一条记录的 `placedAutolevel` 非零，当前投影没有应用这段入队自动成长。三类问题都暂停已验证入队数值排名，`plans` 仅留作单位表情景，不自行替换职业/等级重算。`missing-class` 时基线属性为 null、plans 为空。空 flags 只说明这些已实现检查没有报问题，不证明运行时入队属性或控制权。`joinEvidence` 合并了 normal/hard 与可达加载，不决定实际触发顺序；需要时用 `recruits` 和原始布阵核实。ally recruit + character 只是静态识别规则，不证明实机已交出控制权。
 
-目标时点先区分 `playOrder.last` 与 `lastPlayable`，再查章节名、部署数、`playOrder.branches` / `closedLoop` 元数据及必要的 `transitions`。两者都是模型锚点，不自动等于真实终章；线性化可把互斥结局串在一起。出击名单还须用 `availability --full` 检查目标章状态，不能只看全程比例。训练/轮换池可以大于单章部署数，但不能称这些人会同时出击或同时提供覆盖。
+目标时点先区分 `playOrder.last` 与 `lastPlayable`；`candidates.data.playOrder.steps` 已带章节标题/编号和 normal/hard 部署数，`branches` / `closedLoop` 也在同一对象内，无需重复 SQL 拼接。必要时查 `transitions`。两者都是模型锚点，不自动等于真实终章；线性化可把互斥结局串在一起。
+
+**先固定目标与进场/结算口径，再计算任何窗口。** 三个命令共用 `[fromPosition, beforePosition)`：`--from-position` 包含下界，`--before-position` 排除上界；都是完整播放序的 1-based position，不是章节号/map id。参数回显于 `meta.parameters.window`。例如目标 p41 进场前：
+
+```bash
+node src/index.ts candidates <db> --before-position 41
+node src/index.ts availability <db> --before-position 41 --full
+node src/index.ts expcurve <db> --before-position 41 --difficulty normal --actor-level 20 --actor-class-power 3
+# 目标章状态单查 [41,42)，不把目标战自身经验用于证明进场已练好：
+node src/index.ts availability <db> --from-position 41 --before-position 42 --full
+```
+
+区间只裁剪章状态、计数、gap 和经验预算，不改候选 ID、joinState、原入队点、plans 或完整播放序；晚于区间的 on-route 单位计数为 0、比例为 null，不因此变成 never。推荐池还要满足目标前已入队，支援交集使用同一区间。结算后情景才包含目标章；章末奖励也不能默认在本章进场可用。区间过滤不解决互斥路线。训练/轮换池可以大于单章部署数，但不能称这些人会同时出击或同时提供覆盖。
 
 ## 4. 推荐对象绑定一个分支
 
@@ -88,6 +102,8 @@ flowchart TD
 - 当前实现只投影最多一次转职。多级链的更远目标即使出现在 `niches`，也没有对应的完整属性投影；单列为未建模方案，不用中间职业的数字代替。
 - 有直接转职目标的单位没有“不转职练满”的备选 plan。拿不到道具时，改用有证据的替代方案或列为条件推荐，不能继续按已经转职计分。
 - 同一单位的互斥分支不能同时占名单位置或覆盖两个终盘职业。入队即有的舞蹈、飞行等能力仍有出击价值，只是不一定需要额外训练。
+- 依赖特殊行动的选择先查 `profile.abilityFlagIds` 和个人/职业静态技能及习得表，再固定分支；`specialAction === null` 不排除 summon 等 flag 或技能授予的能力。具体查询见资源参考。飞行、Savior、杖家族仍分别不证明载运容量、运行时效果或个人装备/rank。
+- 入队基线审计只看最早识别地图；若有后续交接、重载或剧情强制晋升，另核对对应记录。固定章晋升可能发生在 Lv20 前；默认20/20投影只留作理想表情景，不作为按时可达的数值。
 
 ## 5. 指标分别回答不同问题
 
@@ -108,7 +124,7 @@ plan 的 `stats` 在答案里称“按当前公式计算的满练属性投影”
 | `windowRatio`    | 入队后可出勤比例，直接读取；20/20 与 3/3 都是 1，不能当剩余训练时间                                                  |
 | `remainingExp`   | 可选：统一攻击方参数下，从入队位置起的预算和；是比较机会的指标，不是个人可分得的经验                                 |
 
-availability 的计数从入队算到播放序末尾；若问题是某次存档当前还剩多少机会，按当前章与目标章重取对应区间，不直接照搬全程计数。
+未传区间时 availability 从入队算到播放序末尾；传区间时只统计区间内且不早于入队的可玩章。若问题是当前存档还剩多少机会，用当前章为下界、目标进场为排除上界，不直接照搬全程计数。
 
 缺失值保持缺失，不暗填 0 或 1。不要直接用 `headroom × windowRatio` 排名，也不要直接比较成长率、章数和属性分的区间宽度。判断某轴是否改变结论时，实际比较启用前后的顺序；没有变化就说明，不制造解释。
 
@@ -135,7 +151,7 @@ availability 的计数从入队算到播放序末尾；若问题是某次存档�
 3. **约束与替代**：道具分配、可得时点、采购数量与累计花费；条件方案与无投影/无窗口项单列。
 4. **支援取舍**：关键配对、已达等级或目标情景、共同出勤与站位条件、加成证据、培养与等级额度分配，以及是否改变同定位人选；缺少规则或加成时明确未定，不凭空承诺全 A 支援。
 5. **覆盖增量**：按已选分支报告逐人或若干前缀的新增能力、缺口与重复用途。不把贪心选择称为最小覆盖或最优阵容。
-6. **假设与限制**：权重与排序键、成长投影语义、技能是否计分、本次诊断；用过 expcurve 才附 `meta.parameters`。未检查的事件完整性写“未检查”，不能填 0。死亡策略只说明其实际影响。
+6. **假设与限制**：各位置的培养/轮换用途、权重与排序键、目标进场或结算口径、成长投影语义、技能是否计分、取得的诊断；使用区间或 expcurve 时附相关 `meta.parameters`。未检查的完整性写“未检查”，不能填 0。死亡策略只说明其实际影响。
 
 局部比较只输出相关差异、推荐条件与缺失证据，不强制生成全名册覆盖表。
 

@@ -14,13 +14,13 @@
 | extract                                                           | `{ db, elapsedMs, tables }`   |
 | candidates                                                        | `{ audit, playOrder, units }` |
 
-`meta` 包含 `command`、`path`、`diagnostics`，DB 命令还包含 `game`。`expcurve` 的 `meta.parameters` 包含 `actor`、`difficulties`、`sources`、`assumptions`；不要读取旧路径 `meta.actor` 或把内部分析函数的返回结构当 CLI 信封。
+`meta` 包含 `command`、`path`、`diagnostics`，DB 命令还包含 `game`。`expcurve` 的 `meta.parameters` 包含 `actor`、`difficulties`、`sources`、`assumptions`；传章节区间的命令还包含 `parameters.window = { fromPosition, beforePosition }`，区间左闭右开。不要读取旧路径 `meta.actor` 或把内部分析函数的返回结构当 CLI 信封。
 
-`meta.diagnostics` 是本次命令实际触发的诊断，不是整个库的完整性证明。读事件时会带出 partial 和 debug map 排除信息；只读单位的命令没有义务触发事件诊断。提取进度与运行时警告仍可能在 stderr，失败时检查退出码及 stderr。
+`meta.diagnostics` 合并 DB `meta` 中的 `extract.diagnostics` 与本次分析检查并去重；`supports` 等不读事件的命令也保留快照的 partial 或异常加成表警告，但不会为此加载事件层。缺少该元数据的旧库会要求重建，不能默认为无警告。它仍不是整个库的完整性证明。提取进度与运行时警告可能在 stderr，失败时检查退出码及 stderr。
 
 `candidates` 复用现有分析规则，不是评分器。`audit.joinStateIds` 只覆盖 availability 见过的 ID，不把单位表其余空槽/未出现者擅自分类；`units` 是名册与 joiner 并集，不是全部都可用的名单。`tableClass`、`tableLevel`、`growths`、`tableStartingStats` 属于单位表基线；`joinEvidence` 仅保留最早已识别入队地图上的阵营、来源、职业、等级和 `placedAutolevel` 变体，不能作为完整脚本 provenance 或执行顺序。`baselineIssues` 非空时不要用其 `plans` 作为已验证入队排名；`entry-autolevel` 明示入队自动成长未应用，缺失/空职业则报 `missing-class` 并保留 null 基线、空 plans，不用零基础值伪造可排名方案。空 flags 不证明入队状态已经运行验证。
 
-`plans.profile` 是目标职业的武器家族、移动与特殊行动，和 `niches` 使用同一规则；它不证明个人武器等级、已装备武器或救援容量。无直接转职边时 plan 为当前职业的投影；有边时仅列直接目标，`hasFurtherPromotion` 保留多级链缺口，不自动分配道具。
+`plans.profile` 是目标职业的武器家族、移动与特殊行动，和 `niches` 使用同一规则；`abilityFlagIds` 保留按本游戏解码的完整职业 flag ID，包含粗分类以外的 `summon`、`canto` 等线索，不包含技能表授予的效果。它不证明个人武器等级、已装备武器或救援容量。无直接转职边时 plan 为当前职业的投影；有边时仅列直接目标，`hasFurtherPromotion` 保留多级链缺口，不自动分配道具。
 
 `supports` 每对保留 `aToB` / `bToA` 两个方向的 `{ initial, growth }`，缺失方向为 null；不再用一个方向的数字代替另一方向。`reciprocal` 仅表示两端记录都存在。完整解释与队伍取舍见 [支援与队伍协同](supports.md)。
 
@@ -51,16 +51,7 @@ SELECT chapters_available, events_available FROM inputs;
 
 `derived_play_order` 是一条线性化播放序，含插入的外传，不覆盖所有分支。要进一步判断离线入队地图是否有转场入口，用 `transitions.data` 构图，从播放序地图沿正向边取可达闭包。到不了只证明当前转场图无入口，不证明所有脚本机制都无法进入。
 
-线性化也可能包含互斥枝路、无标题地图和循环尾项。用下面的事实确认比较锚点，不由 `playable = 1` 推断它是经实机验证的主线章，更不把枝路预算相加称作一轮实际经验：
-
-```sql
-SELECT p.position, p.map_index, p.role, p.playable,
-       c.chapter_number, c.title, c.deploy_slots, c.deploy_slots_hard
-FROM derived_play_order p JOIN chapters c USING (map_index)
-ORDER BY p.position;
-SELECT key, value FROM meta
-WHERE key IN ('playOrder.branches', 'playOrder.closedLoop');
-```
+线性化也可能包含互斥枝路、无标题地图和循环尾项。`candidates.data.playOrder.steps` 每步含 `order / mapIndex / role / playable / chapterNumber / title / deploySlots / deploySlotsHard`；`last / lastPlayable` 使用相同形状，`branches / closedLoop` 保留提取事实。用这些事实确认锚点，不由 `playable = true` 推断实机主线，不把枝路预算相加称作一轮经验。区间命令保留这里的完整顺序以便审阅；只有 availability 指标与经验预算受区间影响。
 
 全名册审计使用四个数：
 

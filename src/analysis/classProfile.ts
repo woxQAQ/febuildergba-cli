@@ -24,6 +24,7 @@ export function classProfile(c: ClassRecord) {
     weapons,
     mobility,
     specialAction: c.specialAction,
+    abilityFlagIds: c.abilityFlagIds,
     niche: `${weapons.length === 0 ? "none" : weapons.join("+")}|${mobility}${special}`,
   };
 }

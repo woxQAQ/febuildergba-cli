@@ -21,7 +21,7 @@ node src/index.ts availability <db> --full
 
 ## 2. 共同出勤不是共同站位
 
-限定同一路线、当前章至目标章，求两人 `available` / `forced` 位置的交集。交集章数是共同出勤机会指标，不是支援培养回合数，也不证明同时部署。模型播放序含互斥分支时不能跨分支合算。
+限定同一路线，用 `availability --from-position <当前位置> --before-position <目标进场位置> --full`，求两人 `available` / `forced` 位置的交集。交集章数是共同出勤机会指标，不是支援培养回合数，也不证明同时部署。目标章状态另查；不把该章自身回合用于证明入场已练成支援。模型播放序含互斥分支时不能跨分支合算。
 
 还要检查：
 
@@ -48,7 +48,7 @@ ORDER BY u.id;
 
 `*_half` 是尚未除二的原始半点值，不是最终属性。`src/tables/supportBonus.ts` 记录了一套已检查的 FE8 规则，但不能保证所有 hack 都沿用其门槛、范围、累计或取整方式。只有当前 ROM 的规则和表可解释时，才按声明的已达等级或目标等级情景计算。若采用该 FE8 规则，双方 affinity 与方向等级都参与，最后对所有有效搭档累计后除二取整，不能每对先取整再相加。
 
-检查提取诊断：重复 affinity、异常表尾、未知扩展 ID 或缺表都会削弱数值解释。例如 The Drowned King 曾报告 support-bonus 表重复 affinity；写入保留首条不能当作已证明该表可用于战斗计算。只有 DB、没有该层质量证据时，注明“加成表完整性未核实”；`supports.meta.diagnostics = []` 本身不认证加成表。
+检查 `supports.meta.diagnostics` 保留的提取诊断：重复 affinity、异常表尾、未知扩展 ID 或缺表都会削弱数值解释。例如 The Drowned King 的 support-bonus 表重复 affinity；写入保留首条不能证明该表可用于战斗计算。空诊断也不认证规则或表完整性；没有取得该层质量证据时注明“加成表完整性未核实”。
 
 ## 4. 支援等级是共享约束
 

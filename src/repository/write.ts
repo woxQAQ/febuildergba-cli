@@ -163,6 +163,7 @@ async function insertMeta(db: ExtractDb, rom: ExtractionSnapshot): Promise<void>
     { key: "rom.notes", value: JSON.stringify(metadata.notes) },
     { key: "config.dir", value: metadata.configDir ?? "" },
     { key: "config.language", value: metadata.configLanguage },
+    { key: "extract.diagnostics", value: JSON.stringify(rom.diagnostics) },
     { key: "chapters.available", value: String(rom.chaptersAvailable) },
     {
       key: "events.available",

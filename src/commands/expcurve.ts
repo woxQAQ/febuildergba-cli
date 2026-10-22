@@ -9,6 +9,7 @@ import { expCurveOf } from "../analysis/service.ts";
 import { DIFFICULTIES, type Difficulty } from "../model/stats.ts";
 import { UsageError } from "./types.ts";
 import { defineDbCommand } from "./types.ts";
+import { chapterWindow } from "./chapterWindow.ts";
 
 /** Display rounding: levels are fractional by construction (exp / 100). */
 function round2(n: number): number {
@@ -54,14 +55,18 @@ export const expcurve = defineDbCommand({
     + "these defaults are not inferred from this ROM. Pass `--actor-level`, "
     + "`--actor-class-power` or `--actor-promoted` to measure a different one. "
     + "By default every chapter is budgeted for all three difficulties; "
-    + "`--difficulty` keeps one. "
+    + "`--difficulty` keeps one. `--from-position` / `--before-position` restrict "
+    + "budgets to a half-open interval in the full model order; they do not "
+    + "resolve mutually exclusive routes or individual exp shares. "
     + "The formula constants "
     + "and their sources are in src/analysis/expcurve.ts; the "
     + "`meta.parameters.assumptions` block lists what is modelled rather than read - "
     + "including that every counted enemy is assumed killed, and that a "
     + "promoted attacker's class-bonus-B term is not modelled.",
   run: async ({ extract, flags }) => {
+    const window = chapterWindow(flags, await extract.playOrder());
     const result = await expCurveOf(extract, {
+      ...(window === undefined ? {} : { window }),
       ...(flags.difficulty === undefined ? {} : { difficulty: difficultyFlag(flags.difficulty) }),
       ...(flags.actorLevel === undefined
         ? {}
@@ -86,6 +91,7 @@ export const expcurve = defineDbCommand({
         difficulties: result.meta.difficulties,
         sources: result.meta.sources,
         assumptions: result.meta.assumptions,
+        ...(window === undefined ? {} : { window }),
       },
     };
   },

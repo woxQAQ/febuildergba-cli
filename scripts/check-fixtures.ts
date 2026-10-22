@@ -5,7 +5,7 @@
  */
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readdirSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
@@ -23,6 +23,7 @@ const roms = readdirSync("fixtures", { withFileTypes: true })
   .map((entry) => entry.name)
   .sort();
 assert(roms.length > 0, "No ROMs in fixtures/: supply local .gba files before checking");
+const snapshotDiagnostics = new Map<string, readonly string[]>();
 
 function run<D>(directory: string, command: string, path: string, ...args: string[]): Envelope<D> {
   const result = spawnSync(process.execPath, ["src/index.ts", command, path, ...args], {
@@ -30,7 +31,10 @@ function run<D>(directory: string, command: string, path: string, ...args: strin
     maxBuffer: 64 * 1024 * 1024,
     timeout: 120_000,
   });
-  const label = command + (args.includes("--full") ? "-full" : "");
+  const label = [command, ...args]
+    .join("_")
+    .replaceAll("--", "")
+    .replaceAll(/[^a-zA-Z0-9._-]/g, "_");
   writeFileSync(join(directory, `${label}.json`), result.stdout ?? "");
   writeFileSync(join(directory, `${label}.stderr`), result.stderr ?? "");
   assert.ifError(result.error);
@@ -39,10 +43,38 @@ function run<D>(directory: string, command: string, path: string, ...args: strin
   assert.equal(envelope.meta.command, command);
   assert.equal(envelope.meta.path, path);
   assert(Array.isArray(envelope.meta.diagnostics), `${command}: missing diagnostics`);
+  assert.equal(new Set(envelope.meta.diagnostics).size, envelope.meta.diagnostics.length);
+  for (const warning of snapshotDiagnostics.get(path) ?? []) {
+    assert(envelope.meta.diagnostics.includes(warning), `${command}: lost snapshot warning`);
+  }
   return envelope;
 }
 
+function reject(
+  directory: string,
+  command: string,
+  path: string,
+  status: number,
+  message: RegExp,
+  ...args: string[]
+): void {
+  const result = spawnSync(process.execPath, ["src/index.ts", command, path, ...args], {
+    encoding: "utf8",
+    timeout: 120_000,
+  });
+  const label = ["rejected", command, basename(path), ...args].join("_").replaceAll("--", "");
+  writeFileSync(join(directory, `${label}.stdout`), result.stdout ?? "");
+  writeFileSync(join(directory, `${label}.stderr`), result.stderr ?? "");
+  assert.ifError(result.error);
+  assert.equal(result.status, status, result.stderr);
+  assert.equal(result.stdout, "", "failed command must not emit success JSON");
+  assert.match(result.stderr, message);
+}
+
 type AvailabilityRow = Omit<UnitAvailability, "chapters">;
+type FullAvailabilityRow = AvailabilityRow & {
+  chapters: { position: number; mapIndex: number; status: string }[];
+};
 interface JoinRow {
   kind: "join" | "appearance";
   unitId: number;
@@ -77,10 +109,18 @@ for (const rom of roms) {
       "--out",
       dbPath,
     );
+    snapshotDiagnostics.set(dbPath, extraction.meta.diagnostics);
     const db = new DatabaseSync(dbPath, { readOnly: true });
     let rosterIds: number[];
     try {
       assert.deepEqual(db.prepare("PRAGMA foreign_key_check").all(), []);
+      assert.deepEqual(
+        JSON.parse(
+          db.prepare("SELECT value FROM meta WHERE key = 'extract.diagnostics'").get()
+            ?.value as string,
+        ),
+        extraction.meta.diagnostics,
+      );
       assert.equal(extraction.data.tables.inputs, 1);
       for (const [table, count] of Object.entries(extraction.data.tables)) {
         const row = db.prepare(`SELECT COUNT(*) AS n FROM "${table}"`).get();
@@ -123,6 +163,37 @@ for (const rom of roms) {
     assert.deepEqual(new Set(candidateIds), new Set([...rosterIds, ...joinerIds]));
     const evidenceDb = new DatabaseSync(dbPath, { readOnly: true });
     try {
+      const meta = new Map(
+        (
+          evidenceDb.prepare("SELECT key, value FROM meta").all() as {
+            key: string;
+            value: string;
+          }[]
+        ).map((row) => [row.key, row.value]),
+      );
+      assert.deepEqual(
+        candidates.data.playOrder.branches,
+        JSON.parse(meta.get("playOrder.branches")!),
+      );
+      assert.deepEqual(
+        candidates.data.playOrder.closedLoop,
+        JSON.parse(meta.get("playOrder.closedLoop")!),
+      );
+      const expectedSteps = evidenceDb
+        .prepare(
+          "SELECT p.position AS 'order', p.map_index AS mapIndex, p.role, p.playable, "
+            + "c.chapter_number AS chapterNumber, c.title, c.deploy_slots AS deploySlots, "
+            + "c.deploy_slots_hard AS deploySlotsHard FROM derived_play_order p "
+            + "JOIN chapters c USING (map_index) ORDER BY p.position",
+        )
+        .all()
+        .map((row) => ({ ...row, playable: row.playable === 1 }));
+      assert.deepEqual(candidates.data.playOrder.steps, expectedSteps);
+      assert.deepEqual(candidates.data.playOrder.last, expectedSteps.at(-1) ?? null);
+      assert.deepEqual(
+        candidates.data.playOrder.lastPlayable,
+        expectedSteps.findLast((step) => step.playable) ?? null,
+      );
       const supportRows = evidenceDb
         .prepare(
           "SELECT unit_id, partner_id, initial, growth FROM support_partners ORDER BY unit_id, partner_id",
@@ -172,6 +243,13 @@ for (const rom of roms) {
         }
         assert(unit.tableClass !== null);
         assert.equal(unit.tableClass.classId, rawBaseline.class_id);
+        const flagsOf = (classId: number) =>
+          (
+            evidenceDb
+              .prepare("SELECT flag FROM class_ability_flags WHERE class_id = ? ORDER BY flag")
+              .all(classId) as { flag: string }[]
+          ).map((row) => row.flag);
+        assert.deepEqual(unit.tableClass.abilityFlagIds, flagsOf(rawBaseline.class_id));
         assert.deepEqual(
           unit.tableStartingStats,
           Object.fromEntries(STAT_FIELDS.map((stat) => [stat, rawBaseline[stat]])),
@@ -181,6 +259,7 @@ for (const rom of roms) {
         for (const plan of unit.plans) {
           assert(plan.profile !== null);
           assert.equal(plan.classId, plan.profile.classId);
+          assert.deepEqual(plan.profile.abilityFlagIds, flagsOf(plan.classId));
           assert(plan.promotionSteps === 0 || plan.promotionSteps === 1);
           if (plan.promotionSteps === 0) {
             assert.equal(plan.classId, unit.tableClass.classId);
@@ -277,12 +356,7 @@ for (const rom of roms) {
       evidenceDb.close();
     }
 
-    const full = run<(AvailabilityRow & { chapters: unknown[] })[]>(
-      directory,
-      "availability",
-      dbPath,
-      "--full",
-    );
+    const full = run<FullAvailabilityRow[]>(directory, "availability", dbPath, "--full");
     assert.deepEqual(
       full.data.map(({ chapters, ...summary }) => {
         assert(Array.isArray(chapters));
@@ -301,10 +375,7 @@ for (const rom of roms) {
         assert(unit.ext === null || Number.isInteger(unit.ext));
         assert(Number.isInteger(unit.autolevel));
       }
-    const expcurve = run<{ budgets: { difficulty: string }[] }>(
-      directory,
-      "expcurve",
-      dbPath,
+    const expArgs = [
       "--difficulty",
       "normal",
       "--actor-level",
@@ -312,12 +383,195 @@ for (const rom of roms) {
       "--actor-class-power",
       "2",
       "--actor-promoted",
+    ];
+    const expcurve = run<{ budgets: { position: number; difficulty: string }[] }>(
+      directory,
+      "expcurve",
+      dbPath,
+      ...expArgs,
     );
     assert(expcurve.data.budgets.length > 0);
     assert(expcurve.data.budgets.every((row) => row.difficulty === "normal"));
     assert.deepEqual(expcurve.meta.parameters?.actor, { level: 13, classPower: 2, promoted: true });
     assert.deepEqual(expcurve.meta.parameters?.difficulties, ["normal"]);
     assert(Array.isArray(expcurve.meta.parameters?.assumptions));
+    const end = (candidates.data.playOrder.last?.order ?? 0) + 1;
+    assert(end > 3, `${rom}: need a nontrivial real chapter interval`);
+    const beforePosition = Math.floor(end * 0.7);
+    const window = { fromPosition: 2, beforePosition };
+    const windowArgs = ["--from-position", "2", "--before-position", String(beforePosition)];
+    const scoped = run<FullAvailabilityRow[]>(
+      directory,
+      "availability",
+      dbPath,
+      "--full",
+      ...windowArgs,
+    );
+    const scopedSummary = run<AvailabilityRow[]>(directory, "availability", dbPath, ...windowArgs);
+    assert.deepEqual(scoped.meta.parameters?.window, window);
+    assert.deepEqual(
+      scoped.data.map(({ chapters, ...summary }) => {
+        assert(Array.isArray(chapters));
+        return summary;
+      }),
+      scopedSummary.data,
+    );
+    assert.equal(scoped.data.length, full.data.length);
+    for (const [index, row] of full.data.entries()) {
+      const actual = scoped.data[index]!;
+      const chapters = row.chapters.filter(
+        (chapter) => chapter.position >= 2 && chapter.position < beforePosition,
+      );
+      const postJoin = chapters.filter(
+        (chapter) => row.joinPosition !== null && chapter.position >= row.joinPosition,
+      );
+      const available = postJoin.filter(
+        (chapter) => chapter.status === "available" || chapter.status === "forced",
+      ).length;
+      const windowed = row.joinPosition !== null;
+      assert.deepEqual(actual.chapters, chapters);
+      assert.equal(actual.joinState, row.joinState);
+      assert.equal(actual.joinPosition, row.joinPosition);
+      assert.equal(actual.joinMapIndex, row.joinMapIndex);
+      assert.equal(actual.joinUnresolved, row.joinUnresolved);
+      assert.equal(actual.availableCount, windowed ? available : null);
+      assert.equal(actual.totalAfterJoin, windowed ? postJoin.length : null);
+      assert.equal(
+        actual.windowRatio,
+        windowed && postJoin.length > 0 ? available / postJoin.length : null,
+      );
+      assert.deepEqual(
+        actual.gaps,
+        row.gaps
+          ?.map((gap) => ({
+            ...gap,
+            fromPosition: Math.max(2, gap.fromPosition),
+            toPosition: Math.min(beforePosition - 1, gap.toPosition),
+          }))
+          .filter((gap) => gap.fromPosition <= gap.toPosition) ?? null,
+      );
+    }
+    const scopedCandidates = run<CandidateFacts>(directory, "candidates", dbPath, ...windowArgs);
+    assert.deepEqual(scopedCandidates.meta.parameters?.window, window);
+    assert.deepEqual(scopedCandidates.data.audit, candidates.data.audit);
+    assert.deepEqual(scopedCandidates.data.playOrder, candidates.data.playOrder);
+    assert.deepEqual(
+      scopedCandidates.data.units.map((unit) => ({ ...unit, availability: null })),
+      candidates.data.units.map((unit) => ({ ...unit, availability: null })),
+    );
+    for (const unit of scopedCandidates.data.units) {
+      if (unit.availability === null) continue;
+      const row = scopedSummary.data.find((entry) => entry.unitId === unit.unitId);
+      assert(row);
+      for (const [key, value] of Object.entries(unit.availability)) {
+        assert.deepEqual(value, row[key as keyof AvailabilityRow]);
+      }
+    }
+    const scopedExp = run<typeof expcurve.data>(
+      directory,
+      "expcurve",
+      dbPath,
+      ...expArgs,
+      ...windowArgs,
+    );
+    assert.deepEqual(scopedExp.meta.parameters, { ...expcurve.meta.parameters, window });
+    assert.deepEqual(
+      scopedExp.data.budgets,
+      expcurve.data.budgets.filter((row) => row.position >= 2 && row.position < beforePosition),
+    );
+    const empty = run<FullAvailabilityRow[]>(
+      directory,
+      "availability",
+      dbPath,
+      "--full",
+      "--before-position",
+      "1",
+    );
+    assert(
+      empty.data.every(
+        (row) =>
+          row.chapters.length === 0
+          && row.windowRatio === null
+          && row.availableCount === (row.joinPosition === null ? null : 0)
+          && row.totalAfterJoin === (row.joinPosition === null ? null : 0)
+          && (row.gaps === null || row.gaps.length === 0),
+      ),
+    );
+    const emptyCandidates = run<CandidateFacts>(
+      directory,
+      "candidates",
+      dbPath,
+      "--before-position",
+      "1",
+    );
+    assert.deepEqual(emptyCandidates.data.audit, candidates.data.audit);
+    assert.deepEqual(
+      emptyCandidates.data.units.map((unit) => unit.unitId),
+      candidateIds,
+    );
+    assert(
+      emptyCandidates.data.units.every(
+        (unit) =>
+          unit.availability === null
+          || unit.availability.availableCount
+            === (unit.availability.joinPosition === null ? null : 0),
+      ),
+    );
+    const emptyExp = run<typeof expcurve.data>(
+      directory,
+      "expcurve",
+      dbPath,
+      ...expArgs,
+      "--before-position",
+      "1",
+    );
+    assert.deepEqual(emptyExp.data.budgets, []);
+    for (const command of ["availability", "candidates", "expcurve"]) {
+      reject(directory, command, dbPath, 2, /expects an integer/, "--from-position", "0");
+      reject(
+        directory,
+        command,
+        dbPath,
+        2,
+        /expects an integer/,
+        "--before-position",
+        String(end + 1),
+      );
+      reject(
+        directory,
+        command,
+        dbPath,
+        2,
+        /must be <=/,
+        "--from-position",
+        "3",
+        "--before-position",
+        "2",
+      );
+      reject(directory, command, dbPath, 2, /expects an integer/, "--before-position", "1.5");
+    }
+    reject(directory, "supports", dbPath, 2, /unknown option/, "--before-position", "2");
+    for (const kind of ["missing", "malformed"]) {
+      const invalidPath = join(directory, `${kind}-diagnostics.db`);
+      copyFileSync(dbPath, invalidPath);
+      const invalid = new DatabaseSync(invalidPath);
+      try {
+        invalid.exec(
+          kind === "missing"
+            ? "DELETE FROM meta WHERE key = 'extract.diagnostics'"
+            : "UPDATE meta SET value = '[42]' WHERE key = 'extract.diagnostics'",
+        );
+      } finally {
+        invalid.close();
+      }
+      reject(
+        directory,
+        "supports",
+        invalidPath,
+        1,
+        kind === "missing" ? /re-run `fe-rom extract`/ : /malformed.*extract.diagnostics/,
+      );
+    }
     results.push({
       rom,
       ok: true,
